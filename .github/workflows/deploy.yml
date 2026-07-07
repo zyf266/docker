@@ -1,0 +1,45 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ecs
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP_DIR="/opt/backpack-quant"
+            REPO="https://github.com/zyf266/docker.git"
+            BRANCH="main"
+
+            if [ ! -d "${APP_DIR}/.git" ]; then
+              echo "==> 首次部署：安装 git 并克隆仓库..."
+              if command -v dnf &>/dev/null; then dnf install -y git curl openssl 2>/dev/null || true; fi
+              if command -v yum &>/dev/null; then yum install -y git curl openssl 2>/dev/null || true; fi
+              if ! command -v docker &>/dev/null; then
+                curl -fsSL https://get.docker.com | sh
+                systemctl enable docker && systemctl start docker
+              fi
+              git clone -b "${BRANCH}" "${REPO}" "${APP_DIR}"
+              cd "${APP_DIR}"
+              cp deploy/env.example .env
+              DB_PASS=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 24)
+              sed -i "s/请修改为强密码/${DB_PASS}/" .env
+            fi
+
+            bash "${APP_DIR}/deploy/deploy.sh"
