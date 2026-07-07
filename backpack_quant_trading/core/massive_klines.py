@@ -92,6 +92,59 @@ def interval_label(interval: str) -> str:
     return "1d"
 
 
+def _max_lookback_days(span: str) -> int:
+    """Polygon 低档套餐小时/分钟线通常只有近 1～2 年，避免无意义远古请求。"""
+    default = {"minute": 60, "hour": 400, "day": 730, "week": 1825}.get(span, 400)
+    try:
+        return max(30, int(os.getenv("MASSIVE_MAX_LOOKBACK_DAYS", str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _lookback_days_for_us_bars(mult: int, span: str, limit: int) -> int:
+    """美股非 24h 交易，分钟/小时周期需更长日历回看。"""
+    lim = max(int(limit or 200), 30)
+    if span == "week":
+        raw = max(52, lim * 7 + 14)
+    elif span == "day":
+        raw = max(30, int(lim * 1.8) + 10)
+    elif span == "hour":
+        bars_per_trading_day = max(6.5 / max(mult, 1), 0.5)
+        trading_days = lim / bars_per_trading_day
+        raw = int(trading_days * (7 / 5) * 1.45) + 20
+        raw = max(raw, 90)
+    else:
+        bars_per_trading_day = max(390 / max(mult, 1), 1.0)
+        trading_days = lim / bars_per_trading_day
+        raw = int(trading_days * (7 / 5) * 1.45) + 20
+        raw = max(raw, 120)
+    return min(raw, _max_lookback_days(span))
+
+
+# Polygon aggs 单窗口 limit；分批拉取时按日期窗口切片，避免一次请求过大触发限流
+_POLYGON_AGG_REQUEST_LIMIT = 50_000
+_DEFAULT_BATCH_PAUSE_SEC = 0.35
+_DEFAULT_RATE_LIMIT_RETRIES = 5
+
+
+def _batch_pause_sec() -> float:
+    try:
+        return max(0.0, float(os.getenv("MASSIVE_BATCH_PAUSE_SEC", str(_DEFAULT_BATCH_PAUSE_SEC))))
+    except (TypeError, ValueError):
+        return _DEFAULT_BATCH_PAUSE_SEC
+
+
+def _chunk_days_for_span(mult: int, span: str) -> int:
+    """按周期估算每批日历天数，控制单次 aggs 返回量。"""
+    if span == "week":
+        return 365 * 2
+    if span == "day":
+        return 120
+    if span == "hour":
+        return 35 if mult >= 2 else 28
+    return 10
+
+
 def _massive_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
     key = get_massive_api_key()
     if not key:
@@ -99,42 +152,31 @@ def _massive_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
     p = dict(params or {})
     p["apiKey"] = key
     url = f"{MASSIVE_API_BASE.rstrip('/')}{path}"
-    # 与原先一致：requests 默认 trust_env，load_project_env 后自动读 .env / shell 的 HTTP(S)_PROXY
-    r = requests.get(url, params=p, timeout=30)
-    if r.status_code != 200:
-        try:
-            detail = r.json()
-        except Exception:
-            detail = r.text[:300]
-        raise RuntimeError(f"Massive API {r.status_code}: {detail}")
-    return r.json()
+    for attempt in range(_DEFAULT_RATE_LIMIT_RETRIES):
+        r = requests.get(url, params=p, timeout=30)
+        if r.status_code == 429:
+            wait = min(2.0 ** attempt, 16.0)
+            logger.warning("Massive 限流 429，%ss 后重试 (%s/%s)", wait, attempt + 1, _DEFAULT_RATE_LIMIT_RETRIES)
+            time.sleep(wait)
+            continue
+        if r.status_code == 403:
+            try:
+                detail = r.json()
+            except Exception:
+                detail = r.text[:300]
+            raise RuntimeError(f"Massive API 403: {detail}")
+        if r.status_code != 200:
+            try:
+                detail = r.json()
+            except Exception:
+                detail = r.text[:300]
+            raise RuntimeError(f"Massive API {r.status_code}: {detail}")
+        return r.json()
+    raise RuntimeError("Massive API 429: 限流重试次数已用尽")
 
 
-def _lookback_days_for_us_bars(mult: int, span: str, limit: int) -> int:
-    """美股非 24h 交易，分钟/小时周期需更长日历回看。"""
-    lim = max(int(limit or 200), 30)
-    if span == "week":
-        return max(52, lim * 7 + 14)
-    if span == "day":
-        return max(30, int(lim * 1.8) + 10)
-    # 常规盘约 6.5h/日、5 日/周
-    if span == "hour":
-        bars_per_trading_day = max(6.5 / max(mult, 1), 0.5)
-    else:
-        bars_per_trading_day = max(390 / max(mult, 1), 1.0)
-    trading_days = lim / bars_per_trading_day
-    calendar_days = int(trading_days * (7 / 5) * 1.45) + 20
-    floor = 90 if span == "hour" else 120
-    return max(calendar_days, floor)
-
-
-# Polygon aggs 的 limit 参数：传较小值时部分周期（如 2/hour）会异常少返 bars；
-# 统一拉大请求上限，再在客户端截取所需根数。
-_POLYGON_AGG_REQUEST_LIMIT = 50_000
-
-
-def _parse_agg_rows(data: Any, limit: int) -> List[Dict[str, Any]]:
-    """解析 aggs；调用方按 sort=desc 取前 limit 根后再 reverse。"""
+def _parse_agg_rows(data: Any, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """解析 aggs 结果。"""
     rows: List[Dict[str, Any]] = []
     for item in (data.get("results") or []):
         try:
@@ -148,7 +190,7 @@ def _parse_agg_rows(data: Any, limit: int) -> List[Dict[str, Any]]:
             })
         except (KeyError, TypeError, ValueError):
             continue
-    if len(rows) > limit:
+    if limit is not None and len(rows) > limit:
         rows = rows[:limit]
     return rows
 
@@ -161,24 +203,85 @@ def _fetch_agg_range(
     to_s: str,
     *,
     client_limit: int,
+    sort: str = "desc",
 ) -> List[Dict[str, Any]]:
     """
-    Polygon aggs：sort=asc 时免费套餐常只返最早一段 K 线（缺最新 bar）；
-    统一 sort=desc 取最近 N 根，再反转为升序供指标计算。
+    Polygon aggs 单窗口拉取。
+    - sort=desc：取窗口内最近 N 根（兼容旧逻辑）
+    - sort=asc：分批回填历史时使用
     """
     path = f"/v2/aggs/ticker/{ticker}/range/{mult}/{span}/{from_s}/{to_s}"
     data = _massive_get(
         path,
         {
             "adjusted": "true",
-            "sort": "desc",
+            "sort": sort,
             "limit": _POLYGON_AGG_REQUEST_LIMIT,
         },
     )
-    rows = _parse_agg_rows(data, _POLYGON_AGG_REQUEST_LIMIT)
-    if len(rows) > client_limit:
+    rows = _parse_agg_rows(data)
+    if sort == "desc" and len(rows) > client_limit:
         rows = rows[:client_limit]
-    rows.reverse()
+    if sort == "desc":
+        rows.reverse()
+    return rows
+
+
+def _fetch_massive_bars_batched(
+    ticker: str,
+    mult: int,
+    span: str,
+    start: datetime,
+    end: datetime,
+    *,
+    total_limit: int,
+) -> List[Dict[str, Any]]:
+    """按日期窗口分批拉取，合并去重后返回升序列表。"""
+    chunk_days = _chunk_days_for_span(mult, span)
+    pause = _batch_pause_sec()
+    merged: Dict[int, Dict[str, Any]] = {}
+    cursor = start.date()
+    end_date = end.date()
+    batches = 0
+
+    while cursor <= end_date:
+        window_end = min(cursor + timedelta(days=chunk_days - 1), end_date)
+        from_s = cursor.strftime("%Y-%m-%d")
+        to_s = window_end.strftime("%Y-%m-%d")
+        try:
+            batch = _fetch_agg_range(
+                ticker,
+                mult,
+                span,
+                from_s,
+                to_s,
+                client_limit=total_limit,
+                sort="asc",
+            )
+            for row in batch:
+                merged[int(row["time"])] = row
+            batches += 1
+        except Exception as exc:
+            msg = str(exc)
+            if "403" in msg or "NOT_AUTHORIZED" in msg:
+                logger.debug("Massive 无权限窗口 %s %s~%s，跳过", ticker, from_s, to_s)
+            else:
+                logger.warning("Massive 分批 K线失败 %s %s~%s: %s", ticker, from_s, to_s, exc)
+        cursor = window_end + timedelta(days=1)
+        if cursor <= end_date and pause > 0:
+            time.sleep(pause)
+
+    rows = [merged[k] for k in sorted(merged)]
+    if len(rows) > total_limit:
+        rows = rows[-total_limit:]
+    logger.info(
+        "Massive 分批 K线 %s %s%s: %s 批, 共 %s 根",
+        ticker,
+        mult,
+        span,
+        batches,
+        len(rows),
+    )
     return rows
 
 
@@ -186,44 +289,49 @@ def fetch_massive_bars(
     symbol: str,
     interval: str = "1d",
     limit: int = 200,
+    start: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
     """
     拉取 OHLCV，返回与 HL/crypto 一致的升序列表：
     [{"time": ms, "open", "high", "low", "close", "volume"}, ...]
+    start: 可选起始时间（策略同步时传首笔交易前 warmup，避免拉到套餐不支持的远古数据）
     """
     ticker = normalize_us_ticker(symbol)
     if not ticker:
         return []
     mult, span = normalize_massive_interval(interval)
     end = datetime.now(timezone.utc)
-    lookback_days = _lookback_days_for_us_bars(mult, span, limit)
-    start = end - timedelta(days=lookback_days)
-    from_s = start.strftime("%Y-%m-%d")
+    lim = int(limit)
+    if start is not None:
+        start_dt = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
+    else:
+        lookback_days = _lookback_days_for_us_bars(mult, span, lim)
+        start_dt = end - timedelta(days=lookback_days)
+    # 不早于套餐允许的最大回看
+    floor = end - timedelta(days=_max_lookback_days(span))
+    if start_dt < floor:
+        start_dt = floor
+    from_s = start_dt.strftime("%Y-%m-%d")
     to_s = end.strftime("%Y-%m-%d")
-    try:
-        rows = _fetch_agg_range(
-            ticker, mult, span, from_s, to_s, client_limit=int(limit),
-        )
-    except Exception as e:
-        logger.warning("Massive K线失败 %s %s: %s", ticker, interval, e)
-        rows = []
+    rows: List[Dict[str, Any]] = []
 
-    # 分钟/小时仍不足时，再扩一倍回看重试一次
-    if len(rows) < 30 and span in ("minute", "hour"):
-        start2 = end - timedelta(days=lookback_days * 2)
+    if span in ("minute", "hour"):
         try:
-            rows2 = _fetch_agg_range(
-                ticker,
-                mult,
-                span,
-                start2.strftime("%Y-%m-%d"),
-                to_s,
-                client_limit=int(limit),
+            return _fetch_massive_bars_batched(
+                ticker, mult, span, start_dt, end, total_limit=lim,
             )
-            if len(rows2) > len(rows):
-                rows = rows2
         except Exception as e:
-            logger.debug("Massive K线扩窗重试失败 %s %s: %s", ticker, interval, e)
+            logger.warning("Massive 分批 K线失败 %s %s: %s", ticker, interval, e)
+            rows = []
+
+    if not rows:
+        try:
+            rows = _fetch_agg_range(
+                ticker, mult, span, from_s, to_s, client_limit=lim,
+            )
+        except Exception as e:
+            logger.warning("Massive K线失败 %s %s: %s", ticker, interval, e)
+            rows = []
 
     return rows
 

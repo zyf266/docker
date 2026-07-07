@@ -547,22 +547,38 @@ export default function StrategyDetail({ title, subtitle, currencyLabel, initial
     const buyPoints = []
     const sellPoints = []
 
-    const findIndexByTime = (tStr) => {
-      const target = new Date(tStr).getTime()
-      let idx = klinesData.findIndex((k) => new Date(k.timestamp).getTime() >= target)
-      if (idx === -1) idx = klinesData.length - 1
+    const parseTradeMs = (tStr) => {
+      const raw = String(tStr || '').trim()
+      if (!raw) return NaN
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
+      return new Date(normalized).getTime()
+    }
+
+    // 2H K 线左标：取「不晚于成交时刻」的最后一根柱，避免三角标漂到下一根 K 线上
+    const findBarIndexByTime = (tStr) => {
+      const target = parseTradeMs(tStr)
+      if (Number.isNaN(target)) return 0
+      let idx = 0
+      for (let i = 0; i < klinesData.length; i++) {
+        const barMs = parseTradeMs(klinesData[i].timestamp)
+        if (Number.isNaN(barMs)) continue
+        if (barMs <= target) idx = i
+        else break
+      }
       return idx
     }
 
     tradesList.forEach((tr) => {
-      const idx = findIndexByTime(tr.trade_time)
+      const idx = findBarIndexByTime(tr.trade_time)
       if (idx < 0) return
-      const price = tr.price
+      const bar = klinesData[idx]
+      if (!bar) return
       const tp = String(tr.trade_type || '')
+      // 用 K 线索引 + 当根 low/high 锚定，确保三角标贴在蜡烛上
       if (tp.includes('进') || tp.includes('入场')) {
-        buyPoints.push([x[idx], price])
+        buyPoints.push([idx, Number(bar.low)])
       } else if (tp.includes('出') || tp.includes('出场') || tp.includes('止损') || tp.toLowerCase().includes('close')) {
-        sellPoints.push([x[idx], price])
+        sellPoints.push([idx, Number(bar.high)])
       }
     })
 

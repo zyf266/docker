@@ -103,7 +103,7 @@ const strategies = [
     icon: '🏮',
     title: 'A股动量轮动策略·英维克',
     code: 'ML-AMR',
-    description: '聚焦英维克（002837）精密温控龙头，2H 动量轮动全仓复利，捕捉 AI 液冷与储能温控景气周期。',
+    description: '聚焦英维克（002837）精密温控龙头，动量轮动全仓复利，捕捉 AI 液冷与储能温控景气周期。',
     status: '运行中',
     statusColor: 'bg-green-500 text-white',
     progress: 72,

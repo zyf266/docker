@@ -1,5 +1,5 @@
 """
-A 股动量策略（300308 / 603986 / 688146）最后一笔未平仓持仓：
+A 股动量策略（300308 / 603986 / 688146 / 002837）最后一笔未平仓持仓：
 按最近交易日收盘价盯市，供 overview / trades 展示与矩阵收益刷新。
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-MTM_CODES = frozenset({"300308", "603986", "688146"})
+MTM_CODES = frozenset({"300308", "603986", "688146", "002837"})
 MTM_EXIT_SIGNAL_KEYS = ("开盘价", "收盘价", "收盘")
 CACHE_PATH = Path(__file__).resolve().parents[1] / "data" / "a_share_strategy_close_cache.json"
 

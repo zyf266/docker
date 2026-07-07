@@ -308,7 +308,7 @@ async def _bootstrap_a_share_mtm() -> None:
 
 
 async def _daily_a_share_mtm_loop() -> None:
-    """每个交易日收盘后（北京时间 15:35）刷新 300308/603986/688146 收盘价。"""
+    """每个交易日收盘后（北京时间 15:35）刷新 A 股盯市收盘价。"""
     while True:
         now = _cn_now()
         target = _today_cn_a_share_mtm_at()

@@ -1381,8 +1381,9 @@ def _compose_calibrated_summary(
     metrics: Dict[str, Any],
     rebound: Dict[str, Any],
     recommendation: str,
+    score: Optional[int] = None,
 ) -> str:
-    """与最终 recommendation 一致的研判摘要（覆盖模型自相矛盾的文案）。"""
+    """与最终 recommendation / score 一致的研判摘要。"""
     m = metrics or {}
     pros: List[str] = []
     if m.get("price_above_ema20"):
@@ -1410,12 +1411,37 @@ def _compose_calibrated_summary(
 
     rec = (recommendation or "caution").lower()
     if rec == "execute":
-        tail = "，建议执行"
+        tail = "建议执行"
     elif rec == "reject":
-        tail = "，建议拒绝"
+        tail = "建议拒绝"
     else:
-        tail = "，建议谨慎观望"
-    return body + tail + "。"
+        tail = "建议谨慎观望"
+
+    if score is not None:
+        return f"{body}，综合评分{int(score)}，{tail}。"
+    return body + "，" + tail + "。"
+
+
+def harmonize_summary_score(
+    summary: str,
+    score: int,
+    recommendation: str,
+) -> str:
+    """把摘要里的「综合评分」与最终分数对齐，避免 81/82 类不一致。"""
+    import re
+
+    _, rec_cn = _poster_rec_label(str(recommendation or ""))
+    s = (summary or "").strip()
+    s = re.sub(r"综合评分\s*\d+", f"综合评分{int(score)}", s)
+    if not re.search(r"综合评分\s*\d+", s):
+        if s and not s.endswith("。"):
+            s += "。"
+        s += f"综合评分{int(score)}，{rec_cn}。"
+    else:
+        s = re.sub(r"建议[^。]*。", f"{rec_cn}。", s)
+        if rec_cn not in s:
+            s = s.rstrip("。") + f"，{rec_cn}。"
+    return s.strip()
 
 
 def _apply_recommendation_consistency(
@@ -1426,7 +1452,7 @@ def _apply_recommendation_consistency(
 ) -> None:
     """建议与摘要对齐：大周期弱/缩量时可高分，但不给 execute；不改分数。"""
     if gates.get("force_reject"):
-        st["summary"] = _compose_calibrated_summary(metrics, rebound, "reject")
+        st["summary"] = _compose_calibrated_summary(metrics, rebound, "reject", st.get("score"))
         return
 
     m = metrics or {}
@@ -1442,7 +1468,15 @@ def _apply_recommendation_consistency(
         rec = "caution"
 
     st["recommendation"] = rec
-    st["summary"] = _compose_calibrated_summary(metrics, rebound, rec)
+    try:
+        final_score = int(st.get("score") or 0)
+    except (TypeError, ValueError):
+        final_score = 0
+    llm_summary = str(st.get("summary") or "").strip()
+    if llm_summary and len(llm_summary) > 40:
+        st["summary"] = harmonize_summary_score(llm_summary, final_score, rec)
+    else:
+        st["summary"] = _compose_calibrated_summary(metrics, rebound, rec, final_score)
 
 
 def calibrate_deepseek_structured(

@@ -147,7 +147,8 @@ class ManualScoreBotHandler:
                     syms = hint.split(":", 1)[1].replace(",", "、")
                     tip = (
                         f"最近有多条相同策略的信号（{syms}），无法确定评哪条。\n"
-                        f"请写明品种，例如：@我 对 BTC 8h 卖出 评分"
+                        f"请直接写品种，例如：@我 对 TAO 2h 买入 评分\n"
+                        f"或带触发时间：@我 对 TAO 2026-07-06 10:00 评分"
                     )
                 elif cache_n > 1:
                     tip = (
@@ -181,6 +182,8 @@ class ManualScoreBotHandler:
         role = parsed.get("signal_role") or (
             "做多开仓" if (parsed.get("action") or "buy") == "buy" else "做空开仓"
         )
+        src = parsed.get("resolve_source") or "?"
+        logger.info("[钉钉手动评分] 开始评分 symbol=%s tf=%s role=%s via=%s", sym, tf, role, src)
         try:
             self._handler.reply_text(
                 f"好的，正在评 {sym} {tf} {role}，请稍候…",

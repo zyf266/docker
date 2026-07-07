@@ -6,12 +6,172 @@ import re
 import threading
 import time
 from pathlib import Path
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 _CACHE_PATH = Path(__file__).resolve().parents[1] / "data" / "dingtalk_recent_signals.json"
 _LOCK = threading.Lock()
 _MAX_ITEMS = 40
 _DEFAULT_TTL_SEC = 7200
+
+
+def _parse_trigger_time_from_text(text: str) -> Optional[float]:
+    clean = re.sub(r"\*+", "", text or "")
+    m = re.search(r"触发时间[:：]\s*([0-9\-:\s]+)", clean)
+    if not m:
+        return None
+    raw = m.group(1).strip()[:19]
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt).timestamp()
+        except ValueError:
+            continue
+    return None
+
+
+def find_cached_signal_by_trigger_time(
+    trigger_ts: float,
+    *,
+    window_sec: int = 180,
+    max_age_sec: int = _DEFAULT_TTL_SEC,
+) -> Optional[Dict[str, Any]]:
+    """按卡片「触发时间」精确匹配（优于仅靠策略名）。"""
+    if not trigger_ts:
+        return None
+    scored: list[tuple[float, Dict[str, Any]]] = []
+    for row in list_recent_cached_signals(max_age_sec=max_age_sec):
+        t = row.get("trigger_time")
+        if t is None:
+            t = _parse_trigger_time_from_text(str(row.get("raw_text") or ""))
+        else:
+            try:
+                t = float(t)
+            except (TypeError, ValueError):
+                t = None
+        if t is None:
+            continue
+        delta = abs(float(t) - float(trigger_ts))
+        if delta > window_sec:
+            continue
+        scored.append((delta, row))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: x[0])
+    best_delta = scored[0][0]
+    # 仅当多条信号触发时间几乎相同（≤0.5s）才视为歧义；相差 1s 取最近一条
+    close = [row for d, row in scored if d <= best_delta + 0.5]
+    symbols = {str(r.get("symbol") or "").upper() for r in close}
+    if len(symbols) > 1:
+        return None
+    return dict(scored[0][1])
+
+
+def _row_trigger_ts(row: Dict[str, Any]) -> Optional[float]:
+    trig = row.get("trigger_time")
+    if trig is None:
+        return _parse_trigger_time_from_text(str(row.get("raw_text") or ""))
+    try:
+        return float(trig)
+    except (TypeError, ValueError):
+        return None
+
+
+def _norm_action_hint(action: str) -> str:
+    a = str(action or "").strip().lower()
+    if a in ("buy", "sell"):
+        return a
+    if "买" in a or "多" in a:
+        return "buy"
+    if "卖" in a or "空" in a:
+        return "sell"
+    return a
+
+
+def find_cached_signal_by_composite(
+    *,
+    trigger_ts: Optional[float] = None,
+    replied_ts: Optional[float] = None,
+    strategy_hint: str = "",
+    action_hint: str = "",
+    symbol_hint: str = "",
+    max_age_sec: int = _DEFAULT_TTL_SEC,
+) -> Optional[Dict[str, Any]]:
+    """
+    组合匹配：触发时间 + 被回复时间 + 策略名 + 方向 + 品种。
+    用于钉钉话题/引用仅回传策略名、不带「交易品种」的场景。
+    """
+    sym_hint = str(symbol_hint or "").strip().upper().replace(".P", "")
+    st_hint = _norm_hint_key(strategy_hint)
+    act_hint = _norm_action_hint(action_hint)
+    scored: list[tuple[float, Dict[str, Any]]] = []
+
+    for row in list_recent_cached_signals(max_age_sec=max_age_sec):
+        score = 0.0
+        row_sym = str(row.get("symbol") or "").upper().replace(".P", "")
+        if sym_hint and row_sym == sym_hint:
+            score += 200.0
+
+        row_trig = _row_trigger_ts(row)
+        if trigger_ts and row_trig is not None:
+            delta = abs(float(row_trig) - float(trigger_ts))
+            if delta <= 2:
+                score += 120.0 - delta * 10
+            elif delta <= 90:
+                score += max(0.0, 80.0 - delta)
+
+        if replied_ts:
+            refs: list[float] = []
+            try:
+                refs.append(float(row.get("at") or 0))
+            except (TypeError, ValueError):
+                pass
+            if row_trig is not None:
+                refs.append(float(row_trig))
+            best = min((abs(r - replied_ts) for r in refs if r > 0), default=9999.0)
+            if best <= 120:
+                score += max(0.0, 90.0 - best)
+
+        if st_hint:
+            row_st = _norm_hint_key(str(row.get("strategy") or ""))
+            if st_hint in row_st or row_st in st_hint:
+                score += 55.0
+
+        if act_hint:
+            row_act = _norm_action_hint(str(row.get("action") or ""))
+            if row_act == act_hint:
+                score += 35.0
+
+        if score >= 70.0:
+            scored.append((score, row))
+
+    if not scored:
+        return None
+    scored.sort(key=lambda x: (x[0], float(x[1].get("at") or 0)), reverse=True)
+    best_score = scored[0][0]
+    top = [row for s, row in scored if s >= best_score - 1.0]
+    if len(top) >= 2:
+        syms = {str(r.get("symbol") or "").upper() for r in top}
+        if len(syms) > 1:
+            # 分数接近时，用触发时间/推送时间与 replied_ts 的距离决胜
+            if replied_ts or trigger_ts:
+                def _time_dist(row: Dict[str, Any]) -> float:
+                    refs: list[float] = []
+                    rt = _row_trigger_ts(row)
+                    if rt:
+                        refs.append(float(rt))
+                    try:
+                        refs.append(float(row.get("at") or 0))
+                    except (TypeError, ValueError):
+                        pass
+                    target = float(trigger_ts or replied_ts or 0)
+                    return min((abs(r - target) for r in refs if r > 0), default=9999.0)
+
+                top.sort(key=_time_dist)
+                if len(top) >= 2 and abs(_time_dist(top[0]) - _time_dist(top[1])) < 0.5:
+                    return None
+                return dict(top[0])
+            return None
+    return dict(scored[0][1])
 
 
 def _load() -> List[Dict[str, Any]]:
@@ -48,6 +208,7 @@ def cache_dingtalk_signal(parsed: Dict[str, Any], *, source: str = "tradingview_
         "strategy": str(parsed.get("strategy") or "").strip(),
         "price": parsed.get("price"),
         "raw_text": str(parsed.get("raw_message") or "")[:1500],
+        "trigger_time": _parse_trigger_time_from_text(str(parsed.get("raw_message") or "")),
     }
     with _LOCK:
         items = _load()
@@ -107,23 +268,45 @@ def find_cached_signal_by_reply_time(
     window_sec: int = 900,
     max_age_sec: int = _DEFAULT_TTL_SEC,
 ) -> Optional[Dict[str, Any]]:
-    """按被回复消息的发送时间，找时间最接近的一条缓存（避免误用最新一条）。"""
+    """按被回复消息的发送时间，找时间最接近的一条缓存（优先 trigger_time；多品种同距则放弃）。"""
     if not replied_ts:
         return None
-    best: Optional[Dict[str, Any]] = None
-    best_delta: Optional[float] = None
+    scored: list[tuple[float, str, Dict[str, Any]]] = []
     for row in list_recent_cached_signals(max_age_sec=max_age_sec):
+        candidates: list[float] = []
         try:
-            at = float(row.get("at") or 0)
+            candidates.append(float(row.get("at") or 0))
         except (TypeError, ValueError):
-            continue
-        delta = abs(at - replied_ts)
-        if delta > window_sec:
-            continue
-        if best_delta is None or delta < best_delta:
-            best_delta = delta
-            best = row
-    return best
+            pass
+        trig = row.get("trigger_time")
+        if trig is None:
+            trig = _parse_trigger_time_from_text(str(row.get("raw_text") or ""))
+        if trig is not None:
+            try:
+                candidates.append(float(trig))
+            except (TypeError, ValueError):
+                pass
+        best_row_delta: Optional[float] = None
+        for ref in candidates:
+            if ref <= 0:
+                continue
+            delta = abs(ref - replied_ts)
+            if delta > window_sec:
+                continue
+            if best_row_delta is None or delta < best_row_delta:
+                best_row_delta = delta
+        if best_row_delta is not None:
+            sym = str(row.get("symbol") or "").upper()
+            scored.append((best_row_delta, sym, row))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: x[0])
+    best_delta = scored[0][0]
+    close = [(d, sym, row) for d, sym, row in scored if d <= best_delta + 30]
+    symbols = {sym for _, sym, _ in close if sym}
+    if len(symbols) > 1:
+        return None
+    return dict(close[0][2])
 
 
 def _norm_hint_key(text: str) -> str:

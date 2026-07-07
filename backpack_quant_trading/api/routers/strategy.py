@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, date as _date
+from datetime import datetime, timezone, timedelta, date as _date
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from decimal import Decimal as PyDecimal
@@ -156,6 +156,27 @@ def _is_kline_stale(strategy_name: str, symbol: str, timeframe: str, max_age_hou
     return age > max(1.0, float(max_age_hours)) * 3600
 
 
+def _us_stock_kline_sync_start(strategy_name: str, symbol: str, timeframe: str) -> datetime:
+    """从首笔交易前约 45 天起拉 K 线，够图表 warmup；无交易则默认近 6 个月。"""
+    warmup_days = 45
+    session = db_manager.get_session()
+    try:
+        first = (
+            session.query(StrategyBacktestTrade.trade_time)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .order_by(StrategyBacktestTrade.trade_time.asc())
+            .first()
+        )
+    finally:
+        session.close()
+    if first and first[0]:
+        t = first[0]
+        if t.tzinfo:
+            t = t.replace(tzinfo=None)
+        return t - timedelta(days=warmup_days)
+    return datetime.now() - timedelta(days=180)
+
+
 def sync_us_stock_klines_massive(
     strategy_name: str,
     symbol: str,
@@ -176,19 +197,28 @@ def sync_us_stock_klines_massive(
 
     sym = normalize_us_ticker(ticker)
     iv = interval_label(massive_interval or timeframe)
-    last_ts = _get_last_kline_timestamp(strategy_name, symbol, timeframe)
+    sync_start = _us_stock_kline_sync_start(strategy_name, symbol, timeframe)
 
-    bars = fetch_massive_bars(sym, iv, limit=5000)
+    bars = fetch_massive_bars(sym, iv, limit=1500, start=sync_start)
     if not bars:
-        return {"inserted": 0, "source": "massive", "ticker": sym, "interval": iv}
+        return {"inserted": 0, "source": "massive", "ticker": sym, "interval": iv, "from": sync_start.isoformat()}
+
+    session = db_manager.get_session()
+    try:
+        existing_ts = {
+            r[0].replace(tzinfo=None) if r[0] and r[0].tzinfo else r[0]
+            for r in session.query(StrategyKline.timestamp)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .all()
+        }
+    finally:
+        session.close()
 
     rows = []
     for bar in bars:
         ts = datetime.fromtimestamp(int(bar["time"]) / 1000)
-        if last_ts:
-            cmp_ts = last_ts.replace(tzinfo=None) if last_ts.tzinfo else last_ts
-            if ts <= cmp_ts:
-                continue
+        if ts in existing_ts:
+            continue
         rows.append({
             "strategy_name": strategy_name,
             "symbol": symbol,
@@ -203,8 +233,8 @@ def sync_us_stock_klines_massive(
         })
 
     _bulk_insert_klines_dicts(rows)
-    _hl_logger.info("[Massive K线] %s %s 写入 %s 条", sym, iv, len(rows))
-    return {"inserted": len(rows), "source": "massive", "ticker": sym, "interval": iv}
+    _hl_logger.info("[Massive K线] %s %s 写入 %s 条 (from %s)", sym, iv, len(rows), sync_start.date())
+    return {"inserted": len(rows), "source": "massive", "ticker": sym, "interval": iv, "from": sync_start.isoformat()}
 
 
 _US_STOCK_KLINE_SPECS: Tuple[Dict[str, str], ...] = (
@@ -1306,7 +1336,7 @@ def _query_a_share_trades(code: str) -> List:
         )
     finally:
         session.close()
-    if rows and code in {"300308", "603986", "688146"}:
+    if rows and code in {"300308", "603986", "688146", "002837"}:
         from backpack_quant_trading.core.a_share_strategy_mtm import apply_mtm_to_trades
 
         rows = apply_mtm_to_trades(

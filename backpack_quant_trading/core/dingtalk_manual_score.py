@@ -158,9 +158,88 @@ def _is_reply_message(raw: Dict[str, Any]) -> bool:
     if isinstance(text_block, dict):
         if text_block.get("isReplyMsg") or text_block.get("repliedMsg"):
             return True
+        if _rich_text_has_quote(text_block):
+            return True
     if raw.get("originalMsgId") or raw.get("quoteMessage") or raw.get("repliedMsg"):
         return True
+    if _rich_text_has_quote(raw.get("content") or {}):
+        return True
     return False
+
+
+def _rich_text_has_quote(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    for key in ("richText", "rich_text"):
+        rich = obj.get(key)
+        if not isinstance(rich, list):
+            content = obj.get("content")
+            if isinstance(content, dict):
+                rich = content.get(key)
+        if not isinstance(rich, list):
+            continue
+        for item in rich:
+            if not isinstance(item, dict):
+                continue
+            t = str(item.get("text") or "")
+            if t.startswith("@"):
+                continue
+            if re.search(r"USDT|交易品种|触发时间|买入|卖出", t, re.I):
+                return True
+    return False
+
+
+def _extract_any_trigger_times_from_text(text: str) -> list[float]:
+    """从引用预览提取所有可能触发时间（含裸日期）。"""
+    from datetime import datetime
+
+    found: list[float] = []
+    seen: set[float] = set()
+    clean = normalize_dingtalk_markdown(text)
+
+    def add_ts(ts: Optional[float]) -> None:
+        if ts is None or ts <= 0 or ts in seen:
+            return
+        seen.add(ts)
+        found.append(ts)
+
+    add_ts(_extract_trigger_time_from_text(clean))
+    for m in re.finditer(r"(\d{4}[-/]\d{2}[-/]\d{2}\s+\d{2}:\d{2}:\d{2})", clean):
+        raw = m.group(1).replace("/", "-")
+        try:
+            add_ts(datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").timestamp())
+        except ValueError:
+            continue
+    return found
+
+
+def _extract_action_hint_from_texts(texts: list[str]) -> str:
+    blob = "\n".join(texts or [])
+    if re.search(r"买入|做多|buy|long", blob, re.I):
+        return "buy"
+    if re.search(r"卖出|做空|sell|short", blob, re.I):
+        return "sell"
+    return ""
+
+
+def _extract_replied_timestamp_from_raw(raw: Dict[str, Any]) -> Optional[float]:
+    """从 text / repliedMsg 子树提取被回复消息时间戳。"""
+    replied = _get_replied_msg(raw)
+    if replied:
+        ts = _extract_replied_timestamp(replied)
+        if ts:
+            return ts
+    text_block = raw.get("text")
+    if isinstance(text_block, dict):
+        ts = _extract_replied_timestamp(text_block)
+        if ts:
+            return ts
+        replied2 = text_block.get("repliedMsg")
+        if isinstance(replied2, dict):
+            ts = _extract_replied_timestamp(replied2)
+            if ts:
+                return ts
+    return None
 
 
 def _has_explicit_direction(text: str) -> bool:
@@ -210,8 +289,132 @@ def _extract_embedded_quote_line(user_text: str) -> str:
     return ""
 
 
+def _normalize_symbol(sym: str) -> str:
+    s = str(sym or "").strip().upper().replace(".P", "")
+    if not s:
+        return ""
+    if not s.endswith(("USDT", "USDC")) and len(s) <= 10 and classify_maybe_crypto(s):
+        return f"{s}USDT"
+    return s
+
+
+def _extract_all_symbols_from_text(text: str) -> list[str]:
+    clean = normalize_dingtalk_markdown(text)
+    if not clean:
+        return []
+    found: list[str] = []
+    seen: set[str] = set()
+    for m in re.finditer(r"交易品种[:：]\s*([A-Za-z0-9.]+)", clean, re.I):
+        sym = _normalize_symbol(m.group(1))
+        if sym and sym not in seen:
+            seen.add(sym)
+            found.append(sym)
+    for m in re.finditer(r"([A-Za-z]{2,15}USDT(?:\.P)?)", clean, re.I):
+        sym = _normalize_symbol(m.group(1))
+        if sym and sym not in seen:
+            seen.add(sym)
+            found.append(sym)
+    return found
+
+
+def _collect_strings_from_subtree(obj: Any, *, depth: int = 0, out: Optional[list[str]] = None) -> list[str]:
+    if out is None:
+        out = []
+    if depth > 14:
+        return out
+    if isinstance(obj, str):
+        s = obj.strip()
+        if len(s) >= 6:
+            out.append(s)
+        return out
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _collect_strings_from_subtree(v, depth=depth + 1, out=out)
+    elif isinstance(obj, list):
+        for v in obj:
+            _collect_strings_from_subtree(v, depth=depth + 1, out=out)
+    return out
+
+
+def _collect_reply_text_blobs(raw: Dict[str, Any]) -> list[str]:
+    """收集回复相关的全部文本：repliedMsg + text 块 + richText 引用预览。"""
+    blobs: list[str] = []
+    seen: set[str] = set()
+
+    def add(s: str) -> None:
+        t = (s or "").strip()
+        if t and t not in seen:
+            seen.add(t)
+            blobs.append(t)
+
+    replied = _get_replied_msg(raw)
+    if replied:
+        add(_summarize_replied_msg(replied))
+        for s in _collect_strings_from_subtree(replied):
+            add(s)
+
+    text_block = raw.get("text")
+    if isinstance(text_block, dict):
+        for s in _collect_strings_from_subtree(text_block):
+            add(s)
+        for key in ("quoteContent", "quoteText", "quotedContent"):
+            if text_block.get(key):
+                add(str(text_block[key]))
+
+    add(extract_quoted_signal_text(raw))
+    add(_extract_rich_text_quote(raw))
+    return blobs
+
+
+def _collect_reply_context(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """从被回复子树汇总品种、触发时间、策略线索。"""
+    texts = _collect_reply_text_blobs(raw)
+    symbols: list[str] = []
+    sym_seen: set[str] = set()
+    trigger_times: list[float] = []
+    trig_seen: set[float] = set()
+    strategy_hints: list[str] = []
+    for text in texts:
+        for sym in _extract_all_symbols_from_text(text):
+            if sym not in sym_seen:
+                sym_seen.add(sym)
+                symbols.append(sym)
+        for trig in _extract_any_trigger_times_from_text(text):
+            if trig not in trig_seen:
+                trig_seen.add(trig)
+                trigger_times.append(trig)
+        parsed = parse_dingtalk_signal_text(text)
+        st = str(parsed.get("strategy") or "").strip()
+        if st and st not in strategy_hints:
+            strategy_hints.append(st)
+    trigger_ts = trigger_times[0] if trigger_times else None
+    return {
+        "texts": texts,
+        "symbols": symbols,
+        "trigger_ts": trigger_ts,
+        "trigger_times": trigger_times,
+        "strategy_hints": strategy_hints,
+        "action_hint": _extract_action_hint_from_texts(texts),
+        "replied_ts": _extract_replied_timestamp_from_raw(raw),
+    }
+
+
 def _collect_quote_hints(user_text: str, raw: Dict[str, Any]) -> list[str]:
     hints: list[str] = []
+    if _is_reply_message(raw):
+        for src in (
+            extract_quoted_signal_text(raw),
+            _extract_rich_text_quote(raw),
+            _extract_embedded_quote_line(user_text),
+        ):
+            s = (src or "").strip()
+            if s and s not in hints:
+                hints.append(s)
+        for blob in _collect_reply_text_blobs(raw):
+            if blob not in hints:
+                hints.append(blob)
+        return hints
+
     for src in (
         extract_quoted_signal_text(raw),
         _deep_find_signal_text(raw),
@@ -265,21 +468,37 @@ def _parsed_from_cache(cached: Dict[str, Any], *, source: str) -> Dict[str, Any]
 
 
 def _extract_rich_text_quote(raw: Dict[str, Any]) -> str:
-    """回复消息有时是 richText，引用预览在 content.richText 里。"""
-    content = raw.get("content") or {}
-    rich = content.get("richText") or content.get("rich_text") or []
-    if not isinstance(rich, list):
-        return ""
+    """回复消息 richText 里的引用预览（含话题回复）。"""
     chunks: list[str] = []
-    for item in rich:
-        if not isinstance(item, dict):
-            continue
-        t = str(item.get("text") or "").strip()
-        if not t:
-            continue
-        if t.startswith("@"):
-            continue
-        chunks.append(t)
+    seen: set[str] = set()
+
+    def add(t: str) -> None:
+        s = (t or "").strip()
+        if not s or s.startswith("@") or s in seen:
+            return
+        seen.add(s)
+        chunks.append(s)
+
+    def walk_rich(obj: Any) -> None:
+        if not isinstance(obj, dict):
+            return
+        for key in ("richText", "rich_text"):
+            rich = obj.get(key)
+            if not isinstance(rich, list):
+                inner = obj.get("content")
+                if isinstance(inner, dict):
+                    rich = inner.get(key)
+            if not isinstance(rich, list):
+                continue
+            for item in rich:
+                if isinstance(item, dict) and item.get("text"):
+                    add(str(item["text"]))
+
+    walk_rich(raw)
+    walk_rich(raw.get("content") or {})
+    walk_rich(raw.get("text") or {})
+    if isinstance(raw.get("text"), dict) and isinstance(raw["text"].get("content"), dict):
+        walk_rich(raw["text"]["content"])
     return "\n".join(chunks).strip()
 
 
@@ -419,6 +638,11 @@ def _extract_replied_timestamp(replied: Any) -> Optional[float]:
                 return ts
         except (TypeError, ValueError):
             continue
+    for v in replied.values():
+        if isinstance(v, dict):
+            nested = _extract_replied_timestamp(v)
+            if nested:
+                return nested
     return None
 
 
@@ -432,20 +656,173 @@ def _get_replied_msg(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _extract_trigger_time_from_text(text: str) -> Optional[float]:
+    from backpack_quant_trading.core.dingtalk_signal_cache import _parse_trigger_time_from_text
+
+    return _parse_trigger_time_from_text(text)
+
+
+def _deep_find_signal_text_in(obj: Any) -> str:
+    """仅在指定子树内递归扫描含「交易品种」的字符串（避免误扫整包 raw）。"""
+    candidates: list[str] = []
+
+    def walk(node: Any, depth: int = 0) -> None:
+        if depth > 12:
+            return
+        if isinstance(node, str):
+            s = node.strip()
+            if len(s) >= 12:
+                candidates.append(s)
+            return
+        if isinstance(node, dict):
+            for v in node.values():
+                walk(v, depth + 1)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v, depth + 1)
+
+    walk(obj)
+    for s in candidates:
+        if "交易品种" in s and ("信号类型" in s or "USDT" in s.upper()):
+            return s
+    for s in candidates:
+        if re.search(r"交易品种", s) and re.search(r"[A-Za-z]{2,15}USDT", s, re.I):
+            return s
+    return ""
+
+
+def _resolve_from_reply_composite(
+    raw: Dict[str, Any],
+    ctx: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """组合条件匹配缓存（话题回复常只有策略名+触发时间）。"""
+    from backpack_quant_trading.core.dingtalk_signal_cache import find_cached_signal_by_composite
+
+    ctx = ctx or _collect_reply_context(raw)
+    texts = ctx.get("texts") or []
+    symbols: list[str] = list(ctx.get("symbols") or [])
+    sym_hint = symbols[0] if len(symbols) == 1 else ""
+    strategy_hint = " ".join(ctx.get("strategy_hints") or [])
+    if not strategy_hint:
+        for text in texts:
+            parsed = parse_dingtalk_signal_text(text)
+            strategy_hint = str(parsed.get("strategy") or "").strip()
+            if strategy_hint:
+                break
+    action_hint = str(ctx.get("action_hint") or "")
+    replied_ts = ctx.get("replied_ts")
+
+    for trigger_ts in ctx.get("trigger_times") or []:
+        row = find_cached_signal_by_composite(
+            trigger_ts=float(trigger_ts),
+            replied_ts=replied_ts,
+            strategy_hint=strategy_hint,
+            action_hint=action_hint,
+            symbol_hint=sym_hint,
+        )
+        if row:
+            logger.info(
+                "[钉钉评分] composite+trigger 命中 symbol=%s trigger=%s strategy=%s",
+                row.get("symbol"),
+                trigger_ts,
+                strategy_hint[:40],
+            )
+            return _parsed_from_cache(row, source="reply_composite"), f"composite:trigger:{trigger_ts}"
+
+    row = find_cached_signal_by_composite(
+        trigger_ts=None,
+        replied_ts=replied_ts,
+        strategy_hint=strategy_hint,
+        action_hint=action_hint,
+        symbol_hint=sym_hint,
+    )
+    if row:
+        logger.info(
+            "[钉钉评分] composite 命中 symbol=%s replied_ts=%s strategy=%s",
+            row.get("symbol"),
+            replied_ts,
+            strategy_hint[:40],
+        )
+        return _parsed_from_cache(row, source="reply_composite"), "reply_composite"
+    return None, ""
+
+
+def _resolve_from_reply_body(raw: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
+    """仅从被回复消息子树识别品种（交易品种 / 触发时间 / 消息时间）。"""
+    if not _is_reply_message(raw):
+        return None, ""
+    ctx = _collect_reply_context(raw)
+    texts = ctx.get("texts") or []
+    symbols: list[str] = list(ctx.get("symbols") or [])
+
+    for body in texts:
+        parsed = parse_dingtalk_signal_text(body)
+        if parsed.get("symbol"):
+            parsed["resolve_source"] = "reply_body"
+            logger.info(
+                "[钉钉评分] reply_body 命中 symbol=%s strategy=%s",
+                parsed.get("symbol"),
+                parsed.get("strategy"),
+            )
+            return enrich_parsed_signal(parsed), body[:300]
+
+    trigger_ts = ctx.get("trigger_ts")
+    if trigger_ts:
+        from backpack_quant_trading.core.dingtalk_signal_cache import find_cached_signal_by_trigger_time
+
+        row = find_cached_signal_by_trigger_time(float(trigger_ts), window_sec=90)
+        if row:
+            logger.info(
+                "[钉钉评分] reply_trigger 命中 symbol=%s trigger=%s",
+                row.get("symbol"),
+                trigger_ts,
+            )
+            return _parsed_from_cache(row, source="reply_trigger"), f"trigger:{trigger_ts}"
+
+    composite, ch = _resolve_from_reply_composite(raw, ctx)
+    if composite and composite.get("symbol"):
+        return composite, ch
+
+    if len(symbols) == 1:
+        sym = symbols[0]
+        from backpack_quant_trading.core.dingtalk_signal_cache import find_cached_signal_by_symbol
+
+        row = find_cached_signal_by_symbol(sym)
+        if row:
+            logger.info("[钉钉评分] reply_symbol 命中 symbol=%s", sym)
+            return _parsed_from_cache(row, source="reply_symbol"), sym
+
+    replied = _get_replied_msg(raw)
+    replied_ts = ctx.get("replied_ts")
+    if replied_ts and len(symbols) != 1:
+        from backpack_quant_trading.core.dingtalk_signal_cache import find_cached_signal_by_reply_time
+
+        by_time = find_cached_signal_by_reply_time(replied_ts, window_sec=180)
+        if by_time:
+            logger.info(
+                "[钉钉评分] reply_time 命中 symbol=%s replied_ts=%s",
+                by_time.get("symbol"),
+                replied_ts,
+            )
+            return _parsed_from_cache(by_time, source="reply_time"), "reply_time"
+
+    if len(symbols) > 1:
+        return None, f"ambiguous:{','.join(symbols)}"
+    return None, ""
+
+
 def _ambiguous_symbols_from_hints(hints: list[str], *, max_age_sec: int = 7200) -> list[str]:
     from backpack_quant_trading.core.dingtalk_signal_cache import find_cached_signals_by_hint
 
     symbols: set[str] = set()
     for hint in hints:
-        matches = find_cached_signals_by_hint(hint, max_age_sec=max_age_sec)
-        syms = {str(m.get("symbol") or "").upper() for m in matches if m.get("symbol")}
-        if len(syms) > 1:
-            return sorted(syms)
-        symbols.update(syms)
+        for row in find_cached_signals_by_hint(hint, max_age_sec=max_age_sec, min_score=60):
+            sym = str(row.get("symbol") or "").upper()
+            if sym:
+                symbols.add(sym)
+    if len(symbols) > 1:
+        return sorted(symbols)
     return []
-    from backpack_quant_trading.core.signal_asset_router import classify_signal_asset
-
-    return classify_signal_asset(sym) == "crypto"
 
 
 def resolve_signal_for_scoring(
@@ -463,6 +840,29 @@ def resolve_signal_for_scoring(
     if inline.get("symbol"):
         inline["resolve_source"] = "inline"
         return enrich_parsed_signal(inline), "inline"
+
+    reply_parsed, reply_hint = _resolve_from_reply_body(raw)
+    if reply_parsed and reply_parsed.get("symbol"):
+        return reply_parsed, reply_hint or "reply_body"
+
+    if _is_reply_message(raw):
+        ctx = _collect_reply_context(raw)
+        composite, ch = _resolve_from_reply_composite(raw, ctx)
+        if composite and composite.get("symbol"):
+            return composite, ch or "reply_composite"
+
+        ambiguous = _ambiguous_symbols_from_hints(hints)
+        if ambiguous:
+            return None, f"ambiguous:{','.join(ambiguous)}"
+        if reply_hint.startswith("ambiguous:"):
+            return None, reply_hint
+        logger.warning(
+            "[钉钉评分] 回复消息未能唯一识别品种 hints=%s reply_hint=%s texts=%s",
+            hint_blob[:200],
+            reply_hint,
+            [t[:80] for t in (ctx.get("texts") or [])[:5]],
+        )
+        return None, hint_blob or "reply_unresolved"
 
     for hint in hints:
         parsed = parse_dingtalk_signal_text(hint)
@@ -499,17 +899,6 @@ def resolve_signal_for_scoring(
                 merged["resolve_source"] = "quote_hint+cache"
                 return enrich_parsed_signal(merged), hint_blob or "partial+cache"
         return enrich_parsed_signal(_parsed_from_cache(matched_cache, source="hint+cache")), hint_blob or "hint+cache"
-
-    if _is_reply_message(raw):
-        replied = _get_replied_msg(raw)
-        if replied:
-            from backpack_quant_trading.core.dingtalk_signal_cache import find_cached_signal_by_reply_time
-
-            ts = _extract_replied_timestamp(replied)
-            if ts:
-                by_time = find_cached_signal_by_reply_time(ts)
-                if by_time:
-                    return _parsed_from_cache(by_time, source="reply_time"), hint_blob or "reply_time"
 
     if is_manual_score_command(user_text) and not _has_explicit_symbol(user_text):
         from backpack_quant_trading.core.dingtalk_signal_cache import cache_signal_count, get_latest_cached_signal

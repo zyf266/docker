@@ -1,0 +1,41 @@
+---
+description: Agent 工作流：slash 命令映射 + 开工前 Skill 评估 + 完成前验证
+alwaysApply: true
+---
+
+# Agent 工作流（10 Skill 体系）
+
+## Slash 命令映射（用户消息前缀 → 行为）
+
+| 前缀 | 必须遵循的 Skill |
+|------|------------------|
+| `/brainstorm` | brainstorming：只提问不写代码，每轮 ≤5 题 |
+| `/worktree` | using-git-worktrees：先提议隔离目录 |
+| `/plan` | writing-plans：输出 `docs/plans/日期-主题.md` |
+| `/exec` | executing-plans：每 3～5 任务汇报一次 |
+| `/tdd` | test-driven-development：先红后绿再重构 |
+| `/debug` | systematic-debugging：假设→证据→最小修复 |
+| `/review` | code-review：两轮审查，不直接改代码 |
+
+前缀后的文字视为任务描述。
+
+## 每次编码任务开始前
+
+1. 输出 **skill-forced-evaluation** 评估表（ACTIVATE/SKIP + 原因）
+2. 按 ACTIVATE 的 skill 顺序执行
+
+## 每次声称「已完成 / 已修复」之前
+
+必须满足 **verification-before-completion**：
+- 贴出测试/验证命令与**实际输出**
+- 总结改动文件
+- 列出未验证风险
+
+## 大改动默认链
+
+`brainstorming` → `using-git-worktrees` → `writing-plans` → `executing-plans` → `code-review` → `verification-before-completion`
+
+## 实现与审查分离
+
+- 复杂实现可用 **subagent-driven-development** 派子代理
+- **禁止**同一轮既大改代码又自评「审查通过」

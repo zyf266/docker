@@ -19,6 +19,7 @@ from backpack_quant_trading.core.crypto_signal_scorer import (
     compute_local_buy_score,
     evaluate_hard_gates,
     evaluate_rebound_strength,
+    harmonize_summary_score,
     load_config,
     push_score_to_dingtalk,
     score_to_grade,
@@ -290,6 +291,9 @@ def calibrate_us_stock_structured(
     st["execution_penalty"] = round(penalty, 1)
     st["rebound_strength_score"] = rb
     st["model_raw_score"] = raw
+    llm_summary = str(st.get("summary") or "").strip()
+    if llm_summary:
+        st["summary"] = harmonize_summary_score(llm_summary, final, rec)
     return st
 
 

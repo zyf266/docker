@@ -188,5 +188,55 @@
     "text": "[GuruFocus.com] BofA Double-Upgrades Intel as Foundry and CPU Bets Come Into Focus (INTC)",
     "url": "https://finance.yahoo.com/markets/stocks/articles/bofa-double-upgrades-intel-foundry-162500367.html",
     "pushed_at": "2026-06-11 16:25:47"
+  },
+  {
+    "id": "ths:e6666ca703edb6751749",
+    "kind": "stock_news",
+    "feed": "同花顺",
+    "feed_key": "ths",
+    "time": "2026-06-25 17:48:15",
+    "text": "摩根士丹利：将美光科技目标价上调至1200美元 摩根士丹利发表报告称，将美光科技目标价由1050美元上调至1200美元。评级维持“增持”。2027财年每股盈利预测上调约40%至每股168美元，自由现金流预测从1040亿美元提升至1400亿美元。大摩表示，该行与美光管理层看法一致，认为AI将使DRAM需求在2027年后持续大幅超越供给。",
+    "url": "https://news.10jqka.com.cn/20260625/c677715455.shtml",
+    "pushed_at": "2026-06-25 09:49:11"
+  },
+  {
+    "id": "yahoo:cdd06b05-c3a2-38ed-84c5-511e23711cae",
+    "kind": "stock_news",
+    "feed": "雅虎财经",
+    "feed_key": "yahoo",
+    "time": "2026-06-25 15:34:14",
+    "text": "Why Goldman is cautious on outperforming Intel stock (NVDA)",
+    "url": "https://finance.yahoo.com/markets/stocks/articles/why-goldman-cautious-outperforming-intel-153414830.html?.tsrc=rss",
+    "pushed_at": "2026-06-25 15:37:22"
+  },
+  {
+    "id": "jin10:20260626104336686800",
+    "kind": "stock_news",
+    "feed": "金十数据",
+    "feed_key": "jin10",
+    "time": "2026-06-26 10:43:36",
+    "text": "金十数据整理：每日存储市场要闻速递（2026-06-26） 1. 机构：美光长期协议削弱行业周期波动。2. 美光市值短暂超越“七姐妹”中的Meta和特斯拉。3. 三星将宣布未来10年在韩国投资1000万亿韩元。4. 高通发布面向AI数据中心的HBC高带宽计算架构。5. 国金证券：美光科技推进长协落地 供需缺口有望持续。6. 大摩：上调美光目标价至1200美元，维持“增持”评级。7. 微软官宣涨价 游戏主机存储和内存成本已暴涨2.5倍。8. 机构：长鑫到2026年底或缩小与美光的晶圆产能差距。9. IBM首次推出全球首个亚1纳米芯片技术。10. 苹果官宣涨价：iPad和Mac率先调价，存储成本压力“前所未有”。11. 摩根大通：内存作为通用人工智能中战略资产的作用依然不变。12. 兆易创新：存储行业周期性波动显著 供给与需求终将走向再平衡。13. 汇丰：SK海力士美国上市计划是利好 目标价上调38%至400万韩元。14. 美银：上调台积电、日月光等估值预期 先进制程与先进封装仍是产业链中最具壁垒的环节。",
+    "url": "",
+    "pushed_at": "2026-06-26 02:45:15"
+  },
+  {
+    "id": "yahoo:d08452d9-5184-3bdc-acd1-70915bfd987e",
+    "kind": "stock_news",
+    "feed": "雅虎财经",
+    "feed_key": "yahoo",
+    "time": "2026-07-01 02:03:00",
+    "text": "HSBC just raised its Micron price target for the 5th time (MU)",
+    "url": "https://www.thestreet.com/investing/hsbc-just-raised-its-micron-price-target-for-the-5th-time?.tsrc=rss",
+    "pushed_at": "2026-07-01 03:21:39"
+  },
+  {
+    "id": "sina:ec6b502e226fdea53abb",
+    "kind": "stock_news",
+    "feed": "新浪财经",
+    "feed_key": "sina",
+    "time": "2026-07-02 22:21:18",
+    "text": "【英特尔股价上涨，汇丰银行针对其代工业务给出华尔街最高目标价】英特尔股价上涨1.8%，此前汇丰银行将该芯片制造商的目标价上调了一倍，给出了华尔街最高的200美元目标价。分析师Frank Lee对英特尔的代工（Foundry）业务持更加积极的态度，称该业务“现在已经好到不容忽视”，因为“英特尔与外部客户的合作一直在增加”。“服务器CPU的增长仍然是英特尔在2026/27财年盈利增长的关键驱动力”，并且“得益于内部代工产能的重新分配，英特尔在提升2026/27财年服务器CPU出货量方面处于有利地位”。",
+    "url": "",
+    "pushed_at": "2026-07-02 14:23:33"
   }
 ]
