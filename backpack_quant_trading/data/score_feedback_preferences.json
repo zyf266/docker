@@ -1,0 +1,22 @@
+[
+  {
+    "id": "fb_TSM_1783929925_a764e598",
+    "symbol": "TSM",
+    "timeframe": "2h",
+    "user_text": "@OpenClaw小钉 我觉得你这个评分有点偏保守了，TSM 2h 级别反弹站上 EMA20，MACD 金叉且 RSI 中性偏强，量能虽然萎缩，但是反弹足够强劲，应该是可以轻仓试错的",
+    "gate_patch": {
+      "clear_force_reject": true,
+      "allow_trial_low_volume_rebound": true,
+      "boost_execute_eligible": false,
+      "min_vol_ratio_execute": 0.3,
+      "score_floor": 50,
+      "min_recommendation": "caution",
+      "pattern": {
+        "price_above_ema20": true,
+        "macd_hist_rising": true,
+        "vol_ratio_max": 0.6
+      }
+    },
+    "created_at": "2026-07-13T08:56:18.701782+00:00"
+  }
+]

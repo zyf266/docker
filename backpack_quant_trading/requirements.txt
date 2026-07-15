@@ -59,5 +59,8 @@ eth-account>=0.10.0
 # 日志
 loguru
 
-# 钉钉 Stream 机器人（群内 @ 手动评分）
+# 钉钉 Stream 机器人（群内 @ 手动评分 / 评分反馈学习）
 dingtalk-stream>=0.20.0
+
+# 评分反馈向量库（Chroma 嵌入式持久化）
+chromadb>=0.5.0

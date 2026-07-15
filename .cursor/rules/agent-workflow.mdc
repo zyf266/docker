@@ -1,41 +1,10 @@
 ---
-description: Agent 工作流：slash 命令映射 + 开工前 Skill 评估 + 完成前验证
-alwaysApply: true
+description: 本项目沿用全局 Agent 工作流（见用户目录 ~/.cursor/rules/agent-workflow.mdc）
+alwaysApply: false
 ---
 
-# Agent 工作流（10 Skill 体系）
+# 工作流
 
-## Slash 命令映射（用户消息前缀 → 行为）
+全局五角色 Slash 命令与 `/pipeline` 已配置在 `~/.cursor/rules/agent-workflow.mdc` 与 `~/.cursor/skills/`。
 
-| 前缀 | 必须遵循的 Skill |
-|------|------------------|
-| `/brainstorm` | brainstorming：只提问不写代码，每轮 ≤5 题 |
-| `/worktree` | using-git-worktrees：先提议隔离目录 |
-| `/plan` | writing-plans：输出 `docs/plans/日期-主题.md` |
-| `/exec` | executing-plans：每 3～5 任务汇报一次 |
-| `/tdd` | test-driven-development：先红后绿再重构 |
-| `/debug` | systematic-debugging：假设→证据→最小修复 |
-| `/review` | code-review：两轮审查，不直接改代码 |
-
-前缀后的文字视为任务描述。
-
-## 每次编码任务开始前
-
-1. 输出 **skill-forced-evaluation** 评估表（ACTIVATE/SKIP + 原因）
-2. 按 ACTIVATE 的 skill 顺序执行
-
-## 每次声称「已完成 / 已修复」之前
-
-必须满足 **verification-before-completion**：
-- 贴出测试/验证命令与**实际输出**
-- 总结改动文件
-- 列出未验证风险
-
-## 大改动默认链
-
-`brainstorming` → `using-git-worktrees` → `writing-plans` → `executing-plans` → `code-review` → `verification-before-completion`
-
-## 实现与审查分离
-
-- 复杂实现可用 **subagent-driven-development** 派子代理
-- **禁止**同一轮既大改代码又自评「审查通过」
+本项目 `docs/plans/` 目录用于 `/plan` 产出计划文档。

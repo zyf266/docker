@@ -918,8 +918,11 @@ def evaluate_rebound_strength(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def evaluate_hard_gates(metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """本地硬规则：约束模型输出，减少随意打分。"""
+def evaluate_hard_gates(
+    metrics: Dict[str, Any],
+    feedback_patches: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """本地硬规则：约束模型输出，减少随意打分。feedback_patches 来自用户历史纠正。"""
     m = metrics or {}
     above20 = bool(m.get("price_above_ema20"))
     above50 = bool(m.get("price_above_ema50"))
@@ -1021,7 +1024,7 @@ def evaluate_hard_gates(metrics: Dict[str, Any]) -> Dict[str, Any]:
             or (rebound_strong and macd_hist > 0)
         )
     )
-    return {
+    result = {
         "force_reject": force_reject,
         "force_caution_only": force_caution_only,
         "execute_eligible": execute_eligible,
@@ -1031,6 +1034,14 @@ def evaluate_hard_gates(metrics: Dict[str, Any]) -> Dict[str, Any]:
         "mtf_boost": mtf,
         "rebound_strength": rebound,
     }
+    if feedback_patches:
+        try:
+            from backpack_quant_trading.core.score_feedback import apply_feedback_gate_overrides
+
+            result = apply_feedback_gate_overrides(result, m, feedback_patches)
+        except Exception as exc:
+            logger.debug("apply_feedback_gate_overrides failed: %s", exc)
+    return result
 
 
 def compute_local_buy_score(metrics: Dict[str, Any]) -> int:
@@ -1211,10 +1222,27 @@ def score_to_grade(score: int) -> str:
     return "F"
 
 
-def build_score_guidance(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+def build_score_guidance(
+    snapshot: Dict[str, Any],
+    feedback_patches: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     m = snapshot.get("metrics") or {}
+    if feedback_patches is None:
+        try:
+            from backpack_quant_trading.core.score_feedback import (
+            retrieve_feedback_for_scoring,
+            apply_feedback_score_floor,
+        )
+
+            feedback_patches, _ = retrieve_feedback_for_scoring(
+                m,
+                symbol=str(snapshot.get("symbol") or ""),
+                timeframe=str(snapshot.get("interval") or ""),
+            )
+        except Exception:
+            feedback_patches = []
     anchor = compute_local_buy_score(m)
-    gates = evaluate_hard_gates(m)
+    gates = evaluate_hard_gates(m, feedback_patches=feedback_patches)
     rebound = evaluate_rebound_strength(m)
     recovery_ctx = gates.get("recovery_context") or _pick_recovery_context(m)
     recovery = gates.get("strong_recovery") or evaluate_strong_recovery(m)
@@ -1482,11 +1510,26 @@ def _apply_recommendation_consistency(
 def calibrate_deepseek_structured(
     structured: Dict[str, Any],
     metrics: Dict[str, Any],
+    *,
+    symbol: str = "",
+    timeframe: str = "",
 ) -> Dict[str, Any]:
     """融合模型分与锚分，使评分稳定并与硬规则一致。"""
     st = dict(structured or {})
     anchor = compute_local_buy_score(metrics)
-    gates = evaluate_hard_gates(metrics)
+    feedback_patches: List[Dict[str, Any]] = []
+    try:
+        from backpack_quant_trading.core.score_feedback import (
+            retrieve_feedback_for_scoring,
+            apply_feedback_score_floor,
+        )
+
+        feedback_patches, _ = retrieve_feedback_for_scoring(
+            metrics, symbol=symbol, timeframe=timeframe,
+        )
+    except Exception:
+        pass
+    gates = evaluate_hard_gates(metrics, feedback_patches=feedback_patches)
     try:
         raw = int(float(st.get("score", anchor)))
     except (TypeError, ValueError):
@@ -1523,6 +1566,11 @@ def calibrate_deepseek_structured(
             rec = "caution"
         else:
             rec = "reject"
+
+    final, rec = apply_feedback_score_floor(final, rec, feedback_patches)
+    if gates.get("trial_low_volume_rebound") and rec == "reject":
+        rec = "caution"
+        final = max(final, 50)
 
     st["score"] = final
     st["grade"] = score_to_grade(final)
@@ -1964,7 +2012,23 @@ def build_deepseek_user_prompt(
 ) -> str:
     """生成交给 DeepSeek 的用户提示词。"""
     m = snapshot.get("metrics") or {}
-    guidance = build_score_guidance(snapshot)
+    feedback_prompt_section: List[str] = []
+    try:
+        from backpack_quant_trading.core.score_feedback import (
+            retrieve_feedback_for_scoring,
+            format_feedback_prompt_section,
+        )
+
+        feedback_patches, feedback_prompt_items = retrieve_feedback_for_scoring(
+            m,
+            symbol=symbol,
+            timeframe=timeframe or str(snapshot.get("interval") or ""),
+        )
+        feedback_prompt_section = format_feedback_prompt_section(feedback_prompt_items)
+    except Exception:
+        feedback_patches = []
+        feedback_prompt_items = []
+    guidance = build_score_guidance(snapshot, feedback_patches=feedback_patches)
     payload = {
         "signal": {
             "symbol": symbol,
@@ -2022,7 +2086,8 @@ def build_deepseek_user_prompt(
             "6) RSI>75 且 ADX>=35、MACD抬升 → 仅轻罚",
             "7) 必须填写 support_resistance",
             "8) recommendation：缩量时强度可高但倾向 caution 非 execute",
-        ],
+        ] + feedback_prompt_section,
+        "user_feedback_examples": feedback_prompt_items[:5] if feedback_prompt_items else [],
     }
     return (
         f"请对以下「{symbol} {action}」买入信号评分。务必使用 scoring_guidance 锚分与硬规则。\n\n"
@@ -3168,7 +3233,9 @@ def run_signal_score(
         }
 
     m = snapshot.get("metrics") or {}
-    st = calibrate_deepseek_structured(ds.get("structured") or {}, m)
+    st = calibrate_deepseek_structured(
+        ds.get("structured") or {}, m, symbol=sym, timeframe=iv,
+    )
     ds["structured"] = st
     ds["local_anchor_score"] = st.get("local_anchor_score")
     try:

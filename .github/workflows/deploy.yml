@@ -20,6 +20,8 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
+          debug: true
+          command_timeout: 40m
           script_stop: true
           script: |
             set -euo pipefail
@@ -28,18 +30,25 @@ jobs:
             BRANCH="main"
 
             if [ ! -d "${APP_DIR}/.git" ]; then
-              echo "==> 首次部署：安装 git 并克隆仓库..."
+              echo "==> 首次部署：安装 git、克隆仓库..."
               if command -v dnf &>/dev/null; then dnf install -y git curl openssl 2>/dev/null || true; fi
               if command -v yum &>/dev/null; then yum install -y git curl openssl 2>/dev/null || true; fi
-              if ! command -v docker &>/dev/null; then
-                curl -fsSL https://get.docker.com | sh
-                systemctl enable docker && systemctl start docker
-              fi
+
+              # 先克隆，再用仓库里的国内镜像脚本装 Docker（避免 get.docker.com SSL 失败）
               git clone -b "${BRANCH}" "${REPO}" "${APP_DIR}"
+              chmod +x "${APP_DIR}/deploy/install-docker.sh" "${APP_DIR}/deploy/deploy.sh" "${APP_DIR}/deploy/entrypoint.sh"
+              bash "${APP_DIR}/deploy/install-docker.sh"
+
               cd "${APP_DIR}"
               cp deploy/env.example .env
               DB_PASS=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 24)
               sed -i "s/请修改为强密码/${DB_PASS}/" .env
+            else
+              # 已有仓库时，若缺 Docker 也补装
+              if ! command -v docker &>/dev/null; then
+                chmod +x "${APP_DIR}/deploy/install-docker.sh"
+                bash "${APP_DIR}/deploy/install-docker.sh"
+              fi
             fi
 
             bash "${APP_DIR}/deploy/deploy.sh"

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +190,7 @@ def _us_stock_project_score(
 def build_us_stock_score_guidance(
     snapshot: Dict[str, Any],
     news_ctx: Optional[Dict[str, Any]] = None,
+    feedback_patches: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """美股 scoring_guidance（独立于加密 build_score_guidance）。"""
     from backpack_quant_trading.core.crypto_signal_scorer import (
@@ -200,8 +201,22 @@ def build_us_stock_score_guidance(
     )
 
     m = snapshot.get("metrics") or {}
+    if feedback_patches is None:
+        try:
+            from backpack_quant_trading.core.score_feedback import (
+            retrieve_feedback_for_scoring,
+            apply_feedback_score_floor,
+        )
+
+            feedback_patches, _ = retrieve_feedback_for_scoring(
+                m,
+                symbol=str(snapshot.get("symbol") or ""),
+                timeframe=str(snapshot.get("interval") or ""),
+            )
+        except Exception:
+            feedback_patches = []
     anchor = compute_local_buy_score(m)
-    gates = evaluate_hard_gates(m)
+    gates = evaluate_hard_gates(m, feedback_patches=feedback_patches)
     rebound = evaluate_rebound_strength(m)
     recovery_ctx = gates.get("recovery_context") or _pick_recovery_context(m)
     recovery = gates.get("strong_recovery") or evaluate_strong_recovery(m)
@@ -246,11 +261,26 @@ def calibrate_us_stock_structured(
     structured: Dict[str, Any],
     metrics: Dict[str, Any],
     news_ctx: Optional[Dict[str, Any]] = None,
+    *,
+    symbol: str = "",
+    timeframe: str = "",
 ) -> Dict[str, Any]:
     """美股 DeepSeek 输出校准（独立于 calibrate_deepseek_structured）。"""
     st = dict(structured or {})
     anchor = compute_local_buy_score(metrics)
-    gates = evaluate_hard_gates(metrics)
+    feedback_patches: List[Dict[str, Any]] = []
+    try:
+        from backpack_quant_trading.core.score_feedback import (
+            retrieve_feedback_for_scoring,
+            apply_feedback_score_floor,
+        )
+
+        feedback_patches, _ = retrieve_feedback_for_scoring(
+            metrics, symbol=symbol, timeframe=timeframe,
+        )
+    except Exception:
+        pass
+    gates = evaluate_hard_gates(metrics, feedback_patches=feedback_patches)
     try:
         raw = int(float(st.get("score", anchor)))
     except (TypeError, ValueError):
@@ -283,6 +313,11 @@ def calibrate_us_stock_structured(
             rec = "caution"
         else:
             rec = "reject"
+
+    final, rec = apply_feedback_score_floor(final, rec, feedback_patches)
+    if gates.get("trial_low_volume_rebound") and rec == "reject":
+        rec = "caution"
+        final = max(final, 50)
 
     st["score"] = final
     st["grade"] = score_to_grade(final)
@@ -544,6 +579,8 @@ def run_us_stock_signal_score(
         ds.get("structured") or {},
         snapshot.get("metrics") or {},
         news_ctx,
+        symbol=ticker,
+        timeframe=timeframe or iv,
     )
     score_val = int(structured.get("score") or 0)
     result = {

@@ -58,6 +58,36 @@ class ManualScoreBotHandler:
     def __init__(self, handler: "dingtalk_stream.ChatbotHandler"):
         self._handler = handler
 
+    def _feedback_work(self, incoming, raw: dict, user_text: str) -> None:
+        from backpack_quant_trading.core.score_feedback import handle_dingtalk_feedback
+
+        sender_staff = str(raw.get("senderStaffId") or getattr(incoming, "sender_staff_id", "") or "")
+        sender_id = str(raw.get("senderId") or getattr(incoming, "sender_id", "") or "")
+
+        if not _allowed_sender(sender_staff, sender_id):
+            self._handler.reply_text("无反馈权限，请联系管理员配置白名单。", incoming)
+            return
+
+        try:
+            reply_body, result = handle_dingtalk_feedback(
+                user_text, raw, sender_id=sender_staff or sender_id,
+            )
+        except Exception as exc:
+            logger.exception("[钉钉评分反馈] 异常: %s", exc)
+            try:
+                self._handler.reply_text(f"反馈记录失败：{exc}", incoming)
+            except Exception:
+                pass
+            return
+
+        try:
+            self._handler.reply_markdown("评分反馈已记录", reply_body, incoming)
+        except Exception:
+            try:
+                self._handler.reply_text(reply_body, incoming)
+            except Exception:
+                pass
+
     def _work(self, incoming, raw: dict, parsed: dict, user_text: str) -> None:
         from backpack_quant_trading.core.dingtalk_manual_score import score_manual_parsed
 
@@ -106,14 +136,29 @@ class ManualScoreBotHandler:
             resolve_signal_for_scoring,
             _summarize_replied_msg,
         )
+        from backpack_quant_trading.core.score_feedback import is_feedback_command
 
         user_text = _user_text(incoming, raw)
         logger.info("[钉钉手动评分] 入站 text=%s isReply=%s", user_text[:160], raw.get("text"))
 
+        if is_feedback_command(user_text):
+            threading.Thread(
+                target=self._feedback_work,
+                args=(incoming, raw, user_text),
+                daemon=True,
+                name="dingtalk-score-feedback",
+            ).start()
+            try:
+                self._handler.reply_text("收到，正在记录你的评分纠正…", incoming)
+            except Exception:
+                pass
+            return
+
         if not is_manual_score_command(user_text):
             try:
                 self._handler.reply_text(
-                    "可以说：@我 评一下分 / 对 ETH 2h 买入 评分",
+                    "可以说：@我 评一下分 / 对 TSM 2h 买入 评分\n"
+                    "或纠正评分：@我 我觉得分低了，TSM 2h 反弹站上 EMA20…",
                     incoming,
                 )
             except Exception:

@@ -15,22 +15,6 @@ elif command -v yum &>/dev/null; then
   yum install -y git curl openssl 2>/dev/null || true
 fi
 
-echo "==> 安装 Docker..."
-if ! command -v docker &>/dev/null; then
-  curl -fsSL https://get.docker.com | sh
-  systemctl enable docker
-  systemctl start docker
-fi
-
-if ! docker compose version &>/dev/null; then
-  echo "Docker Compose plugin not found, installing..."
-  if command -v dnf &>/dev/null; then
-    dnf install -y docker-compose-plugin 2>/dev/null || true
-  elif command -v yum &>/dev/null; then
-    yum install -y docker-compose-plugin 2>/dev/null || true
-  fi
-fi
-
 echo "==> 克隆/更新代码到 ${APP_DIR}..."
 if [ -d "${APP_DIR}/.git" ]; then
   cd "${APP_DIR}"
@@ -40,6 +24,10 @@ else
   git clone -b "${BRANCH}" "${REPO_URL}" "${APP_DIR}"
   cd "${APP_DIR}"
 fi
+
+echo "==> 安装 Docker（阿里云镜像，不走 get.docker.com）..."
+chmod +x deploy/install-docker.sh
+bash deploy/install-docker.sh
 
 if [ ! -f .env ]; then
   echo "==> 创建 .env（请编辑后重新部署）..."

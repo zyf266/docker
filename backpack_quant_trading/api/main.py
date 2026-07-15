@@ -55,6 +55,7 @@ from backpack_quant_trading.api.routers.stock_news_alert import router as stock_
 from backpack_quant_trading.api.routers.polymarket_alert import router as polymarket_alert_router
 from backpack_quant_trading.api.routers.ai_stock_hub import router as ai_stock_hub_router
 from backpack_quant_trading.api.routers.crypto_signal_hub import router as crypto_signal_hub_router
+from backpack_quant_trading.api.routers.quiz import router as quiz_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
 app.include_router(trading_router, prefix="/api/trading", tags=["实盘交易"])
@@ -72,6 +73,7 @@ app.include_router(stock_news_alert_router, prefix="/api/stock-news-alert", tags
 app.include_router(polymarket_alert_router, prefix="/api/polymarket-alert", tags=["Polymarket概率"])
 app.include_router(ai_stock_hub_router, prefix="/api/ai-stock-hub", tags=["AI选股卡片"])
 app.include_router(crypto_signal_hub_router, prefix="/api/crypto-signal-hub", tags=["加密信号评分"])
+app.include_router(quiz_router, prefix="/api/quiz", tags=["AI Agent 考试"])
 
 
 @app.get("/api/health")
@@ -457,5 +459,14 @@ for base in (_pkg_dir, _cwd_dir, _cwd_dir / "backpack_quant_trading"):
             return FileResponse(frontend_dist / "index.html")
         @app.get("/ai-stock/{full_path:path}")
         def _ai_stock_nested(full_path: str):
+            return FileResponse(frontend_dist / "index.html")
+        @app.get("/study-center")
+        def _study_center():
+            return FileResponse(frontend_dist / "index.html")
+        @app.get("/study-center/{full_path:path}")
+        def _study_center_nested(full_path: str):
+            return FileResponse(frontend_dist / "index.html")
+        @app.get("/ai-agent-quiz")
+        def _ai_agent_quiz():
             return FileResponse(frontend_dist / "index.html")
         break

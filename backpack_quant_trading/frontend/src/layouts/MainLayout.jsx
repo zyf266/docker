@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Menu,
   X,
+  BookOpen,
 } from 'lucide-react'
 import ChatBot from '../components/ChatBot'
 import AisPageBackground from '../components/AisPageBackground'
@@ -36,6 +37,7 @@ const navItems = [
   { type: 'item', to: '/stock-news-alert', icon: Newspaper, label: '自选多源快讯' },
   // 暂时隐藏：Polymarket概率（仅隐藏入口，不影响路由）
   { type: 'item', to: '/us-weekly-report', icon: BarChart2, label: '美股泡沫阶段监测' },
+  { type: 'item', to: '/study-center', icon: BookOpen, label: '学习中心' },
 ]
 
 const pageTitles = {
@@ -52,9 +54,12 @@ const pageTitles = {
   '/strategies': 'AI量化实盘',
   '/okx-console': 'OKX 操作台',
   '/us-weekly-report': '美股泡沫阶段监测',
+  '/study-center': '学习中心',
+  '/ai-agent-quiz': '学习中心',
 }
 
 function getPageTitle(pathname) {
+  if (pathname.startsWith('/study-center')) return '学习中心'
   if (pathname.startsWith('/strategies')) return 'AI量化实盘'
   if (pathname === '/trading') return '策略交易'
   // AI 实验室父菜单下的三个子页面，统一父标题
