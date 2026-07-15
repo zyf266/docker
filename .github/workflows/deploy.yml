@@ -24,7 +24,8 @@ jobs:
       - name: Pack source
         run: |
           set -euo pipefail
-          tar -czf /tmp/backpack-quant.tgz \
+          # 必须打在 workspace 内：scp-action 读不到 /tmp 下的文件会报 tar: empty archive
+          tar -czf "${GITHUB_WORKSPACE}/backpack-quant.tgz" \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='**/__pycache__' \
@@ -38,8 +39,9 @@ jobs:
             --exclude='.cursor' \
             --exclude='.idea' \
             --exclude='.vscode' \
+            --exclude='backpack-quant.tgz' \
             .
-          ls -lh /tmp/backpack-quant.tgz
+          ls -lh "${GITHUB_WORKSPACE}/backpack-quant.tgz"
 
       - name: Upload package
         uses: appleboy/scp-action@v0.1.7
@@ -48,7 +50,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          source: "/tmp/backpack-quant.tgz"
+          source: "backpack-quant.tgz"
           target: "/tmp/"
           overwrite: true
           timeout: 120s
