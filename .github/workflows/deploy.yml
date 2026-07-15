@@ -1,5 +1,6 @@
 name: Deploy to ECS
 
+# ECS 无法 git clone GitHub（Empty reply），改为 Runner 检出后 SCP 同步，再 SSH 构建。
 on:
   push:
     branches: [main]
@@ -12,15 +13,48 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      # 脚本在 Runner 上检出后经 SSH 下发执行，避免在 YAML 里写复杂 bash（易被 ssh-action 拆行解析报错）
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Syntax-check remote script
+      - name: Syntax-check scripts
         run: bash -n deploy/remote-ci.sh && bash -n deploy/deploy.sh && bash -n deploy/install-docker.sh
 
-      - name: Deploy via SSH
+      - name: Pack source
+        run: |
+          set -euo pipefail
+          tar -czf /tmp/backpack-quant.tgz \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='**/__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='.env.secrets' \
+            --exclude='backpack_quant_trading/log' \
+            --exclude='backpack_quant_trading/data/chroma_score_feedback' \
+            --exclude='backpack_quant_trading/data/kline_cache' \
+            --exclude='log' \
+            --exclude='.cursor' \
+            --exclude='.idea' \
+            --exclude='.vscode' \
+            .
+          ls -lh /tmp/backpack-quant.tgz
+
+      - name: Upload package
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "/tmp/backpack-quant.tgz"
+          target: "/tmp/"
+          overwrite: true
+          timeout: 120s
+          command_timeout: 15m
+
+      - name: Install and start on ECS
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -28,6 +62,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           debug: true
-          command_timeout: 40m
+          command_timeout: 45m
           script_stop: true
           script_path: deploy/remote-ci.sh
