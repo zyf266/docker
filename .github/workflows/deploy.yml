@@ -13,6 +13,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # 脚本在 Runner 上检出后经 SSH 下发执行，避免在 YAML 里写复杂 bash（易被 ssh-action 拆行解析报错）
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Syntax-check remote script
+        run: bash -n deploy/remote-ci.sh && bash -n deploy/deploy.sh && bash -n deploy/install-docker.sh
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -23,76 +30,4 @@ jobs:
           debug: true
           command_timeout: 40m
           script_stop: true
-          script: |
-            set -euo pipefail
-            APP_DIR="/opt/backpack-quant"
-            BRANCH="main"
-            # 国内 ECS 直连 github.com 常失败；按顺序尝试镜像，最后才直连
-            REPO_URLS=(
-              "https://gitclone.com/github.com/zyf266/docker.git"
-              "https://ghproxy.net/https://github.com/zyf266/docker.git"
-              "https://mirror.ghproxy.com/https://github.com/zyf266/docker.git"
-              "https://github.com/zyf266/docker.git"
-            )
-
-            clone_or_update() {
-              if [ -d "${APP_DIR}/.git" ]; then
-                echo "==> 已有仓库，更新代码..."
-                cd "${APP_DIR}"
-                # 若当前 origin 不可用，依次切换镜像再 fetch
-                local ok=0
-                for url in "${REPO_URLS[@]}"; do
-                  echo "尝试 fetch: ${url}"
-                  git remote set-url origin "${url}" || true
-                  if git fetch origin && git reset --hard "origin/${BRANCH}"; then
-                    ok=1
-                    break
-                  fi
-                done
-                if [ "${ok}" != "1" ]; then
-                  echo "所有镜像 git fetch 均失败" >&2
-                  exit 1
-                fi
-                return 0
-              fi
-
-              echo "==> 首次部署：安装依赖并克隆..."
-              if command -v dnf &>/dev/null; then dnf install -y git curl openssl 2>/dev/null || true; fi
-              if command -v yum &>/dev/null; then yum install -y git curl openssl 2>/dev/null || true; fi
-
-              local cloned=0
-              for url in "${REPO_URLS[@]}"; do
-                echo "尝试 clone: ${url}"
-                rm -rf "${APP_DIR}"
-                if git clone -b "${BRANCH}" "${url}" "${APP_DIR}"; then
-                  cloned=1
-                  cd "${APP_DIR}"
-                  git remote set-url origin "${url}"
-                  break
-                fi
-              done
-              if [ "${cloned}" != "1" ]; then
-                echo "所有镜像 git clone 均失败（ECS 访问 GitHub 网络问题）" >&2
-                exit 1
-              fi
-
-              chmod +x deploy/install-docker.sh deploy/deploy.sh deploy/entrypoint.sh
-              bash deploy/install-docker.sh
-
-              if [ ! -f .env ]; then
-                cp deploy/env.example .env
-                DB_PASS=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 24)
-                sed -i "s/请修改为强密码/${DB_PASS}/" .env
-              fi
-            }
-
-            clone_or_update
-
-            if ! command -v docker &>/dev/null; then
-              chmod +x "${APP_DIR}/deploy/install-docker.sh"
-              bash "${APP_DIR}/deploy/install-docker.sh"
-            fi
-
-            # deploy.sh 内部也会 git fetch；先用上面已更新好的代码，避免再走不通的 github.com
-            cd "${APP_DIR}"
-            SYNC_SKIP_GIT=1 bash deploy/deploy.sh
+          script_path: deploy/remote-ci.sh

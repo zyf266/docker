@@ -109,8 +109,9 @@ ECS 上 `git clone/fetch` 需要能访问 GitHub。二选一：
 
 | 文件 | 作用 |
 |------|------|
-| `.github/workflows/deploy.yml` | SSH 到 ECS → 装 Docker → `deploy.sh` |
+| `.github/workflows/deploy.yml` | checkout → `bash -n` → SSH 执行 `remote-ci.sh` |
+| `deploy/remote-ci.sh` | 服务器上：镜像 clone/fetch → 装 Docker → deploy.sh |
 | `deploy/install-docker.sh` | 国内 ECS 安装 Docker（阿里云镜像） |
-| `deploy/deploy.sh` | `git pull` + `docker compose` |
+| `deploy/deploy.sh` | `docker compose` 构建重启 |
 | `deploy/bootstrap-server.sh` | 空白机一次性初始化 |
 | `docker-compose.yml` / `Dockerfile` | 容器编排 |
