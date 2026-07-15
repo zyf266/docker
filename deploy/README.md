@@ -100,6 +100,7 @@ ECS 上 `git clone/fetch` 需要能访问 GitHub。二选一：
 | `ssh: no key found` | Secret 私钥格式错误，用记事本重贴 |
 | `Permission denied (publickey)` | 公钥未写入 ECS |
 | `get.docker.com` / `SSL_ERROR_SYSCALL` | 国内访问官方安装脚本失败；用 `deploy/install-docker.sh`（阿里云源），**须先 push 再跑 Actions** |
+| `Empty reply from server` / 无法 clone GitHub | ECS 访问不了 github.com；workflow 已改用 gitclone/ghproxy 镜像拉取，**须先 push 再跑 Actions** |
 | 健康检查失败 | `docker compose logs api`；安全组放行 8100 |
 
 ---
