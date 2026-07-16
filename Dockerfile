@@ -23,7 +23,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backpack_quant_trading/requirements.txt /app/backpack_quant_trading/requirements.txt
-RUN pip install --no-cache-dir -r /app/backpack_quant_trading/requirements.txt
+# 国内 ECS 构建时走清华 PyPI 源，更稳
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn \
+    -r /app/backpack_quant_trading/requirements.txt
 
 COPY backpack_quant_trading/ /app/backpack_quant_trading/
 COPY --from=frontend-builder /build/dist /app/backpack_quant_trading/frontend/dist

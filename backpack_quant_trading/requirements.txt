@@ -34,7 +34,7 @@ python-dotenv>=1.0.0
 # 数据可视化
 matplotlib>=3.7.0
 plotly>=5.18.0
-mplfinance>=0.12.10
+mplfinance>=0.12.10b0
 dash>=2.11.0
 
 # 技术指标
