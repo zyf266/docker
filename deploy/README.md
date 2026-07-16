@@ -12,6 +12,8 @@ ECS 上 `git` 访问 GitHub 会失败（`Empty reply from server`），网页 cu
 
 若构建时报 `registry-1.docker.io` / `i/o timeout`：说明未配镜像加速；`install-docker.sh` 会写入 `/etc/docker/daemon.json` 的 `registry-mirrors`。
 
+若 `backpack-api is unhealthy`：先看 `docker compose logs api`。常见是缺 Python 依赖（如 `msgpack`）导致 gunicorn worker 启动失败。
+
 触发方式仍是：push `main` 或手动 Run workflow。Secrets 仍是 `SSH_HOST` / `SSH_USER` / `SSH_PRIVATE_KEY` / `SSH_PORT`。
 
 ## Secrets

@@ -20,21 +20,28 @@ docker compose ps
 echo "==> 健康检查..."
 ok=0
 i=1
-while [ "${i}" -le 10 ]; do
+while [ "${i}" -le 40 ]; do
   if curl -sf http://127.0.0.1:8100/api/health >/dev/null; then
     curl -s http://127.0.0.1:8100/api/health
     echo ""
     ok=1
     break
   fi
-  echo "等待 API... (${i}/10)"
-  sleep 3
+  state=$(docker inspect -f '{{.State.Status}}' backpack-api 2>/dev/null || echo missing)
+  if [ "${state}" = "exited" ] || [ "${state}" = "dead" ] || [ "${state}" = "missing" ]; then
+    echo "API 容器状态异常: ${state}" >&2
+    docker compose logs --tail=120 api || true
+    exit 1
+  fi
+  echo "等待 API... (${i}/40) state=${state}"
+  sleep 5
   i=$((i + 1))
 done
 
 if [ "${ok}" != "1" ]; then
   echo "API 健康检查失败：" >&2
-  docker compose logs --tail=80 api || true
+  docker compose logs --tail=120 api || true
+  docker compose ps -a || true
   exit 1
 fi
 

@@ -43,6 +43,9 @@ numba>=0.58.0
 
 # 交易所集成
 ccxt>=4.0.0
+msgpack>=1.0.0
+httpx>=0.27.0
+ostium-python-sdk>=0.1.0
 
 # A股数据（AI选股）
 akshare>=1.14.0
