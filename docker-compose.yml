@@ -71,8 +71,9 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      # api 不设 condition: service_healthy，避免 compose up 时因启动竞态整批失败
       api:
-        condition: service_healthy
+        condition: service_started
     networks:
       - backpack-net
 
