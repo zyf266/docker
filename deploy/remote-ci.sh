@@ -16,7 +16,11 @@ tar -xzf "${PKG}" -C "${APP_DIR}"
 rm -f "${PKG}"
 cd "${APP_DIR}"
 
-chmod +x deploy/install-docker.sh deploy/deploy.sh deploy/entrypoint.sh
+chmod +x deploy/install-docker.sh deploy/deploy.sh deploy/entrypoint.sh deploy/ensure-swap.sh
+
+# 小内存 ECS：无 swap 时 MySQL 会被 OOM 杀掉
+echo "==> 确保 swap"
+bash deploy/ensure-swap.sh
 
 # 已装 Docker 也要跑一遍：写入国内 registry-mirrors（否则拉 docker.io 会超时）
 echo "==> 确保 Docker / 镜像加速"

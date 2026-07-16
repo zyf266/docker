@@ -1,0 +1,8 @@
+# 小内存 ECS（约 2GB）专用：避免 mysqld 被 OOM Killer 杀掉
+# 配合 deploy/ensure-swap.sh 使用
+[mysqld]
+innodb_buffer_pool_size=128M
+innodb_log_buffer_size=8M
+key_buffer_size=8M
+performance_schema=OFF
+max_connections=50

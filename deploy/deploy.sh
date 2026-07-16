@@ -5,11 +5,47 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/backpack-quant}"
 cd "${APP_DIR}"
 
+if [ -x deploy/ensure-swap.sh ]; then
+  echo "==> 确保 swap"
+  bash deploy/ensure-swap.sh
+fi
+
 echo "==> 构建镜像..."
 docker compose build --pull
 
-echo "==> 先启动 mysql + api（避免 webhook 因 api 尚未健康而拖垮整次 up）..."
-docker compose up -d --remove-orphans mysql api
+echo "==> 先启动 MySQL（小内存机器需等 healthy 再起 api）..."
+docker compose up -d --remove-orphans mysql
+
+mysql_ok=0
+i=1
+while [ "${i}" -le 30 ]; do
+  health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' backpack-mysql 2>/dev/null || echo missing)
+  if [ "${health}" = "healthy" ]; then
+    mysql_ok=1
+    break
+  fi
+  state=$(docker inspect -f '{{.State.Status}}' backpack-mysql 2>/dev/null || echo missing)
+  if [ "${state}" = "exited" ] || [ "${state}" = "dead" ] || [ "${state}" = "missing" ]; then
+    echo "MySQL 容器状态异常: ${state}" >&2
+    docker compose logs --tail=80 mysql || true
+    free -h || true
+    exit 1
+  fi
+  echo "等待 MySQL... (${i}/30) state=${state} health=${health}"
+  sleep 3
+  i=$((i + 1))
+done
+
+if [ "${mysql_ok}" != "1" ]; then
+  echo "MySQL 健康检查失败（常见原因：内存不足 / OOM）" >&2
+  docker compose logs --tail=80 mysql || true
+  free -h || true
+  dmesg -T 2>/dev/null | grep -i oom | tail -3 || true
+  exit 1
+fi
+
+echo "==> 启动 api..."
+docker compose up -d api
 
 echo "==> 等待 API 健康..."
 ok=0

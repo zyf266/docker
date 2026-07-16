@@ -14,6 +14,13 @@ ECS 上 `git` 访问 GitHub 会失败（`Empty reply from server`），网页 cu
 
 若 `backpack-api is unhealthy`：先看 `docker compose logs api`。常见是缺 Python 依赖（如 `msgpack`）导致 gunicorn worker 启动失败。
 
+若大量 API **500** 且 `backpack-mysql` 为 **Restarting (137)**：小内存 ECS（约 2GB）上 MySQL 被 OOM 杀掉。部署脚本会自动：
+
+1. `deploy/ensure-swap.sh` — 创建并持久化 **2GB swap**（写入 `/etc/fstab`，重启后仍保留）
+2. `deploy/mysql/conf.d/lowmem.cnf` — 限制 MySQL 内存占用
+
+手动检查：`free -h`、`docker compose logs mysql --tail 50`、`dmesg -T | grep -i oom`
+
 触发方式仍是：push `main` 或手动 Run workflow。Secrets 仍是 `SSH_HOST` / `SSH_USER` / `SSH_PRIVATE_KEY` / `SSH_PORT`。
 
 ## Secrets

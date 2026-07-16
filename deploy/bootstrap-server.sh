@@ -25,8 +25,11 @@ else
   cd "${APP_DIR}"
 fi
 
+echo "==> 确保 swap（小内存 ECS 防 MySQL OOM）..."
+chmod +x deploy/ensure-swap.sh deploy/install-docker.sh
+bash deploy/ensure-swap.sh
+
 echo "==> 安装 Docker（阿里云镜像，不走 get.docker.com）..."
-chmod +x deploy/install-docker.sh
 bash deploy/install-docker.sh
 
 if [ ! -f .env ]; then
