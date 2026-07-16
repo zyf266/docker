@@ -9,3 +9,5 @@ backpack_quant_trading/.env
 backpack_quant_trading/.env.secrets
 .env
 **/.env.secrets
+# Actions 本地/工作区打包产物，勿提交
+backpack-quant.tgz
