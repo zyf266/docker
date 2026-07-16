@@ -18,10 +18,9 @@ cd "${APP_DIR}"
 
 chmod +x deploy/install-docker.sh deploy/deploy.sh deploy/entrypoint.sh
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "==> 安装 Docker"
-  bash deploy/install-docker.sh
-fi
+# 已装 Docker 也要跑一遍：写入国内 registry-mirrors（否则拉 docker.io 会超时）
+echo "==> 确保 Docker / 镜像加速"
+bash deploy/install-docker.sh
 
 if [ ! -f .env ]; then
   echo "==> 创建 .env"

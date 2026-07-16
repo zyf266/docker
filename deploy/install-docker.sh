@@ -1,6 +1,24 @@
 #!/bin/bash
-# 在国内 ECS 上安装 Docker（不走 get.docker.com，避免 SSL/墙导致失败）
+# 在国内 ECS 上安装 Docker（不走 get.docker.com）并配置镜像加速（不直连 Docker Hub）
 set -euo pipefail
+
+configure_registry_mirrors() {
+  echo "==> 配置 Docker 镜像加速（国内拉取 docker.io）..."
+  mkdir -p /etc/docker
+  cat > /etc/docker/daemon.json <<'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://docker.1ms.run",
+    "https://hub.rat.dev"
+  ]
+}
+EOF
+  systemctl daemon-reload
+  systemctl restart docker
+  sleep 2
+  docker info 2>/dev/null | grep -A5 "Registry Mirrors" || true
+}
 
 if command -v docker >/dev/null 2>&1; then
   echo "==> Docker 已安装: $(docker --version)"
@@ -17,7 +35,6 @@ else
     exit 1
   fi
 
-  # Alibaba Cloud Linux 等发行版 $releasever 可能不是 7/8，强制用 8 源
   if [ -f /etc/yum.repos.d/docker-ce.repo ]; then
     sed -i 's/\$releasever/8/g' /etc/yum.repos.d/docker-ce.repo
   fi
@@ -41,6 +58,8 @@ if ! docker compose version >/dev/null 2>&1; then
     yum install -y docker-compose-plugin
   fi
 fi
+
+configure_registry_mirrors
 
 docker compose version
 echo "==> Docker / Compose 就绪"

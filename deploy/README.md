@@ -8,7 +8,9 @@ ECS 上 `git` 访问 GitHub 会失败（`Empty reply from server`），网页 cu
 
 1. Actions Runner `checkout`（国外，可访问 GitHub）
 2. 打包后 **SCP** 到 ECS `/tmp/backpack-quant.tgz`
-3. SSH 执行 `deploy/remote-ci.sh`：解压 → 装 Docker（阿里云源）→ `docker compose`
+3. SSH 执行 `deploy/remote-ci.sh`：解压 → 装 Docker + 镜像加速 → `docker compose`
+
+若构建时报 `registry-1.docker.io` / `i/o timeout`：说明未配镜像加速；`install-docker.sh` 会写入 `/etc/docker/daemon.json` 的 `registry-mirrors`。
 
 触发方式仍是：push `main` 或手动 Run workflow。Secrets 仍是 `SSH_HOST` / `SSH_USER` / `SSH_PRIVATE_KEY` / `SSH_PORT`。
 
