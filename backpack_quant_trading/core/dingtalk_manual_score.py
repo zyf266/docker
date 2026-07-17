@@ -10,8 +10,16 @@ logger = logging.getLogger(__name__)
 _SCORE_TRIGGERS = ("评分", "打分", "分析", "score", "evaluate")
 
 
+_AGENT_AT_KEEP = re.compile(
+    r"^@?(美股分析师|A股分析师|加密分析师|信息检索|风控|复盘|执行|协调)$"
+)
+
+
 def extract_user_text_from_raw(raw: Dict[str, Any]) -> str:
-    """从钉钉回调 raw 提取用户输入（含 richText / text）。"""
+    """从钉钉回调 raw 提取用户输入（含 richText / text）。
+
+    普通 @机器人 可丢掉；但 @加密分析师 等角色名必须保留，否则会误入旧评分路径。
+    """
     if not isinstance(raw, dict):
         return ""
     chunks: list[str] = []
@@ -31,8 +39,15 @@ def extract_user_text_from_raw(raw: Dict[str, Any]) -> str:
                 if not isinstance(item, dict):
                     continue
                 t = str(item.get("text") or "").strip()
-                if t and not t.startswith("@"):
-                    chunks.append(t)
+                if not t:
+                    continue
+                if t.startswith("@"):
+                    # 保留 Agent 角色 @，丢弃普通机器人 @
+                    name = t.lstrip("@").strip()
+                    if _AGENT_AT_KEEP.match(name) or _AGENT_AT_KEEP.match(t):
+                        chunks.append(name if not name.startswith("@") else name)
+                    continue
+                chunks.append(t)
 
     # 去重保序
     seen: set[str] = set()

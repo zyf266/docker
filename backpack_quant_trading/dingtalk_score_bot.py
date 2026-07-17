@@ -177,7 +177,7 @@ class ManualScoreBotHandler:
                 name="dingtalk-agent-orch",
             ).start()
             try:
-                self._handler.reply_text("收到，Agent 处理中…", incoming)
+                self._handler.reply_text("收到，分析师 Agent 处理中…", incoming)
             except Exception:
                 pass
             return
