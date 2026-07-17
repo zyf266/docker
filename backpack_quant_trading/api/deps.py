@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyCoo
 import jwt
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from backpack_quant_trading.database.models import DatabaseManager
+from backpack_quant_trading.database.models import db_manager
 
 # JWT 配置（生产环境应从环境变量读取）
 SECRET_KEY = os.environ.get("JWT_SECRET", "backpack-quant-secret-key-change-in-production")
@@ -59,8 +59,7 @@ async def get_current_user(
     user_id = payload.get("sub")
     if not user_id:
         return None
-    db = DatabaseManager()
-    user = db.get_user_by_id(int(user_id))
+    user = db_manager.get_user_by_id(int(user_id))
     if not user:
         return None
     return {"id": user.id, "username": user.username, "role": user.role}

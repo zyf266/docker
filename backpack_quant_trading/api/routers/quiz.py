@@ -8,6 +8,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from backpack_quant_trading.api.deps import require_user
@@ -173,28 +174,32 @@ def quiz_hub(_user=Depends(require_user)):
 def list_chapters(db: Session = Depends(get_quiz_db), _user=Depends(require_user)):
     _ensure_seeded()
     chapters = db.query(QuizChapter).order_by(QuizChapter.sort_order).all()
-    result = []
-    for ch in chapters:
-        cats = db.query(QuizCategory).filter(QuizCategory.chapter_id == ch.id).all()
-        cat_ids = [c.id for c in cats]
-        q_count = 0
-        if cat_ids:
-            q_count = db.query(QuizQuestion).filter(QuizQuestion.category_id.in_(cat_ids)).count()
-        result.append(
-            ChapterOut(
-                id=ch.id,
-                slug=ch.slug,
-                title=ch.title,
-                description=ch.description,
-                source_url=ch.source_url,
-                accent=ch.accent or "#3b82f6",
-                sort_order=ch.sort_order or 0,
-                category_count=len(cats),
-                question_count=q_count,
-                coming_soon=bool(ch.coming_soon),
-            )
+    cat_counts = dict(
+        db.query(QuizCategory.chapter_id, func.count(QuizCategory.id))
+        .group_by(QuizCategory.chapter_id)
+        .all()
+    )
+    q_counts = dict(
+        db.query(QuizCategory.chapter_id, func.count(QuizQuestion.id))
+        .outerjoin(QuizQuestion, QuizQuestion.category_id == QuizCategory.id)
+        .group_by(QuizCategory.chapter_id)
+        .all()
+    )
+    return [
+        ChapterOut(
+            id=ch.id,
+            slug=ch.slug,
+            title=ch.title,
+            description=ch.description,
+            source_url=ch.source_url,
+            accent=ch.accent or "#3b82f6",
+            sort_order=ch.sort_order or 0,
+            category_count=int(cat_counts.get(ch.id, 0)),
+            question_count=int(q_counts.get(ch.id, 0)),
+            coming_soon=bool(ch.coming_soon),
         )
-    return result
+        for ch in chapters
+    ]
 
 
 @router.get("/chapters/{slug}", response_model=ChapterOut)
@@ -227,11 +232,25 @@ def list_chapter_categories(slug: str, db: Session = Depends(get_quiz_db), _user
     if not ch:
         raise HTTPException(404, "章节不存在")
     cats = db.query(QuizCategory).filter(QuizCategory.chapter_id == ch.id).order_by(QuizCategory.sort_order).all()
-    result = []
-    for c in cats:
-        count = db.query(QuizQuestion).filter(QuizQuestion.category_id == c.id).count()
-        result.append(CategoryOut(id=c.id, chapter_id=c.chapter_id, name=c.name, description=c.description, question_count=count))
-    return result
+    cat_ids = [c.id for c in cats]
+    q_counts = {}
+    if cat_ids:
+        q_counts = dict(
+            db.query(QuizQuestion.category_id, func.count(QuizQuestion.id))
+            .filter(QuizQuestion.category_id.in_(cat_ids))
+            .group_by(QuizQuestion.category_id)
+            .all()
+        )
+    return [
+        CategoryOut(
+            id=c.id,
+            chapter_id=c.chapter_id,
+            name=c.name,
+            description=c.description,
+            question_count=int(q_counts.get(c.id, 0)),
+        )
+        for c in cats
+    ]
 
 
 @router.post("/start", response_model=StartExamOut)

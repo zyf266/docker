@@ -43,10 +43,14 @@ init_database
 
 case "${1:-api}" in
   api)
+    # 小内存 ECS 默认 1 worker；可用 GUNICORN_WORKERS 覆盖
+    WORKERS="${GUNICORN_WORKERS:-1}"
     exec gunicorn backpack_quant_trading.api.main:app \
-      -w 2 \
+      -w "${WORKERS}" \
       -k uvicorn.workers.UvicornWorker \
       -b 0.0.0.0:8100 \
+      --max-requests 1000 \
+      --max-requests-jitter 100 \
       --access-logfile - \
       --error-logfile -
     ;;
@@ -55,8 +59,13 @@ case "${1:-api}" in
       -w 1 \
       -k uvicorn.workers.UvicornWorker \
       -b 0.0.0.0:8005 \
+      --max-requests 1000 \
+      --max-requests-jitter 100 \
       --access-logfile - \
       --error-logfile -
+    ;;
+  dingtalk-agent)
+    exec python -m backpack_quant_trading.dingtalk_score_bot
     ;;
   *)
     exec "$@"

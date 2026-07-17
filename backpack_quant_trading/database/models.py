@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from datetime import datetime
 from typing import Optional
 import enum
+import threading
 from decimal import Decimal as PyDecimal
 
 from backpack_quant_trading.config.settings import config
@@ -265,9 +266,23 @@ class StrategyConfig(Base):
 
 
 class DatabaseManager:
-    """数据库管理器"""
+    """数据库管理器（进程内单例，避免每次请求新建 engine/连接池）。"""
+
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    inst = super().__new__(cls)
+                    inst._initialized = False
+                    cls._instance = inst
+        return cls._instance
 
     def __init__(self):
+        if getattr(self, "_initialized", False):
+            return
         self.engine = create_engine(
             config.database_url,
             pool_size=config.database.POOL_SIZE,
@@ -277,6 +292,7 @@ class DatabaseManager:
         )
         self.session_factory = sessionmaker(bind=self.engine)
         self.Session = scoped_session(self.session_factory)
+        self._initialized = True
 
     def get_session(self):
         """获取数据库会话"""

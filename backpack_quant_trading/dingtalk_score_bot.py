@@ -130,6 +130,29 @@ class ManualScoreBotHandler:
             except Exception:
                 pass
 
+    def _agent_work(self, incoming, raw: dict, user_text: str) -> None:
+        from backpack_quant_trading.agents.dingtalk_bridge import handle_agent_text
+
+        sender_staff = str(raw.get("senderStaffId") or getattr(incoming, "sender_staff_id", "") or "")
+        sender_id = str(raw.get("senderId") or getattr(incoming, "sender_id", "") or "")
+        if not _allowed_sender(sender_staff, sender_id):
+            self._handler.reply_text("无 Agent 权限，请联系管理员配置白名单。", incoming)
+            return
+        try:
+            result = handle_agent_text(user_text, staff_id=sender_staff or sender_id)
+            body = str(result.get("markdown") or result.get("error") or "无输出")
+            title = "Agent 分析" if result.get("ok") else "Agent 提示"
+            try:
+                self._handler.reply_markdown(title, body, incoming)
+            except Exception:
+                self._handler.reply_text(body[:1800], incoming)
+        except Exception as exc:
+            logger.exception("[钉钉Agent] 异常: %s", exc)
+            try:
+                self._handler.reply_text(f"Agent 异常：{exc}", incoming)
+            except Exception:
+                pass
+
     def handle(self, incoming, raw: dict) -> None:
         from backpack_quant_trading.core.dingtalk_manual_score import (
             is_manual_score_command,
@@ -137,9 +160,27 @@ class ManualScoreBotHandler:
             _summarize_replied_msg,
         )
         from backpack_quant_trading.core.score_feedback import is_feedback_command
+        from backpack_quant_trading.agents.dingtalk_bridge import (
+            should_route_to_agent,
+            usage_hint,
+        )
 
         user_text = _user_text(incoming, raw)
         logger.info("[钉钉手动评分] 入站 text=%s isReply=%s", user_text[:160], raw.get("text"))
+
+        # 多 Agent 编排优先（与旧评分并存；AGENT_ORCH_ENABLED=0 可回滚）
+        if should_route_to_agent(user_text):
+            threading.Thread(
+                target=self._agent_work,
+                args=(incoming, raw, user_text),
+                daemon=True,
+                name="dingtalk-agent-orch",
+            ).start()
+            try:
+                self._handler.reply_text("收到，Agent 处理中…", incoming)
+            except Exception:
+                pass
+            return
 
         if is_feedback_command(user_text):
             threading.Thread(
@@ -156,11 +197,7 @@ class ManualScoreBotHandler:
 
         if not is_manual_score_command(user_text):
             try:
-                self._handler.reply_text(
-                    "可以说：@我 评一下分 / 对 TSM 2h 买入 评分\n"
-                    "或纠正评分：@我 我觉得分低了，TSM 2h 反弹站上 EMA20…",
-                    incoming,
-                )
+                self._handler.reply_text(usage_hint(), incoming)
             except Exception:
                 pass
             return

@@ -3,6 +3,7 @@ services:
     image: mysql:8.0
     container_name: backpack-mysql
     restart: unless-stopped
+    mem_limit: 512m
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-changeme}
       MYSQL_DATABASE: ${DB_NAME:-backpack}
@@ -29,6 +30,7 @@ services:
     image: backpack-quant:latest
     container_name: backpack-api
     restart: unless-stopped
+    mem_limit: 768m
     command: ["api"]
     env_file:
       - .env
@@ -36,6 +38,9 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       TRADING_SERVER: "1"
+      GUNICORN_WORKERS: "${GUNICORN_WORKERS:-1}"
+      DB_POOL_SIZE: "${DB_POOL_SIZE:-5}"
+      DB_MAX_OVERFLOW: "${DB_MAX_OVERFLOW:-5}"
     ports:
       - "8100:8100"
     volumes:
@@ -57,6 +62,7 @@ services:
     image: backpack-quant:latest
     container_name: backpack-webhook
     restart: unless-stopped
+    mem_limit: 384m
     command: ["webhook"]
     env_file:
       - .env
@@ -64,6 +70,8 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       TRADING_SERVER: "1"
+      DB_POOL_SIZE: "${DB_POOL_SIZE:-5}"
+      DB_MAX_OVERFLOW: "${DB_MAX_OVERFLOW:-5}"
     ports:
       - "8005:8005"
     volumes:
@@ -74,6 +82,33 @@ services:
         condition: service_healthy
       # api 不设 condition: service_healthy，避免 compose up 时因启动竞态整批失败
       api:
+        condition: service_started
+    networks:
+      - backpack-net
+
+  dingtalk-agent:
+    image: backpack-quant:latest
+    container_name: backpack-dingtalk-agent
+    restart: unless-stopped
+    mem_limit: 384m
+    command: ["dingtalk-agent"]
+    env_file:
+      - .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      TRADING_SERVER: "1"
+      AGENT_ORCH_ENABLED: "${AGENT_ORCH_ENABLED:-1}"
+      AGENT_MEMORY_CHROMA_ENABLED: "${AGENT_MEMORY_CHROMA_ENABLED:-1}"
+      WEBHOOK_BASE: "${WEBHOOK_BASE:-http://webhook:8005}"
+      GUNICORN_WORKERS: "1"
+    volumes:
+      - app_data:/app/backpack_quant_trading/data
+      - app_log:/app/backpack_quant_trading/log
+    depends_on:
+      api:
+        condition: service_started
+      webhook:
         condition: service_started
     networks:
       - backpack-net

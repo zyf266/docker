@@ -48,8 +48,9 @@ class DatabaseConfig:
     USER:str=os.getenv("DB_USER", "root")
     PASSWORD:str=os.getenv("DB_PASSWORD", "zyf200018")
     NAME:str=os.getenv("DB_NAME", "backpack")
-    POOL_SIZE: int = 20
-    MAX_OVERFLOW:int=30
+    # 小内存 ECS：默认小池；可用 DB_POOL_SIZE / DB_MAX_OVERFLOW 覆盖
+    POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
+    MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "5"))
 
 @dataclass
 class TradingConfig:

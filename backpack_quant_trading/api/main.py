@@ -92,6 +92,32 @@ from zoneinfo import ZoneInfo
 _sched_logger = _sched_logging.getLogger("kline_scheduler")
 _CN_TZ = ZoneInfo("Asia/Shanghai")
 _PRICE_SYNC_HOUR = 5
+# 多 worker 时仅持锁进程跑定时任务，避免外部 API / 内存翻倍
+_SCHEDULER_LOCK_FD = None
+
+
+def _try_acquire_scheduler_lock() -> bool:
+    """非阻塞文件锁；Windows 开发环境无 fcntl 时默认允许启动调度。"""
+    global _SCHEDULER_LOCK_FD
+    if os.getenv("DISABLE_BACKGROUND_SCHEDULER", "").strip().lower() in ("1", "true", "yes"):
+        return False
+    lock_path = os.getenv("SCHEDULER_LOCK_PATH", "/tmp/backpack-api-scheduler.lock")
+    try:
+        import fcntl
+    except ImportError:
+        return True
+    try:
+        fd = open(lock_path, "a+", encoding="utf-8")
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fd.seek(0)
+        fd.truncate()
+        fd.write(f"pid={os.getpid()}\n")
+        fd.flush()
+        _SCHEDULER_LOCK_FD = fd
+        return True
+    except (BlockingIOError, OSError) as exc:
+        _sched_logger.info("[调度] 本进程不持锁，跳过后台任务: %s", exc)
+        return False
 
 
 def _cn_now() -> _dt:
@@ -154,8 +180,15 @@ async def start_kline_scheduler():
     from backpack_quant_trading.core.stock_news_alert import try_restore_from_disk
     from backpack_quant_trading.core.polymarket_alert import try_restore_from_disk as try_restore_polymarket
 
+    # 磁盘状态恢复：每个 worker 都需要（内存内状态）
     try_restore_from_disk()
     try_restore_polymarket()
+
+    if not _try_acquire_scheduler_lock():
+        _sched_logger.info("[调度] 跳过后台定时任务（由其他 worker 负责）")
+        return
+
+    _sched_logger.info("[调度] 本进程持锁，启动后台定时任务")
     _asyncio.create_task(_kline_sync_loop())
     _asyncio.create_task(_weekly_bubble_analyze_loop())
     _asyncio.create_task(_bootstrap_research_prices())

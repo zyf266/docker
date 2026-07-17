@@ -562,6 +562,71 @@ async def webhook_unified(request: Request, x_signature: Optional[str] = Header(
         logger.error(f"解析 Webhook 失败: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+
+@app.post("/webhook/agent-confirm")
+async def webhook_agent_confirm(request: Request, x_signature: Optional[str] = Header(None)):
+    """Agent 确认下单专用入口：强制验签 + 禁止广播 + 要求 agent_execution。"""
+    body = await request.body()
+    secret = config.webhook.SECRET
+    if not secret or secret == "your-secret-key-here":
+        raise HTTPException(status_code=503, detail="WEBHOOK_SECRET 未配置或仍为默认值，拒绝 Agent 确认下单")
+    if not x_signature:
+        raise HTTPException(status_code=401, detail="缺少 X-Signature")
+    if not verify_signature(body, x_signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    try:
+        data = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"invalid json: {e}") from e
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="payload must be object")
+    if not data.get("agent_execution"):
+        raise HTTPException(status_code=400, detail="缺少 agent_execution=true")
+    if not data.get("manual_test"):
+        raise HTTPException(status_code=400, detail="缺少 manual_test=true（Agent 确认硬门禁）")
+
+    instance_id = str(data.get("instance_id") or "").strip()
+    if not instance_id:
+        raise HTTPException(status_code=400, detail="必须指定 instance_id（禁止广播）")
+    if instance_id not in engine_instances:
+        raise HTTPException(status_code=404, detail=f"实例 {instance_id} 未注册")
+
+    if not data.get("signal"):
+        data["signal"] = str(data.get("action") or data.get("side") or "").lower()
+    if data.get("signal") not in ("buy", "sell", "close"):
+        raise HTTPException(status_code=400, detail="signal 必须为 buy/sell/close")
+    if not data.get("symbol"):
+        raise HTTPException(status_code=400, detail="缺少 symbol")
+
+    try:
+        allowed = {
+            "signal", "symbol", "instance_id", "strategy_name", "price",
+            "timestamp", "indicator", "action", "exchange", "ticker",
+            "先前仓位", "先前仓位大小",
+        }
+        signal = TradingViewSignal(**{k: v for k, v in data.items() if k in allowed})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"TradingViewSignal 校验失败: {e}") from e
+
+    engine = engine_instances[instance_id]
+    logger.info(
+        "[AgentConfirm] instance=%s symbol=%s signal=%s pending=%s",
+        instance_id,
+        signal.symbol,
+        signal.signal,
+        data.get("pending_id"),
+    )
+    asyncio.create_task(engine.execute_signal(signal, data))
+    return {
+        "status": "success",
+        "message": "Agent confirm signal accepted",
+        "mode": "agent_single",
+        "instance_id": instance_id,
+        "pending_id": data.get("pending_id"),
+    }
+
+
 @app.post("/webhook/{instance_id}")
 async def webhook(instance_id: str, request: Request, x_signature: Optional[str] = Header(None)):
     """接收信号接口 - 支持多实例路由
