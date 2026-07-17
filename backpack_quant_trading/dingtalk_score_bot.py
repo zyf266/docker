@@ -177,7 +177,11 @@ class ManualScoreBotHandler:
                 name="dingtalk-agent-orch",
             ).start()
             try:
-                self._handler.reply_text("收到，分析师 Agent 处理中…", incoming)
+                host = (os.getenv("HOSTNAME") or os.uname().nodename if hasattr(os, "uname") else "")[:12]
+                self._handler.reply_text(
+                    f"收到，分析师 Agent 处理中…〔{host or 'ecs'}〕",
+                    incoming,
+                )
             except Exception:
                 pass
             return
