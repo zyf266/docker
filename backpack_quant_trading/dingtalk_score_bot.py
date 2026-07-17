@@ -166,7 +166,13 @@ class ManualScoreBotHandler:
         )
 
         user_text = _user_text(incoming, raw)
-        logger.info("[钉钉手动评分] 入站 text=%s isReply=%s", user_text[:160], raw.get("text"))
+        stream_mode = os.getenv("_DINGTALK_STREAM_MODE", "score")
+        logger.info(
+            "[钉钉手动评分] 入站 mode=%s text=%s isReply=%s",
+            stream_mode,
+            user_text[:160],
+            raw.get("text"),
+        )
 
         # 多 Agent 编排优先（与旧评分并存；AGENT_ORCH_ENABLED=0 可回滚）
         if should_route_to_agent(user_text):
@@ -177,9 +183,9 @@ class ManualScoreBotHandler:
                 name="dingtalk-agent-orch",
             ).start()
             try:
-                host = (os.getenv("HOSTNAME") or os.uname().nodename if hasattr(os, "uname") else "")[:12]
+                host = (os.getenv("HOSTNAME") or "")[:12] or "ecs"
                 self._handler.reply_text(
-                    f"收到，分析师 Agent 处理中…〔{host or 'ecs'}〕",
+                    f"收到，分析师 Agent 处理中…〔{host}〕",
                     incoming,
                 )
             except Exception:
@@ -195,6 +201,17 @@ class ManualScoreBotHandler:
             ).start()
             try:
                 self._handler.reply_text("收到，正在记录你的评分纠正…", incoming)
+            except Exception:
+                pass
+            return
+
+        if not _legacy_manual_score_allowed(stream_mode):
+            try:
+                self._handler.reply_text(
+                    usage_hint()
+                    + "\n\n（本机器人专用于 Agent；旧「信号评分」请 @OpenClaw小钉）",
+                    incoming,
+                )
             except Exception:
                 pass
             return
@@ -305,18 +322,49 @@ def _build_handler(logger_obj: logging.Logger):
     return _Handler()
 
 
-def main() -> None:
+def _stream_credentials() -> tuple[str, str, str]:
+    """优先用独立 Agent 机器人；未配置则回退旧评分机器人（同 Client 会抢 Stream）。"""
+    agent_id = os.getenv("DINGTALK_AGENT_BOT_CLIENT_ID", "").strip()
+    agent_sec = os.getenv("DINGTALK_AGENT_BOT_CLIENT_SECRET", "").strip()
+    if agent_id and agent_sec:
+        return agent_id, agent_sec, "agent"
+    score_id = os.getenv("DINGTALK_SCORE_BOT_CLIENT_ID", "").strip()
+    score_sec = os.getenv("DINGTALK_SCORE_BOT_CLIENT_SECRET", "").strip()
+    return score_id, score_sec, "score"
+
+
+def _legacy_manual_score_allowed(stream_mode: str) -> bool:
+    """独立 Agent 机器人默认不走旧「AI 信号评分」，避免和 OpenClaw 小钉抢活。"""
     from backpack_quant_trading.core.dingtalk_manual_score import manual_dingtalk_score_enabled
 
     if not manual_dingtalk_score_enabled():
-        logger.error("DINGTALK_MANUAL_SCORE_ENABLED=0，已退出")
+        return False
+    if stream_mode == "agent":
+        return os.getenv("DINGTALK_AGENT_ALLOW_LEGACY_SCORE", "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+    return True
+
+
+def main() -> None:
+    client_id, client_secret, stream_mode = _stream_credentials()
+    if not client_id or not client_secret:
+        logger.error(
+            "缺少钉钉 Stream 凭证：请配置 DINGTALK_AGENT_BOT_CLIENT_ID/SECRET "
+            "（推荐，独立 Agent 机器人）或 DINGTALK_SCORE_BOT_CLIENT_ID/SECRET"
+        )
         sys.exit(1)
 
-    client_id = os.getenv("DINGTALK_SCORE_BOT_CLIENT_ID", "").strip()
-    client_secret = os.getenv("DINGTALK_SCORE_BOT_CLIENT_SECRET", "").strip()
-    if not client_id or not client_secret:
-        logger.error("缺少 DINGTALK_SCORE_BOT_CLIENT_ID / DINGTALK_SCORE_BOT_CLIENT_SECRET")
-        sys.exit(1)
+    # 旧评分机器人未开手动评分且也不是 Agent 专用凭证时才退出
+    if stream_mode != "agent":
+        from backpack_quant_trading.core.dingtalk_manual_score import manual_dingtalk_score_enabled
+
+        if not manual_dingtalk_score_enabled():
+            logger.error("DINGTALK_MANUAL_SCORE_ENABLED=0，已退出")
+            sys.exit(1)
 
     try:
         import dingtalk_stream
@@ -335,13 +383,19 @@ def main() -> None:
     except Exception as exc:
         logger.warning("评分日志初始化失败(继续): %s", exc)
 
+    os.environ["_DINGTALK_STREAM_MODE"] = stream_mode
     credential = dingtalk_stream.Credential(client_id, client_secret)
     client = dingtalk_stream.DingTalkStreamClient(credential)
     client.register_callback_handler(
         dingtalk_stream.chatbot.ChatbotMessage.TOPIC,
         _build_handler(logger),
     )
-    logger.info("钉钉手动评分 Stream 机器人启动 client_id=%s…", client_id[:8])
+    logger.info(
+        "钉钉 Stream 启动 mode=%s client_id=%s… legacy_score=%s",
+        stream_mode,
+        client_id[:8],
+        _legacy_manual_score_allowed(stream_mode),
+    )
     client.start_forever()
 
 

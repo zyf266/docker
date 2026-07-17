@@ -51,11 +51,18 @@ ssh -i $env:USERPROFILE\.ssh\github_actions root@<IP> "echo ok"
 
 ## 钉钉多 Agent（一期）
 
-Compose 服务：`dingtalk-agent`（`command: dingtalk-agent` → Stream 机器人）。需配置：
+Compose 服务：`dingtalk-agent`（Stream）。**推荐新建独立机器人**，与旧 OpenClaw 小钉评分互不抢连接：
 
-- `DINGTALK_SCORE_BOT_CLIENT_ID` / `DINGTALK_SCORE_BOT_CLIENT_SECRET`
-- `AGENT_ORCH_ENABLED=1`（默认开；设 `0` 回滚到仅旧评分）
-- Chroma 与评分反馈共用 data 卷；collection：`agent_prefs` / `agent_reports` / `agent_research` / `agent_reviews`
+| 变量 | 用途 |
+|------|------|
+| `DINGTALK_AGENT_BOT_CLIENT_ID` / `SECRET` | 新 Agent 机器人（ECS `dingtalk-agent` 优先用这个） |
+| `DINGTALK_SCORE_BOT_CLIENT_ID` / `SECRET` | 旧评分机器人（本机 OpenClaw / 旧进程继续用） |
+| `DINGTALK_AGENT_ALLOW_LEGACY_SCORE` | 默认 `0`：新机器人不接「信号评分」 |
+| `AGENT_ORCH_ENABLED` | 默认 `1`；设 `0` 关闭 Agent 编排 |
+
+未配置 `DINGTALK_AGENT_BOT_*` 时会回退到 `DINGTALK_SCORE_BOT_*`（易抢 Stream，不推荐）。
+
+钉钉开放平台操作：创建企业内部应用 → 机器人 → 开启 Stream 模式 → 拿到 Client ID/Secret → 群内添加该机器人。
 
 钉钉指令示例：
 
