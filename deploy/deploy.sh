@@ -79,6 +79,9 @@ fi
 echo "==> 启动 webhook..."
 docker compose up -d webhook
 
+echo "==> 启动 dingtalk-agent（Stream 多 Agent / 旧评分同进程）..."
+docker compose up -d dingtalk-agent
+
 echo "==> 清理旧镜像..."
 docker image prune -f
 
