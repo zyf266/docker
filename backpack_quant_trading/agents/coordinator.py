@@ -231,8 +231,7 @@ def handle(
 
     # 风控：审查过激表述，或对标的跑分析后只返回风控结论；「放行」可 force_allow
     if hit.intent == "risk":
-        from backpack_quant_trading.agents.risk_agent import apply_risk, evaluate_risk
-        from backpack_quant_trading.agents.formatters import format_report_markdown
+        from backpack_quant_trading.agents.risk_agent import evaluate_risk
 
         force = "放行" in (hit.rest or text)
         syms = hit.symbols or extract_symbols(hit.rest or text)

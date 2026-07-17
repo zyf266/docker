@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,9 @@ _CHROMA_DIR = _DATA_DIR / "chroma_score_feedback"
 _LOCK = threading.Lock()
 _CLIENT = None
 _COLLECTIONS: Dict[str, Any] = {}
+# 首次拉 onnx 模型极慢；热路径必须超时跳过，避免钉钉「有回执无正文」
+_OP_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="agent-mem")
+_DEFAULT_TIMEOUT_SEC = float(os.getenv("AGENT_MEMORY_TIMEOUT_SEC", "4") or 4)
 
 KIND_TO_COLLECTION = {
     "agent_prefs": "agent_prefs",
@@ -87,33 +91,50 @@ def _sanitize_meta(metadata: Dict[str, Any]) -> Dict[str, Any]:
     return meta
 
 
+def _upsert_sync(
+    kind: str,
+    memory_id: str,
+    document: str,
+    metadata: Optional[Dict[str, Any]],
+) -> bool:
+    col = _get_collection(kind)
+    if col is None or not memory_id or not (document or "").strip():
+        return False
+    col.upsert(
+        ids=[memory_id],
+        documents=[document],
+        metadatas=[_sanitize_meta(metadata or {})],
+    )
+    return True
+
+
 def upsert_memory(
     kind: str,
     memory_id: str,
     document: str,
     metadata: Optional[Dict[str, Any]] = None,
+    *,
+    timeout_sec: Optional[float] = None,
 ) -> bool:
-    col = _get_collection(kind)
-    if col is None or not memory_id or not (document or "").strip():
+    if not agent_memory_enabled():
         return False
+    wait = _DEFAULT_TIMEOUT_SEC if timeout_sec is None else float(timeout_sec)
+    fut = _OP_POOL.submit(_upsert_sync, kind, memory_id, document, metadata)
     try:
-        col.upsert(
-            ids=[memory_id],
-            documents=[document],
-            metadatas=[_sanitize_meta(metadata or {})],
-        )
-        return True
+        return bool(fut.result(timeout=max(0.5, wait)))
+    except FuturesTimeout:
+        logger.warning("Agent memory upsert 超时(%.1fs)，跳过 kind=%s", wait, kind)
+        return False
     except Exception as exc:
         logger.exception("Agent memory upsert 失败: %s", exc)
         return False
 
 
-def query_memory(
+def _query_sync(
     kind: str,
     query_text: str,
-    *,
-    n_results: int = 5,
-    filters: Optional[Dict[str, Any]] = None,
+    n_results: int,
+    filters: Optional[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     col = _get_collection(kind)
     if col is None or not (query_text or "").strip():
@@ -125,19 +146,15 @@ def query_memory(
         "include": ["documents", "metadatas", "distances"],
     }
     where = {k: v for k, v in (filters or {}).items() if v not in (None, "")}
-    try:
-        if where:
-            try:
-                kwargs["where"] = where
-                res = col.query(**kwargs)
-            except Exception:
-                kwargs.pop("where", None)
-                res = col.query(**kwargs)
-        else:
+    if where:
+        try:
+            kwargs["where"] = where
             res = col.query(**kwargs)
-    except Exception as exc:
-        logger.warning("Agent memory query 失败: %s", exc)
-        return []
+        except Exception:
+            kwargs.pop("where", None)
+            res = col.query(**kwargs)
+    else:
+        res = col.query(**kwargs)
 
     out: List[Dict[str, Any]] = []
     ids = (res.get("ids") or [[]])[0]
@@ -152,6 +169,28 @@ def query_memory(
             "distance": dists[i] if i < len(dists) else None,
         })
     return out
+
+
+def query_memory(
+    kind: str,
+    query_text: str,
+    *,
+    n_results: int = 5,
+    filters: Optional[Dict[str, Any]] = None,
+    timeout_sec: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    if not agent_memory_enabled():
+        return []
+    wait = _DEFAULT_TIMEOUT_SEC if timeout_sec is None else float(timeout_sec)
+    fut = _OP_POOL.submit(_query_sync, kind, query_text, n_results, filters)
+    try:
+        return fut.result(timeout=max(0.5, wait))
+    except FuturesTimeout:
+        logger.warning("Agent memory query 超时(%.1fs)，跳过 kind=%s", wait, kind)
+        return []
+    except Exception as exc:
+        logger.warning("Agent memory query 失败: %s", exc)
+        return []
 
 
 def count_memory(kind: str) -> int:

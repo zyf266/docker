@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -138,29 +139,33 @@ last_close: {last_close}
 
 
 def persist_report(report: AnalyzeReport) -> None:
-    try:
-        mid = "rpt_" + hashlib.sha1(
-            f"{report.agent_id.value}|{report.symbol}|{int(time.time())}".encode()
-        ).hexdigest()[:16]
-        doc = (
-            f"[{report.market.value}] {report.symbol} action={report.action} "
-            f"support={report.support} resistance={report.resistance} | {report.rationale[:500]}"
-        )
-        upsert_memory(
-            "agent_reports",
-            mid,
-            doc,
-            {
-                "symbol": report.symbol.upper(),
-                "market": report.market.value,
-                "agent_id": report.agent_id.value,
-                "action": report.action,
-                "scope": "report",
-                "ts": int(time.time()),
-            },
-        )
-    except Exception as exc:
-        logger.debug("persist report failed: %s", exc)
+    def _job() -> None:
+        try:
+            mid = "rpt_" + hashlib.sha1(
+                f"{report.agent_id.value}|{report.symbol}|{int(time.time())}".encode()
+            ).hexdigest()[:16]
+            doc = (
+                f"[{report.market.value}] {report.symbol} action={report.action} "
+                f"support={report.support} resistance={report.resistance} | {report.rationale[:500]}"
+            )
+            upsert_memory(
+                "agent_reports",
+                mid,
+                doc,
+                {
+                    "symbol": report.symbol.upper(),
+                    "market": report.market.value,
+                    "agent_id": report.agent_id.value,
+                    "action": report.action,
+                    "scope": "report",
+                    "ts": int(time.time()),
+                },
+            )
+        except Exception as exc:
+            logger.debug("persist report failed: %s", exc)
+
+    # 异步落库，避免首次 Chroma/onnx 下载阻塞钉钉回复
+    threading.Thread(target=_job, daemon=True, name="agent-persist-report").start()
 
 
 def _derive_grade_rec(action: str, score: Optional[float], structured: Dict[str, Any]) -> Tuple[str, str]:
