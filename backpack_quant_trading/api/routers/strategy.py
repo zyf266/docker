@@ -251,6 +251,7 @@ def run_scheduled_kline_sync() -> dict:
     result: Dict[str, Any] = {
         "hype_4h": sync_hype_klines_hl(),
         "eth_2h": sync_eth_klines_hl(),
+        "alpha_eth_2h": sync_alpha_eth_klines_hl(),
     }
     for spec in _US_STOCK_KLINE_SPECS:
         key = str(spec.get("ticker") or "").lower()
@@ -739,6 +740,8 @@ def _maybe_sync_crypto_klines() -> None:
     try:
         if _is_kline_stale(ETH_ONLY_STRATEGY_NAME, ETH_ONLY_SYMBOL, ETH_ONLY_TIMEFRAME, 3):
             sync_eth_klines_hl()
+        if _is_kline_stale(ALPHA_ETH_STRATEGY_NAME, ALPHA_ETH_SYMBOL, ALPHA_ETH_TIMEFRAME, 3):
+            sync_alpha_eth_klines_hl()
         if _is_kline_stale(STRATEGY_NAME, SYMBOL, TIMEFRAME, 5):
             sync_hype_klines_hl()
     except Exception as exc:
@@ -901,6 +904,225 @@ def get_eth_only_2h_overview():
         raise HTTPException(404, "尚未导入 ETH 回测数据")
     initial_capital = 30_000_000
     return _compute_overview_from_trades_klines(trades, kls, initial_capital, "ETH 趋势策略")
+
+
+# ---------- 阿尔法策略 · ETH（alpha-eth-2h）----------
+
+ALPHA_ETH_STRATEGY_NAME = "ALPHA_ETH_2H"
+ALPHA_ETH_SYMBOL = "ETHUSDT"
+ALPHA_ETH_TIMEFRAME = "2h"
+ALPHA_ETH_CSV_PATH = PROJECT_ROOT / "阿尔法策略_ETHUSDT_2H_交易数据.csv"
+ALPHA_ETH_INITIAL_CAPITAL = 1_000_000
+
+
+def sync_alpha_eth_klines_hl() -> dict:
+    """从 Hyperliquid 增量同步阿尔法 ETH 2H K 线到数据库。"""
+    session = db_manager.get_session()
+    try:
+        last = (
+            session.query(StrategyKline)
+            .filter_by(
+                strategy_name=ALPHA_ETH_STRATEGY_NAME,
+                symbol=ALPHA_ETH_SYMBOL,
+                timeframe=ALPHA_ETH_TIMEFRAME,
+            )
+            .order_by(StrategyKline.timestamp.desc())
+            .first()
+        )
+        last_ts = last.timestamp if (last and last.timestamp) else None
+    finally:
+        session.close()
+
+    now_ms = int(_time.time() * 1000)
+    if last_ts is None:
+        # 交易从 2026-07 起，向前多拉约 45 天作图表 warmup
+        start_ms = int(datetime(2026, 5, 20, tzinfo=timezone.utc).timestamp() * 1000)
+    else:
+        start_ms = int(last_ts.replace(tzinfo=timezone.utc).timestamp() * 1000) + 1
+
+    bars = fetch_hl_klines_sync("ETH", "2h", start_ms, now_ms)
+    if not bars:
+        return {"inserted": 0, "source": "hyperliquid"}
+
+    rows = []
+    for bar in bars:
+        ts = datetime.fromtimestamp(bar["t"] / 1000)
+        if last_ts and ts <= last_ts:
+            continue
+        rows.append({
+            "strategy_name": ALPHA_ETH_STRATEGY_NAME,
+            "symbol": ALPHA_ETH_SYMBOL,
+            "timeframe": ALPHA_ETH_TIMEFRAME,
+            "timestamp": ts,
+            "open": PyDecimal(str(bar["o"])),
+            "high": PyDecimal(str(bar["h"])),
+            "low": PyDecimal(str(bar["l"])),
+            "close": PyDecimal(str(bar["c"])),
+            "volume": PyDecimal(str(bar["v"])),
+            "source": "hyperliquid",
+        })
+
+    _bulk_insert_klines_dicts(rows)
+    _hl_logger.info("[HL K线] ALPHA ETH 2H 写入 %s 条", len(rows))
+    return {"inserted": len(rows), "source": "hyperliquid"}
+
+
+def _ensure_alpha_eth_trades_loaded() -> None:
+    session = db_manager.get_session()
+    try:
+        exists = (
+            session.query(StrategyBacktestTrade.id)
+            .filter_by(
+                strategy_name=ALPHA_ETH_STRATEGY_NAME,
+                symbol=ALPHA_ETH_SYMBOL,
+                timeframe=ALPHA_ETH_TIMEFRAME,
+            )
+            .first()
+        )
+    finally:
+        session.close()
+    if exists:
+        return
+    import_alpha_eth_csv()
+
+
+@router.post("/alpha-eth-2h/import-csv", summary="导入阿尔法 ETH 2H 策略回测 CSV")
+def import_alpha_eth_csv():
+    if not ALPHA_ETH_CSV_PATH.exists():
+        raise HTTPException(404, f"CSV 文件不存在: {ALPHA_ETH_CSV_PATH}")
+    df = pd.read_csv(ALPHA_ETH_CSV_PATH, encoding="utf-8")
+    df = df.rename(columns={
+        "交易 #": "trade_no", "类型": "trade_type", "日期和时间": "trade_time",
+        "信号": "signal", "价格 USDT": "price", "仓位大小（数量）": "position_qty",
+        "仓位大小（价值）": "position_value", "净损益 USDT": "pnl", "净损益 %": "pnl_pct",
+        "有利波动 USDT": "runup", "有利波动 %": "runup_pct", "不利波动 USDT": "drawdown",
+        "不利波动 %": "drawdown_pct", "累计P&L USDT": "cum_pnl", "累计P&L %": "cum_pnl_pct",
+    })
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "strategy_name": ALPHA_ETH_STRATEGY_NAME,
+            "symbol": ALPHA_ETH_SYMBOL,
+            "timeframe": ALPHA_ETH_TIMEFRAME,
+            "trade_no": int(row["trade_no"]),
+            "trade_type": str(row["trade_type"]),
+            "signal": str(row.get("signal") or ""),
+            "trade_time": datetime.strptime(str(row["trade_time"]), "%Y-%m-%d %H:%M"),
+            "price": float(row["price"]),
+            "position_qty": float(row["position_qty"]),
+            "position_value": float(row["position_value"]),
+            "pnl": float(row["pnl"]),
+            "pnl_pct": float(row["pnl_pct"]),
+            "runup": float(row["runup"]) if pd.notna(row["runup"]) else 0.0,
+            "runup_pct": float(row["runup_pct"]) if pd.notna(row["runup_pct"]) else 0.0,
+            "drawdown": float(row["drawdown"]) if pd.notna(row["drawdown"]) else 0.0,
+            "drawdown_pct": float(row["drawdown_pct"]) if pd.notna(row["drawdown_pct"]) else 0.0,
+            "cum_pnl": float(row["cum_pnl"]),
+            "cum_pnl_pct": float(row["cum_pnl_pct"]),
+        })
+    session = db_manager.get_session()
+    try:
+        session.query(StrategyBacktestTrade).filter_by(
+            strategy_name=ALPHA_ETH_STRATEGY_NAME,
+            symbol=ALPHA_ETH_SYMBOL,
+            timeframe=ALPHA_ETH_TIMEFRAME,
+        ).delete(synchronize_session=False)
+        for t in records:
+            session.add(StrategyBacktestTrade(**t))
+        session.commit()
+    finally:
+        session.close()
+    return {"rows": len(records)}
+
+
+@router.get("/alpha-eth-2h/trades", response_model=List[BacktestTradeOut], summary="阿尔法 ETH 交易明细")
+def get_alpha_eth_2h_trades():
+    _ensure_alpha_eth_trades_loaded()
+    session = db_manager.get_session()
+    try:
+        rows = (
+            session.query(StrategyBacktestTrade)
+            .filter_by(
+                strategy_name=ALPHA_ETH_STRATEGY_NAME,
+                symbol=ALPHA_ETH_SYMBOL,
+                timeframe=ALPHA_ETH_TIMEFRAME,
+            )
+            .order_by(StrategyBacktestTrade.trade_time.asc(), StrategyBacktestTrade.trade_no.asc())
+            .all()
+        )
+    finally:
+        session.close()
+    rows = [r for r in rows if r is not None]
+    return [BacktestTradeOut(
+        trade_no=r.trade_no, trade_type=r.trade_type, signal=r.signal, trade_time=r.trade_time,
+        price=float(r.price), position_qty=float(r.position_qty), position_value=float(r.position_value),
+        pnl=float(r.pnl), pnl_pct=float(r.pnl_pct),
+        runup=float(r.runup) if r.runup is not None else None,
+        runup_pct=float(r.runup_pct) if r.runup_pct is not None else None,
+        drawdown=float(r.drawdown) if r.drawdown is not None else None,
+        drawdown_pct=float(r.drawdown_pct) if r.drawdown_pct is not None else None,
+        cum_pnl=float(r.cum_pnl) if r.cum_pnl is not None else None,
+        cum_pnl_pct=float(r.cum_pnl_pct) if r.cum_pnl_pct is not None else None,
+    ) for r in rows]
+
+
+@router.get("/alpha-eth-2h/klines", response_model=List[KlinePoint], summary="阿尔法 ETH K 线")
+def get_alpha_eth_2h_klines():
+    _maybe_sync_crypto_klines_async()
+    session = db_manager.get_session()
+    try:
+        q = (
+            session.query(StrategyKline)
+            .filter_by(
+                strategy_name=ALPHA_ETH_STRATEGY_NAME,
+                symbol=ALPHA_ETH_SYMBOL,
+                timeframe=ALPHA_ETH_TIMEFRAME,
+            )
+            .order_by(StrategyKline.timestamp.asc())
+        )
+        return [KlinePoint(timestamp=r.timestamp, open=float(r.open), high=float(r.high),
+                           low=float(r.low), close=float(r.close), volume=float(r.volume)) for r in q.all()]
+    finally:
+        session.close()
+
+
+@router.post("/alpha-eth-2h/sync-klines", summary="从 Hyperliquid 增量同步阿尔法 ETH 2H K 线")
+def sync_alpha_eth_2h_klines():
+    return sync_alpha_eth_klines_hl()
+
+
+@router.get("/alpha-eth-2h/overview", response_model=StrategyOverview, summary="阿尔法 ETH 策略总览")
+def get_alpha_eth_2h_overview():
+    _ensure_alpha_eth_trades_loaded()
+    session = db_manager.get_session()
+    try:
+        trades = (
+            session.query(StrategyBacktestTrade)
+            .filter_by(
+                strategy_name=ALPHA_ETH_STRATEGY_NAME,
+                symbol=ALPHA_ETH_SYMBOL,
+                timeframe=ALPHA_ETH_TIMEFRAME,
+            )
+            .order_by(StrategyBacktestTrade.trade_time.asc(), StrategyBacktestTrade.trade_no.asc())
+            .all()
+        )
+        kls = (
+            session.query(StrategyKline)
+            .filter_by(
+                strategy_name=ALPHA_ETH_STRATEGY_NAME,
+                symbol=ALPHA_ETH_SYMBOL,
+                timeframe=ALPHA_ETH_TIMEFRAME,
+            )
+            .order_by(StrategyKline.timestamp.asc())
+            .all()
+        )
+    finally:
+        session.close()
+    if not trades:
+        raise HTTPException(404, "尚未导入阿尔法 ETH 回测数据")
+    return _compute_overview_from_trades_klines(
+        trades, kls, ALPHA_ETH_INITIAL_CAPITAL, "阿尔法策略·ETH"
+    )
 
 
 # ---------- 大宗（黄金）策略 PAXG_2H ----------
@@ -1387,6 +1609,23 @@ def _matrix_strategy_specs() -> List[Tuple[str, Any, float, Optional[float], flo
         finally:
             session.close()
 
+    def _alpha_eth_trades():
+        _ensure_alpha_eth_trades_loaded()
+        session = db_manager.get_session()
+        try:
+            return (
+                session.query(StrategyBacktestTrade)
+                .filter_by(
+                    strategy_name=ALPHA_ETH_STRATEGY_NAME,
+                    symbol=ALPHA_ETH_SYMBOL,
+                    timeframe=ALPHA_ETH_TIMEFRAME,
+                )
+                .order_by(StrategyBacktestTrade.trade_time.asc(), StrategyBacktestTrade.trade_no.asc())
+                .all()
+            )
+        finally:
+            session.close()
+
     def _hype_trades():
         _ensure_trades_loaded_from_csv()
         session = db_manager.get_session()
@@ -1466,6 +1705,7 @@ def _matrix_strategy_specs() -> List[Tuple[str, Any, float, Optional[float], flo
     ]
 
     return [
+        ("alpha-eth", _alpha_eth_trades, ALPHA_ETH_INITIAL_CAPITAL, None, 1.0, "USD"),
         ("eth", _eth_only_trades, 30_000_000, None, 1.0, "USD"),
         ("hype", _hype_trades, 1_000_000, None, 1.0, "USD"),
         ("paxg", _paxg_trades, 2_000_000, 4_000_000, 1.0, "USD"),

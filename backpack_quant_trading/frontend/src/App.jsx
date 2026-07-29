@@ -17,6 +17,7 @@ import EthTrendStrategy from './views/EthTrendStrategy'
 import PaxgTrendStrategy from './views/PaxgTrendStrategy'
 import Nas100TrendStrategy from './views/Nas100TrendStrategy'
 import EthOnlyStrategy from './views/EthOnlyStrategy'
+import AlphaEthStrategy from './views/AlphaEthStrategy'
 import OkxConsole from './views/OkxConsole'
 import UsMomentumIntcStrategy from './views/UsMomentumIntcStrategy'
 import UsMomentumNvdaStrategy from './views/UsMomentumNvdaStrategy'
@@ -79,6 +80,7 @@ function App() {
           <Route path="ai-stock/:code/news" element={<AiStockNewsHistory />} />
           <Route path="strategies" element={<StrategyMatrixAlt />} />
           <Route path="strategies/eth-trend" element={<EthTrendStrategy />} />
+          <Route path="strategies/alpha-eth" element={<AlphaEthStrategy />} />
           <Route path="strategies/eth-only" element={<EthOnlyStrategy />} />
           <Route path="strategies/paxg-trend" element={<PaxgTrendStrategy />} />
           <Route path="strategies/nas100-trend" element={<Nas100TrendStrategy />} />

@@ -7,6 +7,7 @@ import { formatProfitFactor } from '../utils/formatProfitFactor'
 import {
   getEthTrendOverview,
   getEthOnlyOverview,
+  getAlphaEthOverview,
   getPaxgTrendOverview,
   getNas100TrendOverview,
   getIntcOverview,
@@ -112,6 +113,19 @@ const strategies = [
     isRiskWarning: true,
   },
   {
+    to: '/strategies/alpha-eth',
+    icon: 'Ξ',
+    title: '阿尔法策略·ETH',
+    code: 'ML-ALP',
+    description: '以太坊阿尔法策略，本金 100 万、约 50% 仓位，基于 2 小时周期趋势信号纪律性进出，捕捉 ETH 中短期趋势 Alpha。',
+    status: '运行中',
+    statusColor: 'bg-green-500 text-white',
+    progress: 85,
+    progressColor: '#3b82f6',
+    riskIndex: '中风险',
+    isRiskWarning: true,
+  },
+  {
     to: '/strategies/eth-only',
     icon: '₿',
     title: '加密趋势追踪策略 · ETH',
@@ -189,6 +203,7 @@ export default function StrategyMatrixAlt() {
 
   useEffect(() => {
     const reqs = [
+      { key: 'alpha-eth', fn: getAlphaEthOverview },
       { key: 'eth', fn: getEthOnlyOverview },
       { key: 'hype', fn: getEthTrendOverview },
       { key: 'paxg', fn: getPaxgTrendOverview },
@@ -281,13 +296,13 @@ export default function StrategyMatrixAlt() {
   ]
 
   // 与 strategies 数组顺序一致
-  const strategyKeys = ['nvda', 'intc', 'mu', '300308', '603986', '688146', '002837', 'eth', 'hype', 'paxg', 'nas100']
-  const useLiveDrawdown = new Set(['intc', 'nvda', 'mu', '300308', '603986', '688146', '002837'])
+  const strategyKeys = ['nvda', 'intc', 'mu', '300308', '603986', '688146', '002837', 'alpha-eth', 'eth', 'hype', 'paxg', 'nas100']
+  const useLiveDrawdown = new Set(['intc', 'nvda', 'mu', '300308', '603986', '688146', '002837', 'alpha-eth'])
   const enrichedStrategies = strategies.map((s, i) => {
     const key = strategyKeys[i]
     const ov = overviews[key]
-    const fixedDrawdown = ['--', '--', '--', '--', '--', '--', '--', '-3.48%', '-6.47%', '-1.44%', '-4%']
-    const fixedProfitFactor = ['--', '--', '--', '--', '--', '--', '--', '2.58', '2.84', '2.25', '0.71']
+    const fixedDrawdown = ['--', '--', '--', '--', '--', '--', '--', '--', '-3.48%', '-6.47%', '-1.44%', '-4%']
+    const fixedProfitFactor = ['--', '--', '--', '--', '--', '--', '--', '2.75', '2.58', '2.84', '2.25', '0.71']
     const liveDrawdown = ov?.max_drawdown_pct != null
       ? `-${Number(ov.max_drawdown_pct).toFixed(2)}%`
       : null
