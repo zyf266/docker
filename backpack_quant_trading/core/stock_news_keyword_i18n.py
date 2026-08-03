@@ -105,8 +105,10 @@ TERM_ALIASES: Dict[str, Tuple[str, ...]] = {
     "并购重组": ("并购重组", "merger", "acquisition", "M&A", "takeover"),
     "回购股份": ("回购股份", "buyback", "share repurchase", "repurchase program"),
     "提高股息": ("提高股息", "dividend increase", "raised dividend", "hikes dividend"),
-    "机构上调评级": ("机构上调评级", "upgrade", "upgrades", "upgraded", "raised rating", "raises rating", "outperform", "buy rating"),
-    "目标价上调": ("目标价上调", "raised price target", "raises price target", "raise price target", "higher price target", "target raised", "price target raised"),
+    "机构上调评级": ("机构上调评级", "上调评级", "上调…评级", "买入评级", "增持评级", "upgrade", "upgrades", "upgraded", "raised rating", "raises rating", "outperform", "buy rating"),
+    "目标价上调": ("目标价上调", "上调目标价", "上调…目标价", "raised price target", "raises price target", "raise price target", "higher price target", "target raised", "price target raised"),
+    "机构下调评级": ("机构下调评级", "下调评级", "下调…评级", "卖出评级", "减持评级", "downgrade", "downgrades", "downgraded", "cut rating", "cuts rating", "underperform", "sell rating"),
+    "目标价下调": ("目标价下调", "下调目标价", "下调…目标价", "lowered price target", "lowers price target", "lower price target", "cut price target", "cuts price target", "target cut", "price target cut", "price target lowered"),
     "行业政策利好": ("行业政策利好", "policy support", "favorable policy", "subsidy", "stimulus"),
     "芯片法案": ("芯片法案", "CHIPS Act", "chip act", "semiconductor bill"),
     "产能扩张": ("产能扩张", "capacity expansion", "ramp production", "fab expansion"),
@@ -124,8 +126,6 @@ TERM_ALIASES: Dict[str, Tuple[str, ...]] = {
     "财务造假": ("财务造假", "accounting fraud", "financial fraud", "fraud"),
     "高管减持": ("高管减持", "insider selling", "executive sold", "CEO sold"),
     "大股东减持": ("大股东减持", "major shareholder sold", "stake sale", "block sale"),
-    "机构下调评级": ("机构下调评级", "downgrade", "downgrades", "downgraded", "cut rating", "cuts rating", "underperform", "sell rating"),
-    "目标价下调": ("目标价下调", "lowered price target", "lowers price target", "lower price target", "cut price target", "target cut", "price target cut"),
     "债务违约": ("债务违约", "debt default", "default on debt"),
     "供应链中断": ("供应链中断", "supply chain disruption", "supply shortage", "supply constraint"),
     "火灾事故": ("火灾事故", "fire", "plant fire", "factory fire"),
@@ -150,7 +150,7 @@ COMPANY_ALIASES: Dict[str, Tuple[str, ...]] = {
     "辉达": ("辉达", "NVDA", "Nvidia"),
     "英特尔": ("英特尔", "INTC", "Intel"),
     "美光": ("美光", "MU", "Micron"),
-    "闪迪": ("闪迪", "SNDK", "SanDisk", "Western Digital", "WDC"),
+    "闪迪": ("闪迪", "SNDK", "SanDisk"),
     "西部数据": ("西部数据", "WDC", "Western Digital"),
     "苹果": ("苹果", "AAPL", "Apple"),
     "微软": ("微软", "MSFT", "Microsoft"),
@@ -179,12 +179,16 @@ def _build_index() -> None:
         return
     for table in (TERM_ALIASES, COMPANY_ALIASES):
         for key, aliases in table.items():
-            bucket: Set[str] = set(_ALIAS_INDEX.get(key, ()))
-            bucket.add(key)
-            bucket.update(aliases)
-            for a in aliases:
-                _ALIAS_INDEX[a.casefold()] = tuple(sorted(bucket, key=len, reverse=True))
-            _ALIAS_INDEX[key.casefold()] = tuple(sorted(bucket, key=len, reverse=True))
+            bucket: Set[str] = {key, *aliases}
+            # 与已有同义词组合并，避免「辉达」覆盖「英伟达」导致 NVDA 丢中文名
+            for token in list(bucket):
+                prev = _ALIAS_INDEX.get(token.casefold())
+                if prev:
+                    bucket.update(prev)
+            merged = tuple(sorted(bucket, key=len, reverse=True))
+            for token in bucket:
+                _ALIAS_INDEX[token.casefold()] = merged
+            _ALIAS_INDEX[key.casefold()] = merged
 
 
 def expand_terms(terms: Iterable[str]) -> List[str]:
@@ -262,6 +266,11 @@ def _term_in_text(text_cf: str, term: str, *, strict_ticker: bool = False) -> bo
     if strict_ticker and _is_ascii_ticker(raw):
         pat = r"(?<![a-z0-9])" + re.escape(key) + r"(?![a-z0-9])"
         return bool(re.search(pat, text_cf))
+    # 「上调…目标价」：中间可插公司名
+    if "…" in key or "..." in key:
+        parts = [p for p in re.split(r"…|\.\.\.", key) if p]
+        if len(parts) >= 2 and all(p in text_cf for p in parts):
+            return True
     if key in text_cf:
         return True
     parts = [p for p in key.split() if len(p) > 2]
@@ -277,19 +286,21 @@ def _term_in_text(text_cf: str, term: str, *, strict_ticker: bool = False) -> bo
 
 
 def text_matches_any_term(text: str, terms: Iterable[str]) -> bool:
+    """按给定词列表匹配正文。调用方应对用户原始词先 expand_terms 一次，勿二次展开。"""
     if not text:
         return False
-    expanded = expand_terms(terms)
     t = text.casefold()
-    return any(_term_in_text(t, kw) for kw in expanded if kw)
+    # 禁止对已展开同义词再 expand：共享英文词（如 drop）会串到无关中文词（跌超）
+    return any(_term_in_text(t, str(kw)) for kw in terms if kw)
 
 
 def text_matches_watch_terms(text: str, terms: Iterable[str]) -> bool:
-    """自选代码用边界匹配，避免 MU 误命中 MUFG 等。"""
+    """自选代码用边界匹配，避免 MU 误命中 MUFG 等。terms 应为 expand_terms 后的列表。"""
     if not text:
         return False
-    expanded = expand_terms(terms)
     t = text.casefold()
     return any(
-        _term_in_text(t, kw, strict_ticker=_is_ascii_ticker(kw)) for kw in expanded if kw
+        _term_in_text(t, str(kw), strict_ticker=_is_ascii_ticker(str(kw)))
+        for kw in terms
+        if kw
     )

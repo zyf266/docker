@@ -4,8 +4,9 @@ TradingView 信号 → 钉钉推送机器人（Flask，端口默认 5001）
 
 在不改变你原有“信号预警推送”逻辑的前提下，新增旁路：
 - 当信号的 ID/筛选ID = 实盘交易 时：
-  - 调用本项目的 `backpack_quant_trading.core.crypto_signal_scorer.run_signal_score()` 做 AI 评分
-  - 将评分卡片发送到指定钉钉群（CONFIG.live_trade_score_webhook）
+  - 默认走 Agent 美股/加密分析师评分卡（AGENT_REPLACE_LEGACY_PUSH）
+  - 推送到 CONFIG.live_trade_score_webhook（信号评分群）
+  - 仅当显式关闭 Agent 替换时，才回退旧 DeepSeek 海报链路
 
 同时修复常见问题：
 - PowerShell / TradingView 文本消息中文乱码：对 raw bytes 做多编码尝试解码
@@ -712,10 +713,6 @@ def main() -> None:
 
     def _score_and_push_live_trade(raw: dict, parsed: dict) -> None:
         try:
-            from backpack_quant_trading.core.crypto_signal_scorer import (
-                run_signal_score_and_push_dingtalk,
-            )
-
             symbol = (parsed.get("symbol") or raw.get("交易品种") or raw.get("symbol") or raw.get("coin") or "").strip()
             tf_raw = (raw.get("周期") or raw.get("K线级别") or raw.get("timeframe") or parsed.get("timeframe") or "").strip()
             timeframe = _normalize_tv_timeframe(tf_raw) or ""
@@ -742,7 +739,40 @@ def main() -> None:
             except Exception:
                 pass
 
-            print(f"📊 实盘交易评分旁路 | symbol={symbol} action={action} tf={timeframe or '—'}")
+            # 新链路：Agent 评分卡（停用旧「AI 信号评分」海报）
+            try:
+                from backpack_quant_trading.agents.scheduler_hooks import (
+                    agent_replace_legacy_push,
+                    schedule_agent_signal_push,
+                )
+                from backpack_quant_trading.core.signal_asset_router import classify_signal_asset
+
+                if agent_replace_legacy_push():
+                    kind = classify_signal_asset(symbol, merged_raw)
+                    market = "us_stock" if kind == "us_stock" else "crypto"
+                    print(
+                        f"📊 实盘交易 → Agent评分 | symbol={symbol} action={action} "
+                        f"tf={timeframe or '—'} market={market}"
+                    )
+                    schedule_agent_signal_push(
+                        symbol,
+                        action,
+                        timeframe=timeframe,
+                        market=market,
+                        webhook_raw=merged_raw,
+                    )
+                    print("✅ 已调度 Agent 推送（信号评分群）")
+                    return
+            except Exception as exc:
+                print(f"❌ Agent 评分调度失败（旧链路已停用）: {exc}")
+                return
+
+            # 仅 AGENT_REPLACE_LEGACY_PUSH=0 时保留旧海报
+            from backpack_quant_trading.core.crypto_signal_scorer import (
+                run_signal_score_and_push_dingtalk,
+            )
+
+            print(f"📊 实盘交易评分旁路(旧) | symbol={symbol} action={action} tf={timeframe or '—'}")
             res = run_signal_score_and_push_dingtalk(
                 symbol,
                 action,

@@ -1,9 +1,26 @@
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 import sys
+
+# 全局：日志时间戳统一为北京时间（UTC+8），不依赖容器 TZ / tzdata
+_BJ_TZ = timezone(timedelta(hours=8))
+
+
+def _beijing_format_time(self, record, datefmt=None):
+    dt = datetime.fromtimestamp(record.created, tz=_BJ_TZ)
+    if datefmt:
+        return dt.strftime(datefmt)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+# 覆盖标准 Formatter，使所有 FileHandler/StreamHandler 一律用北京时间
+logging.Formatter.formatTime = _beijing_format_time  # type: ignore[method-assign]
+
+# 进程环境也设为上海，便于系统时间相关库
+os.environ.setdefault("TZ", "Asia/Shanghai")
 
 
 # Windows下的安全文件处理器（每条写入后 flush，便于 tail/实时查看）

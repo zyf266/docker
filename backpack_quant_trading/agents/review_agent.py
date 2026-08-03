@@ -144,6 +144,83 @@ def review(
     return result
 
 
+def auto_review_due_reports(*, days: int = 3, limit: int = 20) -> Dict[str, Any]:
+    """
+    扫 agent_reports：ts 早于 N 天、同 symbol 尚无较新 agent_reviews 的条目，批量 review。
+    """
+    import os
+    from datetime import datetime, timezone
+
+    try:
+        days = int(os.getenv("AGENT_AUTO_REVIEW_DAYS", str(days)) or days)
+    except Exception:
+        days = max(1, int(days))
+    days = max(1, days)
+    cutoff = int(time.time()) - days * 86400
+
+    # 取一批较旧报告：用宽泛 query 再按 metadata.ts 过滤
+    reports = query_memory("agent_reports", "历史分析建议 复盘", n_results=min(limit * 2, 40))
+    due: list = []
+    seen_sym = set()
+    for row in reports:
+        meta = row.get("metadata") or {}
+        sym = str(meta.get("symbol") or "").upper()
+        if not sym:
+            parsed = _parse_report_doc(str(row.get("document") or ""))
+            sym = str(parsed.get("symbol") or "").upper()
+        if not sym or sym in seen_sym:
+            continue
+        ts = meta.get("ts")
+        try:
+            ts_i = int(ts) if ts not in (None, "") else 0
+        except Exception:
+            ts_i = 0
+        if ts_i and ts_i > cutoff:
+            # 仍太新，跳过
+            continue
+        # 是否已有较新复盘
+        revs = query_memory(
+            "agent_reviews",
+            f"{sym} 复盘",
+            n_results=3,
+            filters={"symbol": sym},
+        )
+        has_fresh = False
+        for rv in revs:
+            rmeta = rv.get("metadata") or {}
+            try:
+                rts = int(rmeta.get("ts") or 0)
+            except Exception:
+                rts = 0
+            if rts >= (ts_i or 0) and rts >= cutoff:
+                has_fresh = True
+                break
+        if has_fresh:
+            continue
+        seen_sym.add(sym)
+        due.append((sym, str(meta.get("market") or ""), row))
+        if len(due) >= limit:
+            break
+
+    results = []
+    parts = []
+    for sym, mkt, _row in due:
+        r = review(sym, market=mkt)
+        results.append(r)
+        parts.append(format_review_markdown(r))
+
+    md = "## 提醒 · 自动复盘\n\n" + ("\n\n".join(parts) if parts else "（本轮无到期报告）")
+    return {
+        "ok": True,
+        "days": days,
+        "reviewed": len(results),
+        "results": results,
+        "markdown": md[:3500],
+        "cutoff": cutoff,
+        "cutoff_iso": datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat(),
+    }
+
+
 def format_review_markdown(result: Dict[str, Any]) -> str:
     if not result.get("ok"):
         return f"### 复盘\n- 失败: {result.get('error')}"

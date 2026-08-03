@@ -9,7 +9,7 @@ import requests
 import psutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Any
 import threading
 import asyncio
 
@@ -25,6 +25,13 @@ from backpack_quant_trading.strategy.hype_adaptive_short import HYPEAdaptiveShor
 from backpack_quant_trading.strategy.eth_trend_short import ETHTrendShortStrategy
 from backpack_quant_trading.strategy.adaptive_long_strategy import AdaptiveLongStrategy
 from backpack_quant_trading.strategy.auto_close_strategy import AutoCloseStrategy
+from backpack_quant_trading.core.live_instance_store import (
+    ensure_instance_event_logger,
+    load_secrets_from_config,
+    persist_live_config,
+    strip_secrets_for_api,
+    write_instance_event,
+)
 try:
     from backpack_quant_trading.strategy.adaptive_short_strategy import AdaptiveShortStrategy
 except Exception as _e:
@@ -32,6 +39,34 @@ except Exception as _e:
     logging.getLogger(__name__).error(f"[启动保护] 导入 AdaptiveShortStrategy 失败: {repr(_e)}")
 
 logger = logging.getLogger(__name__)
+ensure_instance_event_logger()
+
+
+def _alert_live_trade_error(
+    title: str,
+    exc: BaseException,
+    *,
+    instance_id: str = "",
+    exchange: str = "",
+    symbol: str = "",
+    strategy: str = "",
+) -> None:
+    """实盘启动/运行失败推运维钉钉（失败不影响主流程）。"""
+    try:
+        from backpack_quant_trading.core.live_trade_dingtalk_alert import notify_live_trade_error
+
+        notify_live_trade_error(
+            title,
+            detail=str(exc),
+            instance_id=instance_id,
+            exchange=exchange,
+            symbol=symbol,
+            strategy=strategy,
+            exc=exc,
+        )
+    except Exception:
+        pass
+
 
 router = APIRouter()
 WEBHOOK_PORT = 8005
@@ -157,6 +192,26 @@ def _pick_adaptive_long_instance_for_webhook(
     return None
 
 
+def _select_instances_per_exchange(
+    candidates: List[Tuple[str, Any]],
+    signal_timeframe: str,
+    pick_fn,
+) -> List[str]:
+    """同一币种下按交易所分组，每个交易所最多命中 1 个实例（HL+Binance 同 webhook 扇出）。"""
+    if not candidates:
+        return []
+    by_ex: Dict[str, List[Tuple[str, Any]]] = {}
+    for iid, st in candidates:
+        ex = (getattr(st, "exchange", None) or "unknown").lower()
+        by_ex.setdefault(ex, []).append((iid, st))
+    selected: List[str] = []
+    for _ex, group in by_ex.items():
+        picked = pick_fn(group, signal_timeframe)
+        if picked:
+            selected.append(picked)
+    return selected
+
+
 def _is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -263,6 +318,45 @@ def list_strategies():
             {"value": "auto_close",      "label": "🟡 自动平仓策略(Webhook版)"},
         ],
     }
+
+
+@router.get("/instances/{instance_id}/brief")
+def instance_brief(instance_id: str, user: dict = Depends(require_user)):
+    """聚合实例 config 摘要（小管家 / 前端轻量查询）。"""
+    try:
+        db = DatabaseManager()
+        my_ids = set(db.get_user_instance_ids(user["id"], "live") or [])
+        if instance_id not in my_ids:
+            raise HTTPException(status_code=404, detail="实例不存在或不属于当前用户")
+        raw = ""
+        for iid, cfg in db.get_user_instance_configs(user["id"], "live") or []:
+            if iid == instance_id:
+                raw = cfg or ""
+                break
+        import json as _json
+
+        obj = {}
+        try:
+            obj = _json.loads(raw or "{}")
+        except Exception:
+            obj = {}
+        return {
+            "ok": True,
+            "instance": {
+                "id": instance_id,
+                "strategy": obj.get("strategy_name") or obj.get("strategy") or "",
+                "symbol": obj.get("symbol") or "",
+                "margin_type": obj.get("margin_type") or "",
+                "status": str(obj.get("status") or obj.get("run_status") or "unknown"),
+                "exchange": obj.get("exchange") or obj.get("platform") or "",
+                "position": obj.get("position") or obj.get("positions") or None,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("instance_brief: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/instances")
@@ -476,11 +570,10 @@ def list_instances(user: dict = Depends(require_user)):
                 "config": obj,
             })
 
-        # 兜底：如果 DB 里漏记了实例，也要把当前进程内存里正在跑的实例展示出来
-        # （尤其是 adaptive-short / adaptive-long 这类线程内存策略）
+        # 内存兜底：仅展示「属于当前用户」的在跑实例（禁止串号）
         known_ids = {inst["id"] for inst in instances if isinstance(inst, dict) and inst.get("id")}
         for iid, s in list(ADAPTIVE_SHORT_INSTANCES.items()):
-            if iid in known_ids:
+            if iid in known_ids or iid not in my_ids:
                 continue
             sf = getattr(s, "symbol_filter", None) or getattr(s, "symbol", None) or "HYPE"
             sf = str(sf).upper().strip() if sf else "HYPE"
@@ -495,7 +588,7 @@ def list_instances(user: dict = Depends(require_user)):
                 "status": "running",
             })
         for iid, al in list(ADAPTIVE_LONG_INSTANCES.items()):
-            if iid in known_ids:
+            if iid in known_ids or iid not in my_ids:
                 continue
             sf = getattr(al, "symbol_filter", None) or getattr(al, "symbol", None) or "HYPE"
             sf = str(sf).upper().strip() if sf else "HYPE"
@@ -511,7 +604,7 @@ def list_instances(user: dict = Depends(require_user)):
             })
 
         for iid, ac in list(AUTO_CLOSE_INSTANCES.items()):
-            if iid in known_ids:
+            if iid in known_ids or iid not in my_ids:
                 continue
             sf = getattr(ac, "symbol_filter", None) or "ETH"
             sf = str(sf).upper().strip() if sf else "ETH"
@@ -542,20 +635,28 @@ def list_instances(user: dict = Depends(require_user)):
                     obj = json.loads(cfg) if cfg else None
                 except Exception:
                     obj = None
-                # 永远不回显敏感明文
+                # 永远不回显敏感明文/密文
                 if isinstance(obj, dict):
-                    obj.pop("private_key", None)
-                    obj.pop("private_key_enc", None)
-                    obj.pop("api_secret", None)
-                    obj.pop("api_secret_enc", None)
+                    obj = strip_secrets_for_api(obj)
                 inst["config"] = obj
         except Exception:
             pass
 
-        # 权限标记：当前接口已只返回本人实例，统一可操作
+        # 权限标记：列表已按本人过滤；双重确认
         for inst in instances:
-            if isinstance(inst, dict):
-                inst["can_operate"] = True
+            if not isinstance(inst, dict):
+                continue
+            iid = inst.get("id")
+            owned = bool(iid) and iid in my_ids
+            inst["can_operate"] = owned
+            if not owned:
+                inst["operate_block_reason"] = "非本人账户启动，已隔离（不可操作）"
+
+        # 最终隔离：绝不返回非本人实例
+        instances = [
+            inst for inst in instances
+            if isinstance(inst, dict) and inst.get("id") in my_ids
+        ]
 
         return {"instances": instances}
     except Exception as e:
@@ -636,6 +737,10 @@ def start_hype_strategy(req: HypeStartRequest, user: dict = Depends(require_user
         raise HTTPException(status_code=400, detail=f"私钥格式错误: {str(e)}")
     except Exception as e:
         # 其他初始化错误
+        _alert_live_trade_error(
+            "策略初始化失败", e,
+            instance_id=instance_id, exchange="hyperliquid", symbol=symbol, strategy="hype_adaptive_short",
+        )
         raise HTTPException(status_code=500, detail=f"策略初始化失败: {str(e)}")
     
     thread = threading.Thread(target=_run_hype_strategy_in_thread, args=(instance_id, strategy), daemon=True)
@@ -644,8 +749,23 @@ def start_hype_strategy(req: HypeStartRequest, user: dict = Depends(require_user
     thread.start()
 
     db = DatabaseManager()
-    cfg = json.dumps({"platform": "hyperliquid", "strategy": "hype_adaptive_short", "symbol": symbol}, ensure_ascii=False)
-    db.save_user_instance(user["id"], "live", instance_id, cfg)
+    cfg_obj = {
+        "platform": "hyperliquid",
+        "exchange": "hyperliquid",
+        "strategy": "hype_adaptive_short",
+        "symbol": symbol,
+        "status": "running",
+        "stop_loss_pct": req.stop_loss_pct,
+        "take_profit_pct": req.take_profit_pct,
+        "break_even_pct": req.break_even_pct,
+        "margin_amount": req.margin_amount,
+        "leverage": req.leverage,
+    }
+    persist_live_config(
+        db, user["id"], instance_id, cfg_obj,
+        secrets={"private_key": private_key},
+    )
+    write_instance_event("start", instance_id, True, detail=f"hype_adaptive_short {symbol}")
     return {"ok": True, "instance_id": instance_id, "message": "自适应做空策略已启动"}
 
 
@@ -931,8 +1051,20 @@ def launch_strategy(req: LaunchRequest, user: dict = Depends(require_user)):
         t = threading.Thread(target=_async_register, daemon=True)
         t.start()
 
-        cfg = json.dumps({"platform": req.platform, "strategy": STRATEGY_DISPLAY_NAMES.get(req.strategy, req.strategy), "symbol": symbol})
-        db.save_user_instance(user_id, "live", instance_id, cfg)
+        cfg_obj = {
+            "platform": req.platform,
+            "exchange": req.platform,
+            "strategy": STRATEGY_DISPLAY_NAMES.get(req.strategy, req.strategy),
+            "symbol": symbol,
+            "status": "running",
+            "leverage": int(req.leverage) if req.leverage else 50,
+            "margin_amount": str(req.size),
+        }
+        persist_live_config(
+            db, user_id, instance_id, cfg_obj,
+            secrets={"private_key": str(req.private_key or "")} if req.private_key else None,
+        )
+        write_instance_event("start", instance_id, True, detail=f"launch {req.platform} webhook")
         return {"ok": True, "instance_id": instance_id, "message": "实例已添加，后台注册中"}
 
     # Backpack / Deepcoin / Binance：子进程模式
@@ -972,10 +1104,27 @@ def launch_strategy(req: LaunchRequest, user: dict = Depends(require_user)):
         with open(log_path, "a", encoding="utf-8") as f:
             proc = subprocess.Popen(cmd, env=env, stdout=f, stderr=subprocess.STDOUT, cwd=str(PROJECT_ROOT))
     except Exception as e:
+        _alert_live_trade_error(
+            "启动失败", e,
+            instance_id=instance_id, exchange=str(req.platform or ""), symbol=symbol, strategy=str(req.strategy or ""),
+        )
         raise HTTPException(status_code=500, detail=f"启动失败: {e}")
 
-    cfg = json.dumps({"platform": req.platform, "strategy": req.strategy, "symbol": symbol})
-    db.save_user_instance(user_id, "live", instance_id, cfg)
+    cfg_obj = {
+        "platform": req.platform,
+        "exchange": req.platform,
+        "strategy": req.strategy,
+        "symbol": symbol,
+        "status": "running",
+        "api_key": str(req.api_key or "") if req.api_key else None,
+    }
+    secrets = {}
+    if req.api_secret:
+        secrets["api_secret"] = str(req.api_secret)
+    if getattr(req, "passphrase", None):
+        secrets["api_passphrase"] = str(req.passphrase)
+    persist_live_config(db, user_id, instance_id, cfg_obj, secrets=secrets or None)
+    write_instance_event("start", instance_id, True, detail=f"launch subprocess {req.platform}")
     # 保存 PID 便于停止时杀死进程
     _pids_path = PROJECT_ROOT / "backpack_quant_trading" / "log" / "live_pids.json"
     _pids_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1208,9 +1357,10 @@ def stop_instance_keep_card(instance_id: str, user: dict = Depends(require_user)
         obj["status"] = "stopped"
         try:
             if instance_id in my_ids:
-                db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+                persist_live_config(db, user["id"], instance_id, obj)
         except Exception:
             pass
+        write_instance_event("stop", instance_id, True, detail="adaptive_long 软暂停")
         return {"ok": True, "message": "已停止（暂停接收信号）"}
 
     if instance_id in ADAPTIVE_SHORT_INSTANCES:
@@ -1219,9 +1369,10 @@ def stop_instance_keep_card(instance_id: str, user: dict = Depends(require_user)
         obj["status"] = "stopped"
         try:
             if instance_id in my_ids:
-                db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+                persist_live_config(db, user["id"], instance_id, obj)
         except Exception:
             pass
+        write_instance_event("stop", instance_id, True, detail="adaptive_short 软暂停")
         return {"ok": True, "message": "已停止（暂停接收信号）"}
 
     if instance_id in AUTO_CLOSE_INSTANCES:
@@ -1230,9 +1381,10 @@ def stop_instance_keep_card(instance_id: str, user: dict = Depends(require_user)
         obj["status"] = "stopped"
         try:
             if instance_id in my_ids:
-                db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+                persist_live_config(db, user["id"], instance_id, obj)
         except Exception:
             pass
+        write_instance_event("stop", instance_id, True, detail="auto_close 软暂停")
         return {"ok": True, "message": "已停止（暂停接收信号）"}
 
     platform = obj.get("platform", "backpack")
@@ -1242,9 +1394,10 @@ def stop_instance_keep_card(instance_id: str, user: dict = Depends(require_user)
     obj["status"] = "stopped"
     try:
         if instance_id in my_ids:
-            db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+            persist_live_config(db, user["id"], instance_id, obj)
     except Exception:
         pass
+    write_instance_event("stop", instance_id, True, detail=f"platform={platform}")
     return {"ok": True, "message": "已停止"}
 
 
@@ -1261,6 +1414,22 @@ def _coerce_int(v, default: int) -> int:
         return int(v)
     except Exception:
         return default
+
+
+def _norm_binance_margin_type(v) -> str:
+    """Binance 保证金模式：ISOLATED=逐仓 / CROSSED=全仓。"""
+    s = str(v or "ISOLATED").strip().upper()
+    if s in ("CROSSED", "CROSS", "全仓"):
+        return "CROSSED"
+    if s in ("ISOLATED", "ISO", "逐仓"):
+        return "ISOLATED"
+    # 中文未 upper 时再判断一次
+    raw = str(v or "").strip()
+    if raw == "全仓":
+        return "CROSSED"
+    if raw == "逐仓":
+        return "ISOLATED"
+    return "ISOLATED"
 
 
 def _min_ai_score_from_config(obj: dict) -> int:
@@ -1319,7 +1488,8 @@ def start_instance_from_saved_config(instance_id: str, user: dict = Depends(requ
         obj["min_ai_score_for_trade"] = st.min_ai_score_for_trade
         obj["allow_repeat_open"] = st.allow_repeat_open
         obj["use_ai_sr_tpsl"] = st.use_ai_sr_tpsl
-        db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+        persist_live_config(db, user["id"], instance_id, obj)
+        write_instance_event("start", instance_id, True, detail="adaptive_long 恢复接收信号")
         return {
             "ok": True,
             "instance_id": instance_id,
@@ -1330,21 +1500,16 @@ def start_instance_from_saved_config(instance_id: str, user: dict = Depends(requ
         st = ADAPTIVE_SHORT_INSTANCES[instance_id]
         st.is_enabled = True
         obj["status"] = "running"
-        db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+        persist_live_config(db, user["id"], instance_id, obj)
+        write_instance_event("start", instance_id, True, detail="adaptive_short 恢复接收信号")
         return {"ok": True, "instance_id": instance_id, "message": "已启动（恢复接收信号）"}
 
     if instance_id in AUTO_CLOSE_INSTANCES:
         st = AUTO_CLOSE_INSTANCES[instance_id]
         st.is_enabled = True
         obj["status"] = "running"
-        db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
-        return {"ok": True, "instance_id": instance_id, "message": "已启动（恢复接收信号）"}
-
-    if instance_id in AUTO_CLOSE_INSTANCES:
-        st = AUTO_CLOSE_INSTANCES[instance_id]
-        st.is_enabled = True
-        obj["status"] = "running"
-        db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+        persist_live_config(db, user["id"], instance_id, obj)
+        write_instance_event("start", instance_id, True, detail="auto_close 恢复接收信号")
         return {"ok": True, "instance_id": instance_id, "message": "已启动（恢复接收信号）"}
 
     # 其它策略：已在跑则拒绝，避免重复线程/重复 webhook
@@ -1368,23 +1533,27 @@ def start_instance_from_saved_config(instance_id: str, user: dict = Depends(requ
     min_ai_score_for_trade = _min_ai_score_from_config(obj)
     allow_repeat_open = _allow_repeat_open_from_config(obj)
     use_ai_sr_tpsl = _use_ai_sr_tpsl_from_config(obj)
+    margin_type = _norm_binance_margin_type(obj.get("margin_type"))
 
-    # 密钥不存 DB：这里只能使用环境变量（Hyperliquid）或要求用户重新填写（其它平台）
-    private_key = None
+    # 密钥：优先解密 DB 中 *_enc；HL 可回退环境变量
+    secrets = {}
+    try:
+        secrets = load_secrets_from_config(obj)
+    except Exception as exc:
+        write_instance_event("start", instance_id, False, detail=f"解密失败: {exc}")
+        raise HTTPException(status_code=400, detail=f"实例密钥解密失败，请重新填写密钥: {exc}")
+
+    private_key = secrets.get("private_key") or None
     api_key = obj.get("api_key") or None
-    api_secret = None
+    api_secret = secrets.get("api_secret") or None
     account_index = _coerce_int(obj.get("account_index", 0), 0)
     api_key_index = _coerce_int(obj.get("api_key_index", 2), 2)
 
-    if exchange in ("hyperliquid", ""):
+    if exchange in ("hyperliquid", "") and not private_key:
         private_key = config.hyperliquid.PRIVATE_KEY or None
-    if exchange == "binance":
-        # 不从 DB 取 secret；用户需重新填写或仅在“运行中修改参数”场景复用内存
-        api_secret = None
-    if exchange == "lighter":
-        private_key = None
 
     if exchange in ("lighter", "binance") and not private_key and not api_secret and strat in ("adaptive_long", "adaptive_short"):
+        write_instance_event("start", instance_id, False, detail="未保存密钥")
         raise HTTPException(status_code=400, detail="该实例未保存密钥：请在修改弹窗中重新填写密钥后保存并应用")
 
     if strat == "adaptive_long":
@@ -1408,12 +1577,23 @@ def start_instance_from_saved_config(instance_id: str, user: dict = Depends(requ
             min_ai_score_for_trade=min_ai_score_for_trade,
             allow_repeat_open=allow_repeat_open,
             use_ai_sr_tpsl=use_ai_sr_tpsl,
+            margin_type=margin_type,
         )
         logger.info(
             "▶️ 重建做多实例 %s | AI开单门槛=%s | 重复开单=%s | AI位阶止盈止损=%s（来自已保存配置）",
             instance_id, min_ai_score_for_trade, "是" if allow_repeat_open else "否",
             "是" if use_ai_sr_tpsl else "否",
         )
+        obj["status"] = "running"
+        obj["min_ai_score_for_trade"] = min_ai_score_for_trade
+        obj["allow_repeat_open"] = allow_repeat_open
+        obj["use_ai_sr_tpsl"] = use_ai_sr_tpsl
+        obj["margin_type"] = margin_type
+        try:
+            persist_live_config(db, user["id"], instance_id, obj)
+        except Exception as exc:
+            write_instance_event("start", instance_id, False, detail=f"落库失败: {exc}")
+            raise HTTPException(status_code=503, detail=f"实例配置写入数据库失败（可重试）: {exc}")
         thread = threading.Thread(target=_run_adaptive_long_in_thread, args=(instance_id, strategy), daemon=True)
         ADAPTIVE_LONG_INSTANCES[instance_id] = strategy
         ADAPTIVE_LONG_THREADS[instance_id] = thread
@@ -1436,18 +1616,21 @@ def start_instance_from_saved_config(instance_id: str, user: dict = Depends(requ
             timeframe_filter=tf,
             account_index=account_index,
             api_key_index=api_key_index,
+            margin_type=margin_type,
         )
+        obj["status"] = "running"
+        obj["margin_type"] = margin_type
+        try:
+            persist_live_config(db, user["id"], instance_id, obj)
+        except Exception as exc:
+            write_instance_event("start", instance_id, False, detail=f"落库失败: {exc}")
+            raise HTTPException(status_code=503, detail=f"实例配置写入数据库失败（可重试）: {exc}")
         thread = threading.Thread(target=_run_adaptive_short_in_thread, args=(instance_id, strategy), daemon=True)
         ADAPTIVE_SHORT_INSTANCES[instance_id] = strategy
         ADAPTIVE_SHORT_THREADS[instance_id] = thread
         thread.start()
 
-    obj["status"] = "running"
-    if strat == "adaptive_long":
-        obj["min_ai_score_for_trade"] = min_ai_score_for_trade
-        obj["allow_repeat_open"] = allow_repeat_open
-        obj["use_ai_sr_tpsl"] = use_ai_sr_tpsl
-    db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+    write_instance_event("start", instance_id, True, detail=f"{strat} {exchange} {coin}")
     return {
         "ok": True,
         "instance_id": instance_id,
@@ -1481,6 +1664,7 @@ class InstanceUpdateRequest(BaseModel):
     min_ai_score_for_trade: Optional[int] = None
     allow_repeat_open: Optional[bool] = None
     use_ai_sr_tpsl: Optional[bool] = None
+    margin_type: Optional[str] = None  # Binance: ISOLATED / CROSSED
 
 
 @router.put("/instances/{instance_id}", summary="修改实例参数（必要时自动重启）")
@@ -1497,7 +1681,7 @@ def update_instance_config(instance_id: str, req: InstanceUpdateRequest, user: d
 
     payload = req.model_dump(exclude_unset=True)
 
-    # 敏感字段：留空=不修改；不写入 DB
+    # 敏感字段：留空=不修改；有值则加密写入 *_enc
     new_private_key = (payload.pop("private_key", None) or "").strip() or None
     new_api_secret = (payload.pop("api_secret", None) or "").strip() or None
 
@@ -1511,7 +1695,18 @@ def update_instance_config(instance_id: str, req: InstanceUpdateRequest, user: d
     if obj.get("exchange"):
         obj["exchange"] = str(obj["exchange"]).lower().strip()
 
-    db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+    secrets = {}
+    if new_private_key:
+        secrets["private_key"] = new_private_key
+    if new_api_secret:
+        secrets["api_secret"] = new_api_secret
+    persist_live_config(db, user["id"], instance_id, obj, secrets=secrets or None)
+    # 重新读回含 *_enc 的配置供后续热更新写回
+    try:
+        configs2 = {iid: cfg for iid, cfg in db.get_user_instance_configs(user["id"], "live")}
+        obj = json.loads(configs2.get(instance_id) or "{}")
+    except Exception:
+        pass
 
     # 若运行中：自动重启以应用参数
     is_running = (
@@ -1526,6 +1721,12 @@ def update_instance_config(instance_id: str, req: InstanceUpdateRequest, user: d
             s = ADAPTIVE_LONG_INSTANCES[instance_id]
             s.margin_amount = _coerce_float(obj.get("margin_amount", getattr(s, "margin_amount", 20.0)), getattr(s, "margin_amount", 20.0))
             s.leverage = _coerce_int(obj.get("leverage", getattr(s, "leverage", 50)), getattr(s, "leverage", 50))
+            if "margin_type" in payload or "margin_type" in obj:
+                mt = _norm_binance_margin_type(obj.get("margin_type", getattr(s, "margin_type", "ISOLATED")))
+                s.margin_type = mt
+                obj["margin_type"] = mt
+                if getattr(s, "exchange", "") == "binance" and hasattr(s, "client"):
+                    setattr(s.client, "margin_type", mt)
             s.stop_loss_pct = _coerce_float(obj.get("stop_loss_pct", getattr(s, "stop_loss_pct", 0.03)), getattr(s, "stop_loss_pct", 0.03))
             s.take_profit_pct = _coerce_float(obj.get("take_profit_pct", getattr(s, "take_profit_pct", 0.06)), getattr(s, "take_profit_pct", 0.06))
             s.break_even_pct = _coerce_float(obj.get("break_even_pct", getattr(s, "break_even_pct", 0.03)), getattr(s, "break_even_pct", 0.03))
@@ -1558,7 +1759,8 @@ def update_instance_config(instance_id: str, req: InstanceUpdateRequest, user: d
                 "是" if s.use_ai_sr_tpsl else "否",
             )
             obj["status"] = "running"
-            db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+            persist_live_config(db, user["id"], instance_id, obj)
+            write_instance_event("update", instance_id, True, detail="adaptive_long 热更新")
             return {
                 "ok": True,
                 "message": f"已保存并生效（AI开单门槛={s.min_ai_score_for_trade}）",
@@ -1569,6 +1771,12 @@ def update_instance_config(instance_id: str, req: InstanceUpdateRequest, user: d
             s = ADAPTIVE_SHORT_INSTANCES[instance_id]
             s.margin_amount = _coerce_float(obj.get("margin_amount", getattr(s, "margin_amount", 20.0)), getattr(s, "margin_amount", 20.0))
             s.leverage = _coerce_int(obj.get("leverage", getattr(s, "leverage", 50)), getattr(s, "leverage", 50))
+            if "margin_type" in payload or "margin_type" in obj:
+                mt = _norm_binance_margin_type(obj.get("margin_type", getattr(s, "margin_type", "ISOLATED")))
+                s.margin_type = mt
+                obj["margin_type"] = mt
+                if getattr(s, "exchange", "") == "binance" and hasattr(s, "client"):
+                    setattr(s.client, "margin_type", mt)
             s.stop_loss_pct = _coerce_float(obj.get("stop_loss_pct", getattr(s, "stop_loss_pct", 0.03)), getattr(s, "stop_loss_pct", 0.03))
             s.take_profit_pct = _coerce_float(obj.get("take_profit_pct", getattr(s, "take_profit_pct", 0.06)), getattr(s, "take_profit_pct", 0.06))
             s.break_even_pct = _coerce_float(obj.get("break_even_pct", getattr(s, "break_even_pct", 0.03)), getattr(s, "break_even_pct", 0.03))
@@ -1579,32 +1787,38 @@ def update_instance_config(instance_id: str, req: InstanceUpdateRequest, user: d
             tf = (obj.get("timeframe_filter") or "").strip().upper()
             s.timeframe_filter = tf or None
             obj["status"] = "running"
-            db.save_user_instance(user["id"], "live", instance_id, json.dumps(obj, ensure_ascii=False))
+            persist_live_config(db, user["id"], instance_id, obj)
+            write_instance_event("update", instance_id, True, detail="adaptive_short 热更新")
             return {"ok": True, "message": "已保存并生效"}
 
         # 其它策略仍按旧逻辑：仅保存，不热更新
+        write_instance_event("update", instance_id, True, detail="已保存（需手动重启生效）")
         return {"ok": True, "message": "已保存（该策略需手动停止后再启动以生效）"}
 
+    write_instance_event("update", instance_id, True, detail="已保存")
     return {"ok": True, "message": "已保存"}
 
 
 @router.get("/logs")
 def get_logs(user: dict = Depends(require_user)):
-    """获取实盘交易相关实时日志（最近 150 行）
+    """实盘交易相关实时日志（最近 150 行）。
 
-    只展示：启动/停止/买卖/下单/撤单/平仓/止盈止损/Webhook 等交易动作。
+    合并：strategy_instances.log（启停生命周期）+ 策略专用日志 + 过滤后的 app_*.log。
+    排除 Massive K线 / 调度等非交易噪音。
     """
     try:
-        # 兼容不同启动目录：日志目录可能在 <repo>/log 或 <repo>/backpack_quant_trading/log
+        import re
+
+        ensure_instance_event_logger()
         cand_dirs = [
-            PROJECT_ROOT / "log",
             PROJECT_ROOT / "backpack_quant_trading" / "log",
+            PROJECT_ROOT / "log",
         ]
         log_dir = next((d for d in cand_dirs if d.exists()), cand_dirs[0])
         lines: list[str] = []
 
-        # 只读取“交易相关”的独立日志文件（优先）。避免把 app_*.log 的杂讯塞进来。
         fixed = [
+            "strategy_instances.log",
             "live_console.log",
             "webhook_server.log",
             "hype_strategy.log",
@@ -1612,9 +1826,9 @@ def get_logs(user: dict = Depends(require_user)):
             "adaptive_long.log",
             "adaptive_short.log",
             "auto_close.log",
+            "trades.log",
         ]
 
-        # 始终追加最新 app_*.log（但严格过滤，只保留策略/交易动作相关行）
         app_logs: list[str] = []
         try:
             app_logs = sorted(
@@ -1625,36 +1839,50 @@ def get_logs(user: dict = Depends(require_user)):
         except Exception:
             app_logs = []
 
-        import re
-        # 强过滤：只保留“策略生命周期 + 交易动作”相关行（不按交易所关键词保留，避免监控/网络噪音混入）
+        # 不用裸 strategy：会误匹配 routers.strategy（Massive K线）
         keep_pat = re.compile(
             r"(启动|已启动|启动成功|停止|已停止|重启|退出|开始|结束|运行|"
-            r"策略|strategy|instance_id|instance=|adaptive_long|adaptive_short|eth_trend|hype|auto_close|"
+            r"策略|instance_id|instance=|adaptive_long|adaptive_short|eth_trend|hype|auto_close|"
             r"下单|开仓|平仓|撤单|改单|挂单|成交|拒绝|失败|成功|"
             r"买入|卖出|BUY|SELL|reduce_only|"
-            r"止损|止盈|tpsl|tp\\b|sl\\b|break[-_ ]?even|lock[-_ ]?profit|"
+            r"止损|止盈|tpsl|tp\b|sl\b|break[-_ ]?even|lock[-_ ]?profit|"
             r"Webhook|webhook|signal|TradingView|入场|离场|开多|开空|平多|平空|"
-            r"AI|评分|门槛|开单门槛|开单筛选|未达门槛|拒绝交易|评分开单|跳过 AI|平仓|开多未成交|保证金不足|同步多仓|做多策略|重复开单|AI位阶|止盈止损|"
+            r"AI|评分|门槛|开单门槛|开单筛选|未达门槛|拒绝交易|评分开单|跳过 AI|"
+            r"开多未成交|保证金|余额|诊断|同步多仓|做多策略|重复开单|AI位阶|止盈止损|"
+            r"get_balance|等待 TradingView|币安合约|Binance|"
             r"✅|❌|🚀|🧹|✍️|🤖|⛔|📋)",
             re.IGNORECASE,
         )
-        # 丢弃明显噪音：轮询/状态/instances debug 等
         drop_pat = re.compile(
             r"(HYPE_STRATEGY_INSTANCES|/api/(currency-monitor|trading/instances|trading/hype/status|trading/logs)|"
-            r"Starting new HTTP connection|Starting new HTTPS connection|urllib3\\.connectionpool|"
-            r"binance_monitor|yahoo|query\\d\\.finance\\.yahoo|轮询完成|currency-monitor|"
-            r"GET\\s+http://127\\.0\\.0\\.1:8005/instances|/instances\\s+HTTP/1\\.1)",
+            r"Starting new HTTP connection|Starting new HTTPS connection|urllib3\.connectionpool|"
+            r"binance_monitor|yahoo|query\d\.finance\.yahoo|轮询完成|currency-monitor|"
+            r"GET\s+http://127\.0\.0\.1:8005/instances|/instances\s+HTTP/1\.1|"
+            r"Massive\s*K线|kline_scheduler|routers\.strategy:|polygon\.io|"
+            r"\[调度\]|美股|NVDA|/aggs/ticker)",
             re.IGNORECASE,
         )
 
-        # 默认 INFO；交易相关的 ERROR 也展示（如开多失败、平仓异常）
         info_pat = re.compile(r"(\|\s*INFO\s*\|)|(^INFO:\s)", re.IGNORECASE)
         err_pat = re.compile(r"\|\s*ERROR\s*\|", re.IGNORECASE)
 
-        def _append_filtered(fname: str, content: str):
+        def _read_tail(fp: Path, max_bytes: int) -> str:
+            with open(fp, "rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                if size <= 0:
+                    return ""
+                buf = min(max_bytes, size)
+                f.seek(-buf, 2)
+                return f.read().decode("utf-8", errors="replace")
+
+        def _append_filtered(fname: str, content: str, *, lifecycle: bool = False):
             for line in content.splitlines():
                 s = (line or "").strip()
                 if not s:
+                    continue
+                if lifecycle:
+                    lines.append(f"[{fname}] {s}")
                     continue
                 is_info = bool(info_pat.search(s))
                 is_trade_err = bool(err_pat.search(s) and keep_pat.search(s))
@@ -1665,52 +1893,220 @@ def get_logs(user: dict = Depends(require_user)):
                 if keep_pat.search(s):
                     lines.append(f"[{fname}] {s}")
 
-        # 先读 fixed（交易专用日志）
         for fname in fixed:
             fp = log_dir / fname
             if not fp.exists():
                 continue
             try:
-                with open(fp, "rb") as f:
-                    f.seek(0, 2)
-                    size = f.tell()
-                    if size <= 0:
-                        continue
-                    buf = min(350 * 180, size)
-                    f.seek(-buf, 2)
-                    chunk = f.read().decode("utf-8", errors="replace")
-                _append_filtered(fname, chunk)
+                chunk = _read_tail(fp, 350 * 180)
+                _append_filtered(
+                    fname, chunk, lifecycle=(fname == "strategy_instances.log")
+                )
             except Exception:
                 pass
 
-        # 始终读取最新 app_*.log（严格过滤后追加），确保“启动成功/下单”等关键日志不会漏
         for fname in app_logs:
             fp = log_dir / fname
             if not fp.exists():
                 continue
             try:
-                with open(fp, "rb") as f:
-                    f.seek(0, 2)
-                    size = f.tell()
-                    if size <= 0:
-                        continue
-                    buf = min(450 * 260, size)
-                    f.seek(-buf, 2)
-                    chunk = f.read().decode("utf-8", errors="replace")
+                chunk = _read_tail(fp, 450 * 260)
                 _append_filtered(fname, chunk)
             except Exception:
                 pass
 
-        pat = re.compile(r"(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2})")
-        def _t(l):
-            m = pat.search(l)
+        ts_pat = re.compile(r"(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2})")
+
+        def _t(l: str) -> str:
+            m = ts_pat.search(l)
             return m.group(1) if m else "0000-00-00 00:00:00"
+
         lines.sort(key=_t, reverse=True)
         return {"logs": "\n".join(lines[:150]) if lines else "等待日志输出..."}
     except Exception as e:
-        _log = __import__("logging").getLogger(__name__)
-        _log.exception("get_logs: %s", e)
+        logger.exception("get_logs: %s", e)
         return {"logs": "暂无日志"}
+
+
+def resume_running_live_instances() -> dict:
+    """API 启动时：恢复 DB 中 status=running 的实盘实例（解密密钥并拉起线程）。"""
+    ensure_instance_event_logger()
+    db = DatabaseManager()
+    rows = db.list_live_instances_by_status("running")
+    ok_n, fail_n = 0, 0
+    for user_id, instance_id, obj in rows:
+        # 已在内存则跳过
+        if (
+            instance_id in ADAPTIVE_LONG_INSTANCES
+            or instance_id in ADAPTIVE_SHORT_INSTANCES
+            or instance_id in HYPE_STRATEGY_INSTANCES
+            or instance_id in ETH_TREND_INSTANCES
+            or instance_id in AUTO_CLOSE_INSTANCES
+        ):
+            continue
+        try:
+            _resume_live_instance_unlocked(db, int(user_id), instance_id, dict(obj))
+            ok_n += 1
+        except Exception as exc:
+            fail_n += 1
+            logger.exception("恢复实例失败 %s: %s", instance_id, exc)
+            _alert_live_trade_error(
+                "系统恢复实例失败",
+                exc,
+                instance_id=instance_id,
+                exchange=str((obj or {}).get("exchange") or (obj or {}).get("platform") or ""),
+                symbol=str((obj or {}).get("coin") or (obj or {}).get("symbol") or ""),
+                strategy=str((obj or {}).get("strategy") or ""),
+            )
+            try:
+                obj["status"] = "stopped"
+                persist_live_config(db, int(user_id), instance_id, obj)
+            except Exception:
+                pass
+            write_instance_event("start", instance_id, False, detail=f"系统恢复失败: {exc}")
+    logger.info("实例自动恢复完成 ok=%s fail=%s total=%s", ok_n, fail_n, len(rows))
+    return {"ok": ok_n, "fail": fail_n, "total": len(rows)}
+
+
+def _resume_live_instance_unlocked(db, user_id: int, instance_id: str, obj: dict) -> None:
+    """内部恢复：与一键启动同源逻辑（无 HTTP 依赖）。"""
+    strat = (obj.get("strategy") or "").strip()
+    exchange = (obj.get("exchange") or obj.get("platform") or "hyperliquid").lower()
+    coin = (obj.get("coin") or obj.get("symbol") or "ETH").upper().strip()
+    tf = (obj.get("timeframe_filter") or "").strip() or None
+
+    secrets = load_secrets_from_config(obj)
+    private_key = secrets.get("private_key") or None
+    api_secret = secrets.get("api_secret") or None
+    api_key = obj.get("api_key") or None
+    if exchange in ("hyperliquid", "") and not private_key:
+        private_key = config.hyperliquid.PRIVATE_KEY or None
+
+    if strat == "adaptive_long":
+        if not private_key and not api_secret:
+            raise RuntimeError("adaptive_long 无可用密钥")
+        strategy = AdaptiveLongStrategy(
+            exchange=exchange,
+            private_key=private_key,
+            api_key=api_key,
+            api_secret=api_secret,
+            instance_id=instance_id,
+            margin_amount=_coerce_float(obj.get("margin_amount", 20.0), 20.0),
+            leverage=_coerce_int(obj.get("leverage", 50), 50),
+            stop_loss_pct=_coerce_float(obj.get("stop_loss_pct", 0.03), 0.03),
+            take_profit_pct=_coerce_float(obj.get("take_profit_pct", 0.06), 0.06),
+            break_even_pct=_coerce_float(obj.get("break_even_pct", 0.03), 0.03),
+            lock_profit_pct=_coerce_float(obj.get("lock_profit_pct", 0.0), 0.0),
+            lock_profit_sl_pct=_coerce_float(obj.get("lock_profit_sl_pct", 0.0), 0.0),
+            symbol_filter=coin,
+            timeframe_filter=tf,
+            account_index=_coerce_int(obj.get("account_index", 0), 0),
+            api_key_index=_coerce_int(obj.get("api_key_index", 2), 2),
+            min_ai_score_for_trade=_min_ai_score_from_config(obj),
+            allow_repeat_open=_allow_repeat_open_from_config(obj),
+            use_ai_sr_tpsl=_use_ai_sr_tpsl_from_config(obj),
+            margin_type=_norm_binance_margin_type(obj.get("margin_type")),
+        )
+        thread = threading.Thread(target=_run_adaptive_long_in_thread, args=(instance_id, strategy), daemon=True)
+        ADAPTIVE_LONG_INSTANCES[instance_id] = strategy
+        ADAPTIVE_LONG_THREADS[instance_id] = thread
+        thread.start()
+    elif strat == "adaptive_short":
+        if AdaptiveShortStrategy is None:
+            raise RuntimeError("AdaptiveShortStrategy 不可用")
+        if not private_key and not api_secret:
+            raise RuntimeError("adaptive_short 无可用密钥")
+        strategy = AdaptiveShortStrategy(
+            exchange=exchange,
+            private_key=private_key,
+            api_key=api_key,
+            api_secret=api_secret,
+            instance_id=instance_id,
+            margin_amount=_coerce_float(obj.get("margin_amount", 20.0), 20.0),
+            leverage=_coerce_int(obj.get("leverage", 50), 50),
+            stop_loss_pct=_coerce_float(obj.get("stop_loss_pct", 0.03), 0.03),
+            take_profit_pct=_coerce_float(obj.get("take_profit_pct", 0.06), 0.06),
+            break_even_pct=_coerce_float(obj.get("break_even_pct", 0.03), 0.03),
+            lock_profit_pct=_coerce_float(obj.get("lock_profit_pct", 0.0), 0.0),
+            lock_profit_sl_pct=_coerce_float(obj.get("lock_profit_sl_pct", 0.0), 0.0),
+            symbol_filter=coin,
+            timeframe_filter=tf,
+            account_index=_coerce_int(obj.get("account_index", 0), 0),
+            api_key_index=_coerce_int(obj.get("api_key_index", 2), 2),
+            margin_type=_norm_binance_margin_type(obj.get("margin_type")),
+        )
+        thread = threading.Thread(target=_run_adaptive_short_in_thread, args=(instance_id, strategy), daemon=True)
+        ADAPTIVE_SHORT_INSTANCES[instance_id] = strategy
+        ADAPTIVE_SHORT_THREADS[instance_id] = thread
+        thread.start()
+    elif strat in ("hype_adaptive_short",) or (instance_id.startswith("hype_") and strat):
+        if not private_key:
+            raise RuntimeError("hype 无可用私钥")
+        strategy = HYPEAdaptiveShortStrategy(
+            symbol=coin or "ETH",
+            private_key=private_key,
+            instance_id=instance_id,
+            stop_loss_pct=_coerce_float(obj.get("stop_loss_pct", 0.03), 0.03),
+            take_profit_pct=_coerce_float(obj.get("take_profit_pct", 0.06), 0.06),
+            break_even_pct=_coerce_float(obj.get("break_even_pct", 0.03), 0.03),
+            margin_amount=_coerce_float(obj.get("margin_amount", 20.0), 20.0),
+            leverage=_coerce_int(obj.get("leverage", 50), 50),
+        )
+        thread = threading.Thread(target=_run_hype_strategy_in_thread, args=(instance_id, strategy), daemon=True)
+        HYPE_STRATEGY_INSTANCES[instance_id] = strategy
+        HYPE_STRATEGY_THREADS[instance_id] = thread
+        thread.start()
+    elif strat == "eth_trend_short":
+        strategy = ETHTrendShortStrategy(
+            symbol=obj.get("symbol") or coin or "ETH",
+            exchange=exchange,
+            private_key=private_key,
+            api_key=api_key,
+            api_secret=api_secret,
+            instance_id=instance_id,
+            margin_amount=_coerce_float(obj.get("margin_amount", 20.0), 20.0),
+            leverage=_coerce_int(obj.get("leverage", 50), 50),
+            stop_loss_pct=_coerce_float(obj.get("stop_loss_pct", 0.03), 0.03),
+            take_profit_pct=_coerce_float(obj.get("take_profit_pct", 0.06), 0.06),
+            lockin_trig_pct=_coerce_float(obj.get("lockin_trig_pct", 0.0), 0.0),
+            lockin_prot_pct=_coerce_float(obj.get("lockin_prot_pct", 0.0), 0.0),
+            breakeven_pct=_coerce_float(obj.get("breakeven_pct", 0.0), 0.0),
+            price_filter_min=_coerce_float(obj.get("price_filter_min", 0.0), 0.0),
+        )
+        thread = threading.Thread(target=_run_eth_trend_in_thread, args=(instance_id, strategy), daemon=True)
+        ETH_TREND_INSTANCES[instance_id] = strategy
+        ETH_TREND_THREADS[instance_id] = thread
+        thread.start()
+    elif strat == "auto_close":
+        kwargs = {}
+        if exchange == "binance":
+            kwargs = {"api_key": api_key, "api_secret": api_secret}
+        elif exchange == "lighter":
+            kwargs = {
+                "private_key": private_key,
+                "account_index": _coerce_int(obj.get("account_index", 0), 0),
+                "api_key_index": _coerce_int(obj.get("api_key_index", 2), 2),
+            }
+        else:
+            kwargs = {"private_key": private_key}
+        strategy = AutoCloseStrategy(
+            coin=coin,
+            exchange=exchange,
+            instance_id=instance_id,
+            wallet_memo=obj.get("wallet_memo") or "",
+            **kwargs,
+        )
+        thread = threading.Thread(target=_run_auto_close_in_thread, args=(instance_id, strategy), daemon=True)
+        AUTO_CLOSE_INSTANCES[instance_id] = strategy
+        AUTO_CLOSE_THREADS[instance_id] = thread
+        thread.start()
+    else:
+        # 子进程 / webhook 类：仅保留卡片，不自动拉起
+        raise RuntimeError(f"策略类型暂不支持自动恢复: {strat or instance_id}")
+
+    obj["status"] = "running"
+    persist_live_config(db, user_id, instance_id, obj)
+    write_instance_event("start", instance_id, True, detail=f"系统恢复 {strat} {exchange} {coin}")
 
 
 # ═══════════════════════════════════════════════════════
@@ -1787,6 +2183,10 @@ def start_eth_trend_short(req: EthTrendStartRequest, user: dict = Depends(requir
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"私鑰格式错误: {str(e)}")
     except Exception as e:
+        _alert_live_trade_error(
+            "策略初始化失败", e,
+            instance_id=instance_id, exchange=exchange, symbol=getattr(req, "symbol", ""), strategy="eth_trend_short",
+        )
         raise HTTPException(status_code=500, detail=f"策略初始化失败: {str(e)}")
 
     thread = threading.Thread(
@@ -1797,8 +2197,23 @@ def start_eth_trend_short(req: EthTrendStartRequest, user: dict = Depends(requir
     thread.start()
 
     db = DatabaseManager()
-    cfg = json.dumps({"platform": exchange, "strategy": "eth_trend_short", "symbol": req.symbol}, ensure_ascii=False)
-    db.save_user_instance(user["id"], "live", instance_id, cfg)
+    cfg_obj = {
+        "platform": exchange,
+        "exchange": exchange,
+        "strategy": "eth_trend_short",
+        "symbol": req.symbol,
+        "status": "running",
+        "margin_amount": req.margin_amount,
+        "leverage": req.leverage,
+        "api_key": api_key,
+    }
+    secrets = {}
+    if private_key:
+        secrets["private_key"] = private_key
+    if api_secret:
+        secrets["api_secret"] = api_secret
+    persist_live_config(db, user["id"], instance_id, cfg_obj, secrets=secrets or None)
+    write_instance_event("start", instance_id, True, detail=f"eth_trend_short {exchange}")
     logger.info(f"✅ ETH趋势做空策略已启动: {instance_id} exchange={exchange}")
     return {"ok": True, "instance_id": instance_id, "message": "ETH趋势做空策略已启动"}
 
@@ -1917,6 +2332,7 @@ class AdaptiveLongStartRequest(BaseModel):
     min_ai_score_for_trade: int = 0  # 0=不启用 AI 门槛；买入须评分>=该值才开单
     allow_repeat_open: bool = False  # K线不限制时：False=同币种已有仓不再开；True=不同周期可加仓
     use_ai_sr_tpsl: bool = False  # True=AI 支撑位止损 + 小级/同级压力分批止盈
+    margin_type: str = "ISOLATED"  # Binance: ISOLATED=逐仓 / CROSSED=全仓
     # 注: XYZ 不是子账户，是 HIP-3 DEX，无需地址参数，系统自动识别资产所属 DEX。
 
 
@@ -1979,32 +2395,51 @@ def start_auto_close(req: AutoCloseStartRequest, user: dict = Depends(require_us
         strategy_kwargs = {"private_key": req.private_key or getattr(config.hyperliquid, "PRIVATE_KEY", None)}
 
     instance_id = f"ac_{datetime.now().strftime('%H%M%S_%f')}"
-    strategy = AutoCloseStrategy(
-        coin=coin,
-        exchange=exchange,
-        instance_id=instance_id,
-        wallet_memo=req.wallet_memo or "",
-        **strategy_kwargs,
-    )
+    try:
+        strategy = AutoCloseStrategy(
+            coin=coin,
+            exchange=exchange,
+            instance_id=instance_id,
+            wallet_memo=req.wallet_memo or "",
+            **strategy_kwargs,
+        )
+    except Exception as e:
+        _alert_live_trade_error(
+            "策略初始化失败", e,
+            instance_id=instance_id, exchange=exchange, symbol=coin, strategy="auto_close",
+        )
+        raise HTTPException(status_code=500, detail=f"策略初始化失败: {str(e)}")
+
+    db = DatabaseManager()
+    cfg_obj = {
+        "platform": exchange,
+        "strategy": "auto_close",
+        "symbol": coin,
+        "coin": coin,
+        "exchange": exchange,
+        "wallet_memo": req.wallet_memo or "",
+        "api_key": req.api_key if exchange == "binance" else None,
+        "account_index": int(getattr(req, "account_index", 0) or 0),
+        "api_key_index": int(getattr(req, "api_key_index", 2) or 2),
+        "status": "running",
+    }
+    secrets = {}
+    if strategy_kwargs.get("private_key"):
+        secrets["private_key"] = strategy_kwargs["private_key"]
+    if strategy_kwargs.get("api_secret"):
+        secrets["api_secret"] = strategy_kwargs["api_secret"]
+    try:
+        persist_live_config(db, user["id"], instance_id, cfg_obj, secrets=secrets or None)
+    except Exception as exc:
+        write_instance_event("start", instance_id, False, detail=f"落库失败: {exc}")
+        raise HTTPException(status_code=503, detail=f"实例配置写入数据库失败（可重试）: {exc}")
+
     thread = threading.Thread(target=_run_auto_close_in_thread, args=(instance_id, strategy), daemon=True)
     AUTO_CLOSE_INSTANCES[instance_id] = strategy
     AUTO_CLOSE_THREADS[instance_id] = thread
     thread.start()
 
-    db = DatabaseManager()
-    cfg = json.dumps(
-        {
-            "platform": exchange,
-            "strategy": "auto_close",
-            "symbol": coin,
-            "coin": coin,
-            "exchange": exchange,
-            "wallet_memo": req.wallet_memo or "",
-            "status": "running",
-        },
-        ensure_ascii=False,
-    )
-    db.save_user_instance(user["id"], "live", instance_id, cfg)
+    write_instance_event("start", instance_id, True, detail=f"auto_close {exchange} {coin}")
     return {"ok": True, "instance_id": instance_id, "message": f"{coin}自动平仓策略已启动"}
 
 
@@ -2012,7 +2447,7 @@ def start_auto_close(req: AutoCloseStartRequest, user: dict = Depends(require_us
 def stop_auto_close(user: dict = Depends(require_user)):
     db = DatabaseManager()
     my_ids = set(db.get_user_instance_ids(user["id"], "live"))
-    target_ids = [iid for iid in list(AUTO_CLOSE_INSTANCES.keys()) if iid in my_ids] or list(AUTO_CLOSE_INSTANCES.keys())
+    target_ids = [iid for iid in list(AUTO_CLOSE_INSTANCES.keys()) if iid in my_ids]
     if not target_ids:
         return {"ok": True, "message": "没有运行中的自动平仓策略"}
 
@@ -2048,6 +2483,99 @@ def get_auto_close_status():
     return {"running": len(items) > 0, "instances": items}
 
 
+def _cleanup_auto_close_zombies() -> None:
+    dead_ids = []
+    for iid, th in list(AUTO_CLOSE_THREADS.items()):
+        if th and not th.is_alive():
+            dead_ids.append(iid)
+    for iid in dead_ids:
+        logger.warning(f"🧹 Webhook 发现僵尸自动平仓实例，自动清理: {iid}")
+        AUTO_CLOSE_INSTANCES.pop(iid, None)
+        AUTO_CLOSE_TASKS.pop(iid, None)
+        AUTO_CLOSE_THREADS.pop(iid, None)
+
+
+def _auto_close_candidates_for_symbol(signal_symbol: str) -> List[Tuple[str, Any]]:
+    """按币种筛选运行中的自动平仓实例。"""
+    _cleanup_auto_close_zombies()
+    out: List[Tuple[str, Any]] = []
+    for iid, st in AUTO_CLOSE_INSTANCES.items():
+        if not getattr(st, "is_enabled", True) or getattr(st, "_stop", False):
+            continue
+        if getattr(st, "symbol_filter", "").upper() == signal_symbol:
+            out.append((iid, st))
+    return out
+
+
+def _dispatch_auto_close_signal(signal_symbol: str, action: str) -> List[Dict[str, Any]]:
+    """
+    将信号扇出到匹配币种的自动平仓实例。
+    实例内部会再检查是否有持仓；无仓则忽略。
+    """
+    candidates = _auto_close_candidates_for_symbol(signal_symbol)
+    if not candidates:
+        return []
+
+    dispatch_results: List[Dict[str, Any]] = []
+    for target_id, strategy in candidates:
+        ex = getattr(strategy, "exchange", "") or ""
+        if not getattr(strategy, "is_enabled", True):
+            dispatch_results.append({
+                "ok": True,
+                "skipped": True,
+                "instance_id": target_id,
+                "exchange": ex,
+                "channel": "auto_close",
+                "message": "策略已停止（暂停接收信号）",
+            })
+            continue
+        loop = AUTO_CLOSE_TASKS.get(target_id)
+        if not loop or not loop.is_running():
+            AUTO_CLOSE_INSTANCES.pop(target_id, None)
+            AUTO_CLOSE_TASKS.pop(target_id, None)
+            AUTO_CLOSE_THREADS.pop(target_id, None)
+            dispatch_results.append({
+                "ok": False,
+                "instance_id": target_id,
+                "exchange": ex,
+                "channel": "auto_close",
+                "message": "策略线程已停止",
+            })
+            continue
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                strategy.execute_signal(signal_symbol, action),
+                loop,
+            )
+            try:
+                future.result(timeout=2)
+            except Exception as e:
+                import concurrent.futures
+                if isinstance(e, concurrent.futures.TimeoutError):
+                    logger.warning(
+                        f"⏳ auto_close 等待超时(2s)，已转后台: {target_id} {signal_symbol} {action}"
+                    )
+                else:
+                    raise
+            dispatch_results.append({
+                "ok": True,
+                "instance_id": target_id,
+                "exchange": ex,
+                "channel": "auto_close",
+                "message": f"自动平仓信号已接收: {action} {signal_symbol}",
+            })
+        except Exception as e:
+            logger.error(f"处理 {signal_symbol} auto_close 失败 [{target_id}]: {repr(e)}")
+            dispatch_results.append({
+                "ok": False,
+                "instance_id": target_id,
+                "exchange": ex,
+                "channel": "auto_close",
+                "message": repr(e),
+            })
+    return dispatch_results
+
+
 @router.post("/auto-close/webhook", summary="接收 TradingView Webhook 信号（自动平仓）")
 async def auto_close_webhook(request: Request):
     try:
@@ -2070,48 +2598,29 @@ async def auto_close_webhook(request: Request):
         raise HTTPException(status_code=400, detail="信号缺少 symbol 字段")
 
     # 清理僵尸线程实例
-    dead_ids = []
-    for iid, th in list(AUTO_CLOSE_THREADS.items()):
-        if th and not th.is_alive():
-            dead_ids.append(iid)
-    for iid in dead_ids:
-        AUTO_CLOSE_INSTANCES.pop(iid, None)
-        AUTO_CLOSE_TASKS.pop(iid, None)
-        AUTO_CLOSE_THREADS.pop(iid, None)
+    _cleanup_auto_close_zombies()
 
-    # 按币种路由（自动平仓策略要求绑定币种）
-    candidates = [(iid, st) for iid, st in AUTO_CLOSE_INSTANCES.items() if getattr(st, "symbol_filter", "").upper() == signal_symbol]
-    if not candidates:
+    # 按币种路由（自动平仓策略要求绑定币种）；同币种多交易所全部扇出
+    dispatch_results = _dispatch_auto_close_signal(signal_symbol, action)
+    if not dispatch_results:
         raise HTTPException(status_code=404, detail=f"没有处理 {signal_symbol} 的自动平仓实例，请先在前端启动该币种策略")
-    target_id, strategy = candidates[0]
-    if not getattr(strategy, "is_enabled", True):
-        return {"ok": True, "instance_id": target_id, "symbol": signal_symbol, "action": action, "message": "策略已停止（暂停接收信号）"}
-    loop = AUTO_CLOSE_TASKS.get(target_id)
-    if not loop or not loop.is_running():
-        AUTO_CLOSE_INSTANCES.pop(target_id, None)
-        AUTO_CLOSE_TASKS.pop(target_id, None)
-        AUTO_CLOSE_THREADS.pop(target_id, None)
-        raise HTTPException(status_code=404, detail=f"策略线程已停止，请重新启动 {signal_symbol} 自动平仓策略")
 
-    try:
-        future = asyncio.run_coroutine_threadsafe(strategy.execute_signal(signal_symbol, action), loop)
-        try:
-            future.result(timeout=2)
-        except Exception as e:
-            import concurrent.futures
-            if isinstance(e, concurrent.futures.TimeoutError):
-                logger.warning(f"⏳ Webhook 等待策略处理超时(2s)，已转后台继续: {signal_symbol} {action}")
-            else:
-                raise
-        return {"ok": True, "instance_id": target_id, "symbol": signal_symbol, "action": action, "message": "信号已接收"}
-    except Exception as e:
-        logger.error(f"处理 {signal_symbol} Webhook 信号失败: {repr(e)}")
-        raise HTTPException(status_code=500, detail=f"信号处理失败: {repr(e)}")
+    if not any(r.get("ok") for r in dispatch_results):
+        raise HTTPException(status_code=500, detail=f"全部实例处理失败: {dispatch_results}")
+
+    return {
+        "ok": True,
+        "symbol": signal_symbol,
+        "action": action,
+        "targets": dispatch_results,
+        "instance_id": dispatch_results[0].get("instance_id"),
+        "message": f"信号已扇出到 {len(dispatch_results)} 个自动平仓实例",
+    }
 
 
 def _run_adaptive_long_in_thread(instance_id: str, strategy: AdaptiveLongStrategy):
     logger.info(
-        "▶️ 做多策略线程启动 %s | %s | AI开单门槛=%s | 重复开单=%s",
+        "▶️ 做多策略线程启动 %s | %s | AI开单门槛=%s | 重复开单=%s | AI位阶止盈止损=%s",
         instance_id,
         getattr(strategy, "symbol_filter", "—"),
         getattr(strategy, "min_ai_score_for_trade", 0),
@@ -2223,18 +2732,65 @@ def start_adaptive_long(req: AdaptiveLongStartRequest, user: dict = Depends(requ
             min_ai_score_for_trade=min_ai,
             allow_repeat_open=allow_rep,
             use_ai_sr_tpsl=use_ai_sr,
+            margin_type=_norm_binance_margin_type(getattr(req, "margin_type", None)),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"认证参数错误: {str(e)}")
     except Exception as e:
+        _alert_live_trade_error(
+            "策略初始化失败", e,
+            instance_id=instance_id, exchange=exchange, symbol=symbol_filter, strategy="adaptive_long",
+        )
         raise HTTPException(status_code=500, detail=f"策略初始化失败: {str(e)}")
 
     logger.info(
-        "✅ 做多策略对象已创建 %s | %s | AI开单门槛=%s | 重复开单=%s | AI位阶止盈止损=%s（内存）",
+        "✅ 做多策略对象已创建 %s | %s | AI开单门槛=%s | 重复开单=%s | AI位阶止盈止损=%s（待落库）",
         instance_id, symbol_filter, strategy.min_ai_score_for_trade,
         "是" if strategy.allow_repeat_open else "否",
         "是" if strategy.use_ai_sr_tpsl else "否",
     )
+
+    # 先落库再起线程，避免 DB 锁超时导致前端 500 但内存已有僵尸实例
+    db = DatabaseManager()
+    cfg_obj = {
+        "platform": exchange,
+        "exchange": exchange,
+        "strategy": "adaptive_long",
+        "symbol": symbol_filter,
+        "coin": symbol_filter,
+        "timeframe_filter": timeframe_filter,
+        "margin_amount": req.margin_amount,
+        "leverage": req.leverage,
+        "stop_loss_pct": req.stop_loss_pct,
+        "take_profit_pct": req.take_profit_pct,
+        "break_even_pct": req.break_even_pct,
+        "lock_profit_pct": req.lock_profit_pct,
+        "lock_profit_sl_pct": req.lock_profit_sl_pct,
+        "api_key": req.api_key if exchange == "binance" else None,
+        "account_index": getattr(req, "account_index", 0),
+        "api_key_index": getattr(req, "api_key_index", 2),
+        "wallet_memo": getattr(req, "wallet_memo", "") if hasattr(req, "wallet_memo") else "",
+        "min_ai_score_for_trade": min_ai,
+        "allow_repeat_open": allow_rep,
+        "use_ai_sr_tpsl": use_ai_sr,
+        "margin_type": _norm_binance_margin_type(getattr(req, "margin_type", None)),
+        "status": "running",
+    }
+    secrets = {}
+    if strategy_kwargs.get("private_key"):
+        secrets["private_key"] = strategy_kwargs["private_key"]
+    elif getattr(req, "private_key", None):
+        secrets["private_key"] = req.private_key
+    if getattr(req, "api_secret", None):
+        secrets["api_secret"] = req.api_secret
+    try:
+        persist_live_config(db, user["id"], instance_id, cfg_obj, secrets=secrets or None)
+    except Exception as exc:
+        write_instance_event("start", instance_id, False, detail=f"落库失败: {exc}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"实例配置写入数据库失败（可重试）: {exc}",
+        )
 
     thread = threading.Thread(
         target=_run_adaptive_long_in_thread, args=(instance_id, strategy), daemon=True
@@ -2243,35 +2799,10 @@ def start_adaptive_long(req: AdaptiveLongStartRequest, user: dict = Depends(requ
     ADAPTIVE_LONG_THREADS[instance_id] = thread
     thread.start()
 
-    db = DatabaseManager()
-    cfg = json.dumps(
-        {
-            "platform": exchange,
-            "exchange": exchange,
-            "strategy": "adaptive_long",
-            "symbol": symbol_filter,
-            "coin": symbol_filter,
-            "timeframe_filter": timeframe_filter,
-            "margin_amount": req.margin_amount,
-            "leverage": req.leverage,
-            "stop_loss_pct": req.stop_loss_pct,
-            "take_profit_pct": req.take_profit_pct,
-            "break_even_pct": req.break_even_pct,
-            "lock_profit_pct": req.lock_profit_pct,
-            "lock_profit_sl_pct": req.lock_profit_sl_pct,
-            # 不在 DB 保存密钥（编辑参数时留空=不修改；运行中应用参数会复用内存中的密钥）
-            "api_key": req.api_key if exchange == "binance" else None,
-            "account_index": getattr(req, "account_index", 0),
-            "api_key_index": getattr(req, "api_key_index", 2),
-            "wallet_memo": getattr(req, "wallet_memo", "") if hasattr(req, "wallet_memo") else "",
-            "min_ai_score_for_trade": min_ai,
-            "allow_repeat_open": allow_rep,
-            "use_ai_sr_tpsl": use_ai_sr,
-            "status": "running",
-        },
-        ensure_ascii=False
+    write_instance_event(
+        "start", instance_id, True,
+        detail=f"adaptive_long {exchange} {symbol_filter}",
     )
-    db.save_user_instance(user["id"], "live", instance_id, cfg)
     logger.info(
         "✅ %s已启动: %s (交易所=%s 币种=%s AI开单门槛=%s 重复开单=%s AI位阶止盈止损=%s 已写入DB)",
         strategy_name, instance_id, exchange, symbol_filter, min_ai,
@@ -2398,7 +2929,8 @@ async def adaptive_long_webhook(request: Request):
 
     if is_sell_action(action):
         logger.info(
-            "📋 做多策略卖出=平仓 | %s %s | 跳过 AI 评分与开单门槛",
+            "📋 做多策略卖出=平仓 | %s %s | 跳过 AI 评分与开单门槛；"
+            "同时扇出到匹配的自动平仓实例（共用 adaptive-long webhook）",
             signal_symbol, signal_timeframe or "默认周期",
         )
 
@@ -2415,13 +2947,60 @@ async def adaptive_long_webhook(request: Request):
         ADAPTIVE_LONG_THREADS.pop(iid, None)
 
     candidates = _adaptive_long_symbol_candidates(ADAPTIVE_LONG_INSTANCES, signal_symbol)
-    target_id = _pick_adaptive_long_instance_for_webhook(candidates, signal_timeframe)
+    target_ids = _select_instances_per_exchange(
+        candidates, signal_timeframe, _pick_adaptive_long_instance_for_webhook
+    )
     logger.info(
-        f"📨 adaptive-long 路由: target={target_id} 候选数={len(candidates)} "
+        f"📨 adaptive-long 路由: targets={target_ids} 候选数={len(candidates)} "
         f"signal_tf={signal_timeframe or '未指定'}"
     )
 
-    if not target_id:
+    # sell：同时扇出到自动平仓实例（有仓才平；与做多共用同一 webhook）
+    auto_close_results: List[Dict[str, Any]] = []
+    if is_sell_action(action):
+        auto_close_results = _dispatch_auto_close_signal(signal_symbol, action)
+        if auto_close_results:
+            logger.info(
+                "📨 adaptive-long sell → auto_close 扇出 %s 个实例: %s",
+                len(auto_close_results),
+                [r.get("instance_id") for r in auto_close_results],
+            )
+
+    if not target_ids:
+        if is_sell_action(action):
+            if auto_close_results:
+                if not any(r.get("ok") for r in auto_close_results):
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"自动平仓全部失败: {auto_close_results}",
+                    )
+                return {
+                    "ok": True,
+                    "symbol": signal_symbol,
+                    "action": action,
+                    "targets": auto_close_results,
+                    "instance_id": auto_close_results[0].get("instance_id"),
+                    "message": (
+                        f"无 {signal_symbol} 做多实例；已扇出到 "
+                        f"{len(auto_close_results)} 个自动平仓实例（有仓则平）"
+                    ),
+                }
+            # 无做多、无自动平仓：sell 视为无仓可平，不报 404（避免 TV 告警刷红）
+            logger.info(
+                "🟡 sell %s：无匹配做多/自动平仓实例，忽略（请确认已启动对应币种策略）",
+                signal_symbol,
+            )
+            return {
+                "ok": True,
+                "skipped": True,
+                "symbol": signal_symbol,
+                "action": action,
+                "targets": [],
+                "message": (
+                    f"无处理 {signal_symbol} 的做多/自动平仓实例在运行；"
+                    f"sell 已忽略（有仓请先启动对应策略）"
+                ),
+            }
         if len(candidates) > 1 and not (signal_timeframe or "").strip():
             raise HTTPException(
                 status_code=400,
@@ -2443,102 +3022,131 @@ async def adaptive_long_webhook(request: Request):
             detail=f"没有处理 {signal_symbol} 的运行中策略实例，请先在前端启动对应币种的做多策略",
         )
 
-    strategy = ADAPTIVE_LONG_INSTANCES[target_id]
-    if not getattr(strategy, "is_enabled", True):
-        return {
-            "ok": True,
-            "instance_id": target_id,
-            "symbol": signal_symbol,
-            "action": action,
-            "message": "策略已停止（暂停接收信号），本次信号已忽略",
-        }
-
-    allow_repeat = bool(getattr(strategy, "allow_repeat_open", False))
-    use_ai_sr = bool(getattr(strategy, "use_ai_sr_tpsl", False))
-    min_trade_score = max(0, int(getattr(strategy, "min_ai_score_for_trade", 0) or 0))
-    ai_sr_plan = None
-
-    if is_buy_action(action):
-        logger.info(
-            "📋 实例 %s | %s %s | AI开单门槛=%s | 重复开单=%s | AI位阶止盈止损=%s | 持仓=%s | 开仓中=%s",
-            target_id,
-            signal_symbol,
-            signal_timeframe or "默认周期",
-            min_trade_score,
-            "是" if allow_repeat else "否",
-            "是" if use_ai_sr else "否",
-            getattr(strategy, "position", None) or "无",
-            "是" if getattr(strategy, "_opening", False) else "否",
-        )
-        if not allow_repeat and (
-            getattr(strategy, "position", None) == "LONG"
-            or getattr(strategy, "_opening", False)
-        ):
-            entry_tfs = sorted(getattr(strategy, "position_entry_tfs", set()) or [])
-            logger.info(
-                "⛔ Webhook拦截 | 重复开单=否 | 已有或正在建立 %s 多仓，忽略 %s %s 买入"
-                "（已开仓级别=%s）",
-                signal_symbol,
-                signal_symbol,
-                signal_timeframe or "—",
-                entry_tfs or ["—"],
-            )
-            return {
+    dispatch_results: List[Dict[str, Any]] = []
+    for target_id in target_ids:
+        strategy = ADAPTIVE_LONG_INSTANCES.get(target_id)
+        if not strategy:
+            continue
+        ex = getattr(strategy, "exchange", "") or ""
+        if not getattr(strategy, "is_enabled", True):
+            dispatch_results.append({
                 "ok": True,
                 "skipped": True,
                 "instance_id": target_id,
-                "symbol": signal_symbol,
-                "action": action,
-                "allow_repeat_open": False,
-                "message": (
-                    f"重复开单=否，已有{signal_symbol}多仓或开仓进行中，"
-                    f"忽略{signal_timeframe or '本次'}买入"
-                ),
-            }
+                "exchange": ex,
+                "message": "策略已停止（暂停接收信号）",
+            })
+            continue
 
-    loop = ADAPTIVE_LONG_TASKS.get(target_id)
-    if not loop or not loop.is_running():
-        # 兜底：loop 不存在或已关闭，清理该实例
-        ADAPTIVE_LONG_INSTANCES.pop(target_id, None)
-        ADAPTIVE_LONG_TASKS.pop(target_id, None)
-        ADAPTIVE_LONG_THREADS.pop(target_id, None)
-        raise HTTPException(
-            status_code=404,
-            detail=f"策略线程已停止，请在前端重新启动 {signal_symbol} 做多策略"
-        )
+        allow_repeat = bool(getattr(strategy, "allow_repeat_open", False))
+        use_ai_sr = bool(getattr(strategy, "use_ai_sr_tpsl", False))
+        min_trade_score = max(0, int(getattr(strategy, "min_ai_score_for_trade", 0) or 0))
+        ai_sr_plan = None
 
-    try:
-        future = asyncio.run_coroutine_threadsafe(
-            strategy.execute_signal(
+        if is_buy_action(action):
+            logger.info(
+                "📋 实例 %s (%s) | %s %s | AI开单门槛=%s | 重复开单=%s | AI位阶止盈止损=%s | 持仓=%s | 开仓中=%s",
+                target_id,
+                ex,
                 signal_symbol,
-                action,
-                timeframe=signal_timeframe or None,
-                ai_sr_levels=ai_sr_plan if is_buy_action(action) else None,
-            ),
-            loop
-        )
+                signal_timeframe or "默认周期",
+                min_trade_score,
+                "是" if allow_repeat else "否",
+                "是" if use_ai_sr else "否",
+                getattr(strategy, "position", None) or "无",
+                "是" if getattr(strategy, "_opening", False) else "否",
+            )
+            if not allow_repeat and (
+                getattr(strategy, "position", None) == "LONG"
+                or getattr(strategy, "_opening", False)
+            ):
+                entry_tfs = sorted(getattr(strategy, "position_entry_tfs", set()) or [])
+                logger.info(
+                    "⛔ Webhook拦截 | 重复开单=否 | 实例 %s 已有或正在建立 %s 多仓，忽略买入（已开仓级别=%s）",
+                    target_id,
+                    signal_symbol,
+                    entry_tfs or ["—"],
+                )
+                dispatch_results.append({
+                    "ok": True,
+                    "skipped": True,
+                    "instance_id": target_id,
+                    "exchange": ex,
+                    "allow_repeat_open": False,
+                    "message": f"重复开单=否，已有{signal_symbol}多仓或开仓进行中",
+                })
+                continue
+
+        loop = ADAPTIVE_LONG_TASKS.get(target_id)
+        if not loop or not loop.is_running():
+            ADAPTIVE_LONG_INSTANCES.pop(target_id, None)
+            ADAPTIVE_LONG_TASKS.pop(target_id, None)
+            ADAPTIVE_LONG_THREADS.pop(target_id, None)
+            dispatch_results.append({
+                "ok": False,
+                "instance_id": target_id,
+                "exchange": ex,
+                "message": "策略线程已停止",
+            })
+            continue
+
         try:
-            # Webhook 需要快速返回；下单/拉行情可能超过 10s（代理抖动、DEX 延迟）。
-            # 这里尽量等待短时间确认任务已启动；超时则返回已接收，让策略后台继续跑。
-            future.result(timeout=2)
+            future = asyncio.run_coroutine_threadsafe(
+                strategy.execute_signal(
+                    signal_symbol,
+                    action,
+                    timeframe=signal_timeframe or None,
+                    ai_sr_levels=ai_sr_plan if is_buy_action(action) else None,
+                ),
+                loop,
+            )
+            try:
+                future.result(timeout=2)
+            except Exception as e:
+                import concurrent.futures
+                if isinstance(e, concurrent.futures.TimeoutError):
+                    logger.warning(
+                        f"⏳ Webhook 等待策略处理超时(2s)，已转后台继续: {target_id} {signal_symbol} {action}"
+                    )
+                else:
+                    raise
+            dispatch_results.append({
+                "ok": True,
+                "instance_id": target_id,
+                "exchange": ex,
+                "channel": "adaptive_long",
+                "position": getattr(strategy, "position", None),
+                "message": f"信号已处理: {action} {signal_symbol}",
+            })
         except Exception as e:
-            # 仅处理超时：其它异常继续抛给上层
-            import concurrent.futures
-            if isinstance(e, concurrent.futures.TimeoutError):
-                logger.warning(f"⏳ Webhook 等待策略处理超时(2s)，已转后台继续: {signal_symbol} {action}")
-            else:
-                raise
-        return {
-            "ok": True,
-            "instance_id": target_id,
-            "symbol": signal_symbol,
-            "action": action,
-            "position": strategy.position,
-            "message": f"信号已处理: {action} {signal_symbol}",
-        }
-    except Exception as e:
-        logger.error(f"处理 {signal_symbol} Webhook 信号失败: {repr(e)}")
-        raise HTTPException(status_code=500, detail=f"信号处理失败: {repr(e)}")
+            logger.error(f"处理 {signal_symbol} Webhook 失败 [{target_id}]: {repr(e)}")
+            dispatch_results.append({
+                "ok": False,
+                "instance_id": target_id,
+                "exchange": ex,
+                "channel": "adaptive_long",
+                "message": repr(e),
+            })
+
+    # sell 时合并自动平仓扇出结果
+    if auto_close_results:
+        for r in dispatch_results:
+            r.setdefault("channel", "adaptive_long")
+        dispatch_results.extend(auto_close_results)
+
+    if not dispatch_results:
+        raise HTTPException(status_code=404, detail=f"没有可用的 {signal_symbol} 做多实例")
+    if not any(r.get("ok") for r in dispatch_results):
+        raise HTTPException(status_code=500, detail=f"全部实例处理失败: {dispatch_results}")
+
+    return {
+        "ok": True,
+        "symbol": signal_symbol,
+        "action": action,
+        "targets": dispatch_results,
+        "instance_id": dispatch_results[0].get("instance_id"),
+        "message": f"信号已扇出到 {len(dispatch_results)} 个实例: {action} {signal_symbol}",
+    }
 
 
 # ═══════════════════════════════════════════════════════
@@ -2631,9 +3239,49 @@ def start_adaptive_short(req: AdaptiveLongStartRequest, user: dict = Depends(req
             lock_profit_sl_pct=req.lock_profit_sl_pct,
             symbol_filter=symbol_filter,
             timeframe_filter=timeframe_filter,
+            margin_type=_norm_binance_margin_type(getattr(req, "margin_type", None)),
         )
     except Exception as e:
+        _alert_live_trade_error(
+            "创建策略失败", e,
+            instance_id=instance_id, exchange=exchange, symbol=symbol_filter, strategy="adaptive_short",
+        )
         raise HTTPException(status_code=500, detail=f"创建策略失败: {repr(e)}")
+
+    db = DatabaseManager()
+    cfg_obj = {
+        "platform": exchange,
+        "exchange": exchange,
+        "strategy": "adaptive_short",
+        "symbol": symbol_filter,
+        "coin": symbol_filter,
+        "timeframe_filter": timeframe_filter,
+        "margin_amount": req.margin_amount,
+        "leverage": req.leverage,
+        "stop_loss_pct": req.stop_loss_pct,
+        "take_profit_pct": req.take_profit_pct,
+        "break_even_pct": req.break_even_pct,
+        "lock_profit_pct": req.lock_profit_pct,
+        "lock_profit_sl_pct": req.lock_profit_sl_pct,
+        "margin_type": _norm_binance_margin_type(getattr(req, "margin_type", None)),
+        "api_key": req.api_key if exchange == "binance" else None,
+        "account_index": getattr(req, "account_index", 0),
+        "api_key_index": getattr(req, "api_key_index", 2),
+        "wallet_memo": getattr(req, "wallet_memo", "") if hasattr(req, "wallet_memo") else "",
+        "status": "running",
+    }
+    secrets = {}
+    if strategy_kwargs.get("private_key"):
+        secrets["private_key"] = strategy_kwargs["private_key"]
+    elif getattr(req, "private_key", None):
+        secrets["private_key"] = req.private_key
+    if getattr(req, "api_secret", None):
+        secrets["api_secret"] = req.api_secret
+    try:
+        persist_live_config(db, user["id"], instance_id, cfg_obj, secrets=secrets or None)
+    except Exception as exc:
+        write_instance_event("start", instance_id, False, detail=f"落库失败: {exc}")
+        raise HTTPException(status_code=503, detail=f"实例配置写入数据库失败（可重试）: {exc}")
 
     thread = threading.Thread(
         target=_run_adaptive_short_in_thread, args=(instance_id, strategy), daemon=True
@@ -2642,36 +3290,10 @@ def start_adaptive_short(req: AdaptiveLongStartRequest, user: dict = Depends(req
     ADAPTIVE_SHORT_THREADS[instance_id] = thread
     thread.start()
 
-    # 与 adaptive-long 保持一致：用 save_user_instance 落库，instances 列表才能稳定显示
-    try:
-        db = DatabaseManager()
-        cfg = json.dumps(
-            {
-                "platform": exchange,
-                "exchange": exchange,
-                "strategy": "adaptive_short",
-                "symbol": symbol_filter,
-                "coin": symbol_filter,
-                "timeframe_filter": timeframe_filter,
-                "margin_amount": req.margin_amount,
-                "leverage": req.leverage,
-                "stop_loss_pct": req.stop_loss_pct,
-                "take_profit_pct": req.take_profit_pct,
-                "break_even_pct": req.break_even_pct,
-                "lock_profit_pct": req.lock_profit_pct,
-                "lock_profit_sl_pct": req.lock_profit_sl_pct,
-                # 不在 DB 保存密钥（编辑参数时留空=不修改；运行中应用参数会复用内存中的密钥）
-                "api_key": req.api_key if exchange == "binance" else None,
-                "account_index": getattr(req, "account_index", 0),
-                "api_key_index": getattr(req, "api_key_index", 2),
-                "wallet_memo": getattr(req, "wallet_memo", "") if hasattr(req, "wallet_memo") else "",
-                "status": "running",
-            },
-            ensure_ascii=False,
-        )
-        db.save_user_instance(user["id"], "live", instance_id, cfg)
-    except Exception:
-        pass
+    write_instance_event(
+        "start", instance_id, True,
+        detail=f"adaptive_short {exchange} {symbol_filter}",
+    )
     logger.info(f"✅ {strategy_name}已启动: {instance_id} (交易所={exchange} 币种={symbol_filter})")
     return {"ok": True, "instance_id": instance_id, "message": f"{strategy_name}已启动"}
 
@@ -2772,47 +3394,88 @@ async def adaptive_short_webhook(request: Request):
         ADAPTIVE_SHORT_THREADS.pop(iid, None)
 
     candidates = _adaptive_short_symbol_candidates(ADAPTIVE_SHORT_INSTANCES, signal_symbol)
-    target_id = _pick_adaptive_short_instance_for_webhook(candidates, signal_timeframe)
-    logger.info(f"📨 adaptive-short 路由: target={target_id} 候选数={len(candidates)} signal_tf={signal_timeframe or '未指定'}")
+    target_ids = _select_instances_per_exchange(
+        candidates, signal_timeframe, _pick_adaptive_short_instance_for_webhook
+    )
+    logger.info(
+        f"📨 adaptive-short 路由: targets={target_ids} 候选数={len(candidates)} "
+        f"signal_tf={signal_timeframe or '未指定'}"
+    )
 
-    if not target_id:
+    if not target_ids:
         if len(candidates) > 1 and not (signal_timeframe or "").strip():
             raise HTTPException(status_code=400, detail=f"同币种 {signal_symbol} 有多个运行中的做空实例，Webhook 必须携带 K 线级别字段以便路由")
         if len(candidates) > 1 and (signal_timeframe or "").strip():
             raise HTTPException(status_code=404, detail=f"没有 K 线级别与信号 {signal_timeframe} 匹配的 {signal_symbol} 做空实例")
         raise HTTPException(status_code=404, detail=f"没有处理 {signal_symbol} 的运行中做空实例，请先在前端启动对应币种的做空策略")
 
-    strategy = ADAPTIVE_SHORT_INSTANCES[target_id]
-    if not getattr(strategy, "is_enabled", True):
-        return {
-            "ok": True,
-            "instance_id": target_id,
-            "symbol": signal_symbol,
-            "action": action,
-            "message": "策略已停止（暂停接收信号），本次信号已忽略",
-        }
-    loop = ADAPTIVE_SHORT_TASKS.get(target_id)
-    if not loop or not loop.is_running():
-        ADAPTIVE_SHORT_INSTANCES.pop(target_id, None)
-        ADAPTIVE_SHORT_TASKS.pop(target_id, None)
-        ADAPTIVE_SHORT_THREADS.pop(target_id, None)
-        raise HTTPException(status_code=404, detail=f"策略线程已停止，请在前端重新启动 {signal_symbol} 做空策略")
-
-    try:
-        future = asyncio.run_coroutine_threadsafe(
-            strategy.execute_signal(signal_symbol, action, timeframe=signal_timeframe or None),
-            loop,
-        )
+    dispatch_results: List[Dict[str, Any]] = []
+    for target_id in target_ids:
+        strategy = ADAPTIVE_SHORT_INSTANCES.get(target_id)
+        if not strategy:
+            continue
+        ex = getattr(strategy, "exchange", "") or ""
+        if not getattr(strategy, "is_enabled", True):
+            dispatch_results.append({
+                "ok": True,
+                "skipped": True,
+                "instance_id": target_id,
+                "exchange": ex,
+                "message": "策略已停止（暂停接收信号）",
+            })
+            continue
+        loop = ADAPTIVE_SHORT_TASKS.get(target_id)
+        if not loop or not loop.is_running():
+            ADAPTIVE_SHORT_INSTANCES.pop(target_id, None)
+            ADAPTIVE_SHORT_TASKS.pop(target_id, None)
+            ADAPTIVE_SHORT_THREADS.pop(target_id, None)
+            dispatch_results.append({
+                "ok": False,
+                "instance_id": target_id,
+                "exchange": ex,
+                "message": "策略线程已停止",
+            })
+            continue
         try:
-            future.result(timeout=2)
+            future = asyncio.run_coroutine_threadsafe(
+                strategy.execute_signal(signal_symbol, action, timeframe=signal_timeframe or None),
+                loop,
+            )
+            try:
+                future.result(timeout=2)
+            except Exception as e:
+                import concurrent.futures
+                if isinstance(e, concurrent.futures.TimeoutError):
+                    logger.warning(f"⏳ Webhook 等待策略处理超时(2s)，已转后台继续: {target_id} {signal_symbol} {action}")
+                else:
+                    raise
+            dispatch_results.append({
+                "ok": True,
+                "instance_id": target_id,
+                "exchange": ex,
+                "position": getattr(strategy, "position", None),
+                "message": f"信号已处理: {action} {signal_symbol}",
+            })
         except Exception as e:
-            import concurrent.futures
-            if isinstance(e, concurrent.futures.TimeoutError):
-                logger.warning(f"⏳ Webhook 等待策略处理超时(2s)，已转后台继续: {signal_symbol} {action}")
-            else:
-                raise
-        return {"ok": True, "instance_id": target_id, "symbol": signal_symbol, "action": action, "position": strategy.position, "message": f"信号已处理: {action} {signal_symbol}"}
-    except Exception as e:
-        logger.error(f"处理 {signal_symbol} Webhook 信号失败: {repr(e)}")
-        raise HTTPException(status_code=500, detail=f"信号处理失败: {repr(e)}")
+            logger.error(f"处理 {signal_symbol} Webhook 失败 [{target_id}]: {repr(e)}")
+            dispatch_results.append({
+                "ok": False,
+                "instance_id": target_id,
+                "exchange": ex,
+                "message": repr(e),
+            })
+
+    if not dispatch_results:
+        raise HTTPException(status_code=404, detail=f"没有可用的 {signal_symbol} 做空实例")
+    if not any(r.get("ok") for r in dispatch_results):
+        raise HTTPException(status_code=500, detail=f"全部实例处理失败: {dispatch_results}")
+
+    return {
+        "ok": True,
+        "symbol": signal_symbol,
+        "action": action,
+        "targets": dispatch_results,
+        "instance_id": dispatch_results[0].get("instance_id"),
+        "message": f"信号已扇出到 {len(dispatch_results)} 个实例: {action} {signal_symbol}",
+    }
 

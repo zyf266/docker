@@ -1,13 +1,14 @@
-name: Deploy to ECS
+name: Deploy to Test ECS
 
-# ECS 无法 git clone GitHub（Empty reply），改为 Runner 检出后 SCP 同步，再 SSH 构建。
+# 测试机 39.106.143.222 — push main 或手动触发
+# Secrets: SSH_HOST / SSH_USER / SSH_PRIVATE_KEY / SSH_PORT
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-ecs
+  group: deploy-ecs-test
   cancel-in-progress: true
 
 jobs:
@@ -19,12 +20,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Syntax-check scripts
-        run: bash -n deploy/remote-ci.sh && bash -n deploy/deploy.sh && bash -n deploy/install-docker.sh
+        run: |
+          bash -n deploy/remote-ci.sh
+          bash -n deploy/deploy.sh
+          bash -n deploy/install-docker.sh
+          bash -n deploy/bootstrap-prod-47.sh
+          bash -n deploy/verify-prod.sh
 
       - name: Pack source
         run: |
           set -euo pipefail
-          # 先打到 /tmp，避免「边打包边往当前目录写 tgz」触发: file changed as we read it
           tar -czf /tmp/backpack-quant.tgz \
             --exclude='./.git' \
             --exclude='./node_modules' \
@@ -41,7 +46,6 @@ jobs:
             --exclude='./.idea' \
             --exclude='./.vscode' \
             -C "${GITHUB_WORKSPACE}" .
-          # scp-action 只能读 workspace 内文件
           cp /tmp/backpack-quant.tgz "${GITHUB_WORKSPACE}/backpack-quant.tgz"
           ls -lh "${GITHUB_WORKSPACE}/backpack-quant.tgz"
 
@@ -58,7 +62,7 @@ jobs:
           timeout: 120s
           command_timeout: 15m
 
-      - name: Install and start on ECS
+      - name: Install and start on Test ECS
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -69,3 +73,6 @@ jobs:
           command_timeout: 45m
           script_stop: true
           script_path: deploy/remote-ci.sh
+          envs: SKIP_MYSQL
+        env:
+          SKIP_MYSQL: "0"

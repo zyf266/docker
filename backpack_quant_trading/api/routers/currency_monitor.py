@@ -143,24 +143,14 @@ def get_status(user: dict = Depends(require_user)):
         return {"running": False, "pairs": [], "alerted": []}
     inst = get_monitor_instance()
     if not inst or not getattr(inst, "_running", False):
-        cfg = DatabaseManager().get_currency_monitor_config()
-        if cfg:
-            _, data = cfg
-            try:
-                d = json.loads(data) if isinstance(data, str) else data
-                pairs = d.get("pairs", [])
-                if pairs:
-                    # 刷新后恢复：从 DB 配置自动启动监视器
-                    if inst:
-                        inst.stop()
-                    service = BinanceMonitorService(pairs=pairs, user_id=None)
-                    set_monitor_instance(service)
-                    service.start()
-                    alerted = [f"{s}|{t}" for (s, t) in service.get_alerted_pairs()]
-                    return {"running": True, "pairs": pairs, "alerted": alerted}
-                return {"running": False, "pairs": pairs, "restored": True}
-            except Exception:
-                pass
+        from backpack_quant_trading.core.binance_monitor import (
+            restore_currency_monitor_from_db_if_needed,
+        )
+        inst = restore_currency_monitor_from_db_if_needed()
+        if inst and getattr(inst, "_running", False):
+            pairs = list(getattr(inst, "_pairs", []))
+            alerted = [f"{s}|{t}" for (s, t) in inst.get_alerted_pairs()]
+            return {"running": True, "pairs": pairs, "alerted": alerted}
         return {"running": False, "pairs": []}
     pairs = list(getattr(inst, "_pairs", []))
     alerted = [f"{s}|{t}" for (s, t) in inst.get_alerted_pairs()]

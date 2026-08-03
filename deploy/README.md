@@ -1,5 +1,8 @@
 # GitHub Actions → 阿里云 ECS
 
+- **测试机**：`.github/workflows/deploy.yml`（`Deploy to Test ECS`）→ Secrets `SSH_HOST` 等；push `main` 或手动。
+- **正式机**：见 [`README-prod.md`](README-prod.md)（`Deploy to Prod ECS`，仅手动；Secrets `SSH_*_PROD`）。
+
 ## 为什么不用服务器 git pull
 
 ECS 上 `git` 访问 GitHub 会失败（`Empty reply from server`），网页 curl 能通也不代表 git 能用。
@@ -23,16 +26,18 @@ ECS 上 `git` 访问 GitHub 会失败（`Empty reply from server`），网页 cu
 
 手动检查：`free -h`、`docker compose logs mysql --tail 50`、`dmesg -T | grep -i oom`
 
-触发方式仍是：push `main` 或手动 Run workflow。Secrets 仍是 `SSH_HOST` / `SSH_USER` / `SSH_PRIVATE_KEY` / `SSH_PORT`。
+测试机触发：push `main` 或手动 Run workflow。正式机仅手动（见 README-prod）。
 
-## Secrets
+## Secrets（测试机）
 
 | Secret | 说明 |
 |--------|------|
-| `SSH_HOST` | ECS 公网 IP |
+| `SSH_HOST` | 测试 ECS 公网 IP（如 `39.106.143.222`） |
 | `SSH_USER` | 通常 `root` |
 | `SSH_PRIVATE_KEY` | 私钥全文 |
 | `SSH_PORT` | 可选，默认 22 |
+
+正式机 Secrets 见 `README-prod.md`（`SSH_*_PROD`）。
 
 本机验证 SSH：
 
@@ -93,7 +98,9 @@ python backpack_quant_trading/tools/agent_e2e_smoke.py
 
 | 文件 | 作用 |
 |------|------|
-| `.github/workflows/deploy.yml` | checkout → SCP → SSH |
+| `.github/workflows/deploy.yml` | 测试机 checkout → SCP → SSH |
+| `.github/workflows/deploy-prod.yml` | 正式机（仅手动） |
+| `deploy/README-prod.md` | 正式机引导与 Secrets |
 | `deploy/remote-ci.sh` | 解压 + 装 Docker + 调用 deploy.sh |
 | `deploy/deploy.sh` | `docker compose` 构建重启 |
 | `deploy/install-docker.sh` | 阿里云源安装 Docker |

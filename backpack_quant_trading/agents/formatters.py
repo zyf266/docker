@@ -186,7 +186,13 @@ def format_report_markdown(
     support = report.support
     resistance = report.resistance
     last = snap.get("last_close") or metrics.get("close") or metrics.get("last_close")
+    min_dist = st.get("sr_min_dist_pct")
     lines += ["#### 📐 支撑 / 压力位", sep_thin, f"- **信号周期** `{tf}`"]
+    if min_dist is not None:
+        try:
+            lines.append(f"- **最小有效距离** ≥{float(min_dist):.1f}%（已过滤贴价噪声）")
+        except Exception:
+            pass
     if support is not None:
         dist = ""
         try:
@@ -261,10 +267,17 @@ def format_report_markdown(
         ]
 
     if pending_id:
+        left = ""
+        try:
+            from backpack_quant_trading.agents.execution_agent import _ttl_min
+
+            left = f"，约 {_ttl_min()} 分钟内有效"
+        except Exception:
+            left = ""
         lines += [
             "#### ✅ 待确认下单",
             sep_thin,
-            f"- 订单 `{pending_id}` — 回复「确认」或「确认 {pending_id}」提交",
+            f"- 订单 `{pending_id}`{left} — 回复「确认」或「确认 {pending_id}」提交；「取消」可撤",
             "",
         ]
 

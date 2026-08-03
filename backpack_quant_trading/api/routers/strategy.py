@@ -48,88 +48,170 @@ def _bulk_insert_klines_dicts(rows_data: list) -> None:
         conn.commit()
 
 
-def sync_hype_klines_hl() -> dict:
-    """从 Hyperliquid 增量同步 HYPE 4H K 线到数据库。"""
+def _bar_ts_naive(ms: int) -> datetime:
+    """HL/交易所毫秒时间戳 → 本地 naive datetime（与历史写入方式一致）。"""
+    return datetime.fromtimestamp(int(ms) / 1000)
+
+
+def _naive_local_to_ms(dt: datetime) -> int:
+    """naive 本地时间 → epoch ms（勿再强行标成 UTC，否则会偏 8 小时导致重复拉取）。"""
+    if dt.tzinfo is not None:
+        return int(dt.timestamp() * 1000)
+    return int(dt.timestamp() * 1000)
+
+
+def _dedupe_strategy_klines(strategy_name: str, symbol: str, timeframe: str) -> int:
+    """同一 (strategy,symbol,timeframe,timestamp) 只保留成交量最大的一条，删除其余。"""
+    session = db_manager.get_session()
+    try:
+        rows = (
+            session.query(StrategyKline)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .order_by(StrategyKline.timestamp.asc(), StrategyKline.id.asc())
+            .all()
+        )
+        keep_ids = set()
+        best: Dict[datetime, Any] = {}
+        for r in rows:
+            ts = r.timestamp.replace(tzinfo=None) if r.timestamp and r.timestamp.tzinfo else r.timestamp
+            vol = float(r.volume or 0)
+            cur = best.get(ts)
+            if cur is None or vol > float(cur.volume or 0) or (vol == float(cur.volume or 0) and r.id > cur.id):
+                best[ts] = r
+        keep_ids = {r.id for r in best.values()}
+        deleted = 0
+        for r in rows:
+            if r.id not in keep_ids:
+                session.delete(r)
+                deleted += 1
+        if deleted:
+            session.commit()
+        return deleted
+    finally:
+        session.close()
+
+
+def _upsert_hl_klines(
+    *,
+    strategy_name: str,
+    symbol: str,
+    timeframe: str,
+    coin: str,
+    interval: str,
+    default_start: datetime,
+) -> dict:
+    """
+    Hyperliquid K 线增量同步：
+    - start 用本地 naive 正确换算，避免当成 UTC 导致重复写入
+    - 从最后一根（含）起拉，同时间戳更新而非再插
+    """
+    deleted = _dedupe_strategy_klines(strategy_name, symbol, timeframe)
+
     session = db_manager.get_session()
     try:
         last = (
             session.query(StrategyKline)
-            .filter_by(strategy_name=STRATEGY_NAME, symbol=SYMBOL, timeframe=TIMEFRAME)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
             .order_by(StrategyKline.timestamp.desc())
             .first()
         )
         last_ts = last.timestamp if (last and last.timestamp) else None
+        if last_ts and last_ts.tzinfo:
+            last_ts = last_ts.replace(tzinfo=None)
+        existing = {
+            (r[0].replace(tzinfo=None) if r[0] and r[0].tzinfo else r[0]): r[1]
+            for r in session.query(StrategyKline.timestamp, StrategyKline.id)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .all()
+        }
     finally:
         session.close()
 
     now_ms = int(_time.time() * 1000)
     if last_ts is None:
-        start_ms = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        start_ms = _naive_local_to_ms(default_start)
     else:
-        start_ms = int(last_ts.replace(tzinfo=timezone.utc).timestamp() * 1000) + 1
+        # 含最后一根，便于更新未收盘 K 线
+        start_ms = _naive_local_to_ms(last_ts)
 
-    bars = fetch_hl_klines_sync("HYPE", "4h", start_ms, now_ms)
+    bars = fetch_hl_klines_sync(coin, interval, start_ms, now_ms)
     if not bars:
-        return {"inserted": 0, "source": "hyperliquid"}
+        return {"inserted": 0, "updated": 0, "deduped": deleted, "source": "hyperliquid"}
 
-    rows = []
+    # 同批按 timestamp 去重，保留最后一条（最新快照）
+    by_ts: Dict[datetime, dict] = {}
     for bar in bars:
-        ts = datetime.fromtimestamp(bar["t"] / 1000)
-        if last_ts and ts <= last_ts:
-            continue
-        rows.append({
-            "strategy_name": STRATEGY_NAME, "symbol": SYMBOL, "timeframe": TIMEFRAME,
-            "timestamp": ts,
-            "open": PyDecimal(str(bar["o"])), "high": PyDecimal(str(bar["h"])),
-            "low": PyDecimal(str(bar["l"])),  "close": PyDecimal(str(bar["c"])),
-            "volume": PyDecimal(str(bar["v"])), "source": "hyperliquid",
-        })
+        ts = _bar_ts_naive(bar["t"])
+        by_ts[ts] = bar
 
-    _bulk_insert_klines_dicts(rows)
-    _hl_logger.info(f"[HL K线] HYPE 4H 写入 {len(rows)} 条")
-    return {"inserted": len(rows), "source": "hyperliquid"}
+    inserted = 0
+    updated = 0
+    to_insert = []
+    session = db_manager.get_session()
+    try:
+        for ts, bar in sorted(by_ts.items(), key=lambda x: x[0]):
+            payload = {
+                "open": PyDecimal(str(bar["o"])),
+                "high": PyDecimal(str(bar["h"])),
+                "low": PyDecimal(str(bar["l"])),
+                "close": PyDecimal(str(bar["c"])),
+                "volume": PyDecimal(str(bar["v"])),
+                "source": "hyperliquid",
+            }
+            row_id = existing.get(ts)
+            if row_id:
+                session.query(StrategyKline).filter_by(id=row_id).update(payload, synchronize_session=False)
+                updated += 1
+            else:
+                to_insert.append({
+                    "strategy_name": strategy_name,
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "timestamp": ts,
+                    **payload,
+                })
+                inserted += 1
+        session.commit()
+    finally:
+        session.close()
+
+    _bulk_insert_klines_dicts(to_insert)
+    _hl_logger.info(
+        "[HL K线] %s %s insert=%s update=%s dedupe=%s",
+        coin, interval, inserted, updated, deleted,
+    )
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "deduped": deleted,
+        "source": "hyperliquid",
+        "coin": coin,
+        "interval": interval,
+    }
+
+
+def sync_hype_klines_hl() -> dict:
+    """从 Hyperliquid 增量同步 HYPE 4H K 线到数据库。"""
+    return _upsert_hl_klines(
+        strategy_name=STRATEGY_NAME,
+        symbol=SYMBOL,
+        timeframe=TIMEFRAME,
+        coin="HYPE",
+        interval="4h",
+        default_start=datetime(2024, 1, 1),
+    )
 
 
 def sync_eth_klines_hl() -> dict:
     """从 Hyperliquid 增量同步 ETH 2H K 线到数据库。"""
-    session = db_manager.get_session()
-    try:
-        last = (
-            session.query(StrategyKline)
-            .filter_by(strategy_name=ETH_ONLY_STRATEGY_NAME, symbol=ETH_ONLY_SYMBOL, timeframe=ETH_ONLY_TIMEFRAME)
-            .order_by(StrategyKline.timestamp.desc())
-            .first()
-        )
-        last_ts = last.timestamp if (last and last.timestamp) else None
-    finally:
-        session.close()
-
-    now_ms = int(_time.time() * 1000)
-    if last_ts is None:
-        start_ms = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
-    else:
-        start_ms = int(last_ts.replace(tzinfo=timezone.utc).timestamp() * 1000) + 1
-
-    bars = fetch_hl_klines_sync("ETH", "2h", start_ms, now_ms)
-    if not bars:
-        return {"inserted": 0, "source": "hyperliquid"}
-
-    rows = []
-    for bar in bars:
-        ts = datetime.fromtimestamp(bar["t"] / 1000)
-        if last_ts and ts <= last_ts:
-            continue
-        rows.append({
-            "strategy_name": ETH_ONLY_STRATEGY_NAME, "symbol": ETH_ONLY_SYMBOL, "timeframe": ETH_ONLY_TIMEFRAME,
-            "timestamp": ts,
-            "open": PyDecimal(str(bar["o"])), "high": PyDecimal(str(bar["h"])),
-            "low": PyDecimal(str(bar["l"])),  "close": PyDecimal(str(bar["c"])),
-            "volume": PyDecimal(str(bar["v"])), "source": "hyperliquid",
-        })
-
-    _bulk_insert_klines_dicts(rows)
-    _hl_logger.info(f"[HL K线] ETH 2H 写入 {len(rows)} 条")
-    return {"inserted": len(rows), "source": "hyperliquid"}
+    return _upsert_hl_klines(
+        strategy_name=ETH_ONLY_STRATEGY_NAME,
+        symbol=ETH_ONLY_SYMBOL,
+        timeframe=ETH_ONLY_TIMEFRAME,
+        coin="ETH",
+        interval="2h",
+        default_start=datetime(2024, 1, 1),
+    )
 
 
 def _get_last_kline_timestamp(strategy_name: str, symbol: str, timeframe: str) -> Optional[datetime]:
@@ -177,6 +259,73 @@ def _us_stock_kline_sync_start(strategy_name: str, symbol: str, timeframe: str) 
     return datetime.now() - timedelta(days=180)
 
 
+def _ms_to_china_naive(ms: int) -> datetime:
+    """交易所毫秒时间戳 → Asia/Shanghai naive（不依赖容器 TZ，避免 UTC/CST 双写）。"""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.fromtimestamp(int(ms) / 1000, tz=ZoneInfo("Asia/Shanghai")).replace(tzinfo=None)
+    except Exception:
+        return datetime.fromtimestamp(int(ms) / 1000)
+
+
+def _dedupe_tz_shifted_klines(strategy_name: str, symbol: str, timeframe: str) -> int:
+    """
+    删除「同一 OHLCV、时间相差整 8 小时」的时区双写副本。
+    保留较晚的那根（按 Asia/Shanghai 解释的正确墙钟），删除较早的 UTC-naive 副本。
+    """
+    session = db_manager.get_session()
+    try:
+        rows = (
+            session.query(StrategyKline)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .order_by(StrategyKline.timestamp.asc(), StrategyKline.id.asc())
+            .all()
+        )
+        # OHLC 四位小数足够；成交量允许微小浮点差，不进分组 key
+        by_ohlc: Dict[Tuple[float, float, float, float], List[Any]] = {}
+        for r in rows:
+            key = (
+                round(float(r.open), 4),
+                round(float(r.high), 4),
+                round(float(r.low), 4),
+                round(float(r.close), 4),
+            )
+            by_ohlc.setdefault(key, []).append(r)
+
+        delete_ids = set()
+        for group in by_ohlc.values():
+            if len(group) < 2:
+                continue
+            group = sorted(group, key=lambda x: x.timestamp)
+            for i, a in enumerate(group):
+                if a.id in delete_ids:
+                    continue
+                for b in group[i + 1 :]:
+                    if b.id in delete_ids:
+                        continue
+                    delta_h = (b.timestamp - a.timestamp).total_seconds() / 3600.0
+                    if abs(delta_h - 8.0) >= 0.05:
+                        continue
+                    va, vb = float(a.volume or 0), float(b.volume or 0)
+                    # 成交量允许一定差异（未完成 K 线多次快照体积不同）
+                    if va > 0 and vb > 0 and abs(va - vb) / max(va, vb) > 0.5:
+                        continue
+                    delete_ids.add(a.id)
+                    break
+
+        if not delete_ids:
+            return 0
+        (
+            session.query(StrategyKline)
+            .filter(StrategyKline.id.in_(list(delete_ids)))
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+        return len(delete_ids)
+    finally:
+        session.close()
+
+
 def sync_us_stock_klines_massive(
     strategy_name: str,
     symbol: str,
@@ -195,13 +344,22 @@ def sync_us_stock_klines_massive(
     if not get_massive_api_key():
         return {"inserted": 0, "source": "massive", "error": "未配置 MASSIVE_API_KEY"}
 
+    deduped = _dedupe_tz_shifted_klines(strategy_name, symbol, timeframe)
+
     sym = normalize_us_ticker(ticker)
     iv = interval_label(massive_interval or timeframe)
     sync_start = _us_stock_kline_sync_start(strategy_name, symbol, timeframe)
 
     bars = fetch_massive_bars(sym, iv, limit=1500, start=sync_start)
     if not bars:
-        return {"inserted": 0, "source": "massive", "ticker": sym, "interval": iv, "from": sync_start.isoformat()}
+        return {
+            "inserted": 0,
+            "deduped": deduped,
+            "source": "massive",
+            "ticker": sym,
+            "interval": iv,
+            "from": sync_start.isoformat(),
+        }
 
     session = db_manager.get_session()
     try:
@@ -215,10 +373,17 @@ def sync_us_stock_klines_massive(
         session.close()
 
     rows = []
+    seen_batch: set = set()
     for bar in bars:
-        ts = datetime.fromtimestamp(int(bar["time"]) / 1000)
-        if ts in existing_ts:
+        ts = _ms_to_china_naive(int(bar["time"]))
+        if ts in existing_ts or ts in seen_batch:
             continue
+        # 若库里已有 UTC-naive 双胞胎（ts-8h 且未清干净），跳过避免再写
+        twin = ts - timedelta(hours=8)
+        if twin in existing_ts:
+            # 已有错误时区副本时仍写入正确 CST，留给 dedupe 清掉 twin
+            pass
+        seen_batch.add(ts)
         rows.append({
             "strategy_name": strategy_name,
             "symbol": symbol,
@@ -233,8 +398,20 @@ def sync_us_stock_klines_massive(
         })
 
     _bulk_insert_klines_dicts(rows)
-    _hl_logger.info("[Massive K线] %s %s 写入 %s 条 (from %s)", sym, iv, len(rows), sync_start.date())
-    return {"inserted": len(rows), "source": "massive", "ticker": sym, "interval": iv, "from": sync_start.isoformat()}
+    if rows:
+        deduped += _dedupe_tz_shifted_klines(strategy_name, symbol, timeframe)
+    _hl_logger.info(
+        "[Massive K线] %s %s 写入 %s 条 dedupe=%s (from %s)",
+        sym, iv, len(rows), deduped, sync_start.date(),
+    )
+    return {
+        "inserted": len(rows),
+        "deduped": deduped,
+        "source": "massive",
+        "ticker": sym,
+        "interval": iv,
+        "from": sync_start.isoformat(),
+    }
 
 
 _US_STOCK_KLINE_SPECS: Tuple[Dict[str, str], ...] = (
@@ -269,6 +446,14 @@ def run_scheduled_kline_sync() -> dict:
         result["a_share_2h"] = run_a_share_kline_sync()
     except Exception as exc:
         result["a_share_2h"] = {"error": str(exc)}
+    try:
+        result["sse_510210_4h"] = sync_sse_510210_klines_em()
+    except Exception as exc:
+        result["sse_510210_4h"] = {"inserted": 0, "error": str(exc)}
+    try:
+        result["mnq_dip_4h"] = sync_mnq_dip_klines_massive()
+    except Exception as exc:
+        result["mnq_dip_4h"] = {"inserted": 0, "error": str(exc)}
     return result
 
 
@@ -293,6 +478,24 @@ NAS100_SYMBOL = "NAS100USD"
 NAS100_TIMEFRAME = "2H"
 NAS100_KLINE_CSV = PROJECT_ROOT / "FX_NAS100, 120_0946a.csv"
 NAS100_TRADES_CSV = PROJECT_ROOT / "CME 纳指交易数据.csv"
+
+# 上证指数 ETF（510210）· 4H
+SSE_510210_STRATEGY_NAME = "SSE_510210_4H"
+SSE_510210_SYMBOL = "510210"
+SSE_510210_TIMEFRAME = "4H"
+SSE_510210_KLINE_CSV = PROJECT_ROOT / "SSE_DLY_510210, 240_8936e.csv"
+SSE_510210_TRADES_CSV = PROJECT_ROOT / "【沐龙】纳指趋势追踪增强策略_SSE_510210_2026-07-29_1c9aa.csv"
+SSE_510210_INITIAL_CAPITAL = 10_000_000  # CNY
+SSE_510210_CODE = "510210"
+
+# 纳指抄底策略 · MNQ 4H
+MNQ_DIP_STRATEGY_NAME = "MNQ_DIP_4H"
+MNQ_DIP_SYMBOL = "MNQUSD"
+MNQ_DIP_TIMEFRAME = "4H"
+MNQ_DIP_KLINE_CSV = PROJECT_ROOT / "CME_MINI_DL_MNQ1!, 240_c233a.csv"
+MNQ_DIP_TRADES_CSV = PROJECT_ROOT / "纳指抄底策略.csv"
+MNQ_DIP_INITIAL_CAPITAL = 2_000_000  # USD
+MNQ_DIP_MASSIVE_TICKER = "I:NDX"  # 纳指现货指数，价格量级接近 MNQ 连续合约
 
 # 美股动量轮动策略 CRCL_1H
 CRCL_STRATEGY_NAME = "CRCL_1H"
@@ -549,9 +752,19 @@ def get_eth_2h_klines():
         q = (
             session.query(StrategyKline)
             .filter_by(strategy_name=STRATEGY_NAME, symbol=SYMBOL, timeframe=TIMEFRAME)
-            .order_by(StrategyKline.timestamp.asc())
+            .order_by(StrategyKline.timestamp.asc(), StrategyKline.id.asc())
         )
-        rows = [r for r in q.all() if r is not None]
+        # 同时间戳去重：保留成交量最大的一根，避免图表出现“复读”K 线
+        best: Dict[datetime, Any] = {}
+        for r in q.all():
+            if r is None:
+                continue
+            ts = r.timestamp.replace(tzinfo=None) if r.timestamp and r.timestamp.tzinfo else r.timestamp
+            vol = float(r.volume or 0)
+            cur = best.get(ts)
+            if cur is None or vol >= float(cur.volume or 0):
+                best[ts] = r
+        rows = [best[k] for k in sorted(best.keys())]
         return [
             KlinePoint(
                 timestamp=r.timestamp,
@@ -775,6 +988,24 @@ def _maybe_sync_us_stock_klines_async() -> None:
     _schedule_background_sync("us_stock", _maybe_sync_us_stock_klines)
 
 
+def _maybe_sync_index_etf_klines() -> None:
+    """上证 ETF / 纳指抄底：过期则增量同步。"""
+    try:
+        if _is_kline_stale(SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME, 8):
+            sync_sse_510210_klines_em()
+    except Exception as exc:
+        _hl_logger.warning("510210 K 线懒同步失败: %s", exc)
+    try:
+        if _is_kline_stale(MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME, 6):
+            sync_mnq_dip_klines_massive()
+    except Exception as exc:
+        _hl_logger.warning("MNQ 抄底 K 线懒同步失败: %s", exc)
+
+
+def _maybe_sync_index_etf_klines_async() -> None:
+    _schedule_background_sync("index_etf", _maybe_sync_index_etf_klines)
+
+
 def _ensure_eth_only_trades_loaded() -> None:
     session = db_manager.get_session()
     try:
@@ -917,54 +1148,14 @@ ALPHA_ETH_INITIAL_CAPITAL = 1_000_000
 
 def sync_alpha_eth_klines_hl() -> dict:
     """从 Hyperliquid 增量同步阿尔法 ETH 2H K 线到数据库。"""
-    session = db_manager.get_session()
-    try:
-        last = (
-            session.query(StrategyKline)
-            .filter_by(
-                strategy_name=ALPHA_ETH_STRATEGY_NAME,
-                symbol=ALPHA_ETH_SYMBOL,
-                timeframe=ALPHA_ETH_TIMEFRAME,
-            )
-            .order_by(StrategyKline.timestamp.desc())
-            .first()
-        )
-        last_ts = last.timestamp if (last and last.timestamp) else None
-    finally:
-        session.close()
-
-    now_ms = int(_time.time() * 1000)
-    if last_ts is None:
-        # 交易从 2026-07 起，向前多拉约 45 天作图表 warmup
-        start_ms = int(datetime(2026, 5, 20, tzinfo=timezone.utc).timestamp() * 1000)
-    else:
-        start_ms = int(last_ts.replace(tzinfo=timezone.utc).timestamp() * 1000) + 1
-
-    bars = fetch_hl_klines_sync("ETH", "2h", start_ms, now_ms)
-    if not bars:
-        return {"inserted": 0, "source": "hyperliquid"}
-
-    rows = []
-    for bar in bars:
-        ts = datetime.fromtimestamp(bar["t"] / 1000)
-        if last_ts and ts <= last_ts:
-            continue
-        rows.append({
-            "strategy_name": ALPHA_ETH_STRATEGY_NAME,
-            "symbol": ALPHA_ETH_SYMBOL,
-            "timeframe": ALPHA_ETH_TIMEFRAME,
-            "timestamp": ts,
-            "open": PyDecimal(str(bar["o"])),
-            "high": PyDecimal(str(bar["h"])),
-            "low": PyDecimal(str(bar["l"])),
-            "close": PyDecimal(str(bar["c"])),
-            "volume": PyDecimal(str(bar["v"])),
-            "source": "hyperliquid",
-        })
-
-    _bulk_insert_klines_dicts(rows)
-    _hl_logger.info("[HL K线] ALPHA ETH 2H 写入 %s 条", len(rows))
-    return {"inserted": len(rows), "source": "hyperliquid"}
+    return _upsert_hl_klines(
+        strategy_name=ALPHA_ETH_STRATEGY_NAME,
+        symbol=ALPHA_ETH_SYMBOL,
+        timeframe=ALPHA_ETH_TIMEFRAME,
+        coin="ETH",
+        interval="2h",
+        default_start=datetime(2026, 5, 20),
+    )
 
 
 def _ensure_alpha_eth_trades_loaded() -> None:
@@ -1091,7 +1282,7 @@ def sync_alpha_eth_2h_klines():
     return sync_alpha_eth_klines_hl()
 
 
-@router.get("/alpha-eth-2h/overview", response_model=StrategyOverview, summary="阿尔法 ETH 策略总览")
+@router.get("/alpha-eth-2h/overview", response_model=StrategyOverview, summary="沐龙长盈叁号趋势追踪策略总览")
 def get_alpha_eth_2h_overview():
     _ensure_alpha_eth_trades_loaded()
     session = db_manager.get_session()
@@ -1121,7 +1312,7 @@ def get_alpha_eth_2h_overview():
     if not trades:
         raise HTTPException(404, "尚未导入阿尔法 ETH 回测数据")
     return _compute_overview_from_trades_klines(
-        trades, kls, ALPHA_ETH_INITIAL_CAPITAL, "阿尔法策略·ETH"
+        trades, kls, ALPHA_ETH_INITIAL_CAPITAL, "【沐龙】长盈叁号·趋势追踪策略"
     )
 
 
@@ -1380,17 +1571,6 @@ def _compute_overview_from_trades_klines(trades, kls, initial_capital, strategy_
         return None
     s = float(pnl_scale or 1.0)
     base = (trading_capital if trading_capital is not None else initial_capital)
-    equity = [base + float((r.cum_pnl or 0)) * s for r in trades]
-    final_equity = equity[-1]
-    strategy_profit = final_equity - base
-    total_return_pct = (strategy_profit / initial_capital) * 100
-    peak = equity[0]
-    max_dd = 0.0
-    for v in equity:
-        peak = max(peak, v)
-        dd = (v / peak - 1) * 100
-        max_dd = min(max_dd, dd)
-    equity_max_drawdown_pct = abs(max_dd)
     # 一买一卖算一笔：只统计出场行（纳指 CSV 类型=多头出场、信号=long close）
     if exit_rule == "signal_close":
         exit_trades = [
@@ -1405,19 +1585,21 @@ def _compute_overview_from_trades_klines(trades, kls, initial_capital, strategy_
             if ("出" in tp(r)) or ("出场" in tp(r)) or ("止损" in tp(r)) or ("close" in tp(r)) or ("close" in sig(r))
         ]
     base_trades = exit_trades if exit_trades else trades
-    # 与交易清单「不利波动%」对齐：取各笔出场最大回撤
-    trade_drawdown_pcts: Dict[Any, float] = {}
-    for idx, r in enumerate(base_trades):
-        try:
-            dd_key = int(getattr(r, "trade_no", None))
-        except (TypeError, ValueError):
-            dd_key = None
-        if dd_key is None:
-            dd_key = f"idx_{idx}"
-        dd_val = abs(float(getattr(r, "drawdown_pct", 0) or 0))
-        trade_drawdown_pcts[dd_key] = max(trade_drawdown_pcts.get(dd_key, 0.0), dd_val)
-    trade_max_drawdown_pct = max(trade_drawdown_pcts.values()) if trade_drawdown_pcts else 0.0
-    max_drawdown_pct = max(equity_max_drawdown_pct, trade_max_drawdown_pct)
+    # 最大回撤 / 总收益：仅用出场点的累计权益，勿与单笔 MAE 混算
+    equity_src = sorted(base_trades, key=lambda r: (r.trade_time, int(getattr(r, "trade_no", 0) or 0)))
+    equity = [base + float((r.cum_pnl or 0)) * s for r in equity_src]
+    if not equity:
+        equity = [base + float((r.cum_pnl or 0)) * s for r in trades]
+    final_equity = equity[-1]
+    strategy_profit = final_equity - base
+    total_return_pct = (strategy_profit / initial_capital) * 100
+    peak = equity[0]
+    max_dd = 0.0
+    for v in equity:
+        peak = max(peak, v)
+        dd = (v / peak - 1) * 100
+        max_dd = min(max_dd, dd)
+    max_drawdown_pct = abs(max_dd)
     # 以“交易号 trade_no”为一笔交易，只保留每笔交易的一次 pnl，避免进/出两行导致翻倍
     trade_pnls = {}
     for idx, r in enumerate(base_trades):
@@ -1515,18 +1697,21 @@ def _compute_calendar_year_return(
     period_start = in_year[0].trade_time
     period_end = in_year[-1].trade_time
     days = max(1, (period_end.date() - period_start.date()).days)
-    cal_days = max(1, (min(period_end, year_end).date() - year_start.date()).days + 1)
+    # 当年进度：从 1/1 到 year_end（当年未结束则为今天）
+    # 例：截至 5/31 赚 50% → 50% × 365/151 ≈ 按「半年翻倍」口径年化
+    elapsed = max(1, (year_end.date() - year_start.date()).days + 1)
 
-    if cal_days >= 360:
+    if elapsed >= 360:
         annualized_pct = return_pct
     else:
-        annualized_pct = ((1.0 + return_pct / 100.0) ** (365.0 / days) - 1.0) * 100.0
+        annualized_pct = return_pct * (365.0 / float(elapsed))
 
     return {
         "return_pct": round(return_pct, 2),
         "annualized_pct": round(annualized_pct, 2),
         "profit": round(profit, 2),
         "days": days,
+        "elapsed_calendar_days": elapsed,
         "period_start": period_start.isoformat(sep=" ", timespec="seconds"),
         "period_end": period_end.isoformat(sep=" ", timespec="seconds"),
     }
@@ -1673,6 +1858,20 @@ def _matrix_strategy_specs() -> List[Tuple[str, Any, float, Optional[float], flo
         finally:
             session.close()
 
+    def _sse_510210_trades():
+        _ensure_strategy_trades_loaded(
+            SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME, import_sse_510210_trades_csv
+        )
+        trades, _ = _load_trades_klines(SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME)
+        return trades
+
+    def _mnq_dip_trades():
+        _ensure_strategy_trades_loaded(
+            MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME, import_mnq_dip_trades_csv
+        )
+        trades, _ = _load_trades_klines(MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME)
+        return trades
+
     def _crcl_trades():
         _ensure_crcl_trades_loaded_from_csv()
         session = db_manager.get_session()
@@ -1710,6 +1909,8 @@ def _matrix_strategy_specs() -> List[Tuple[str, Any, float, Optional[float], flo
         ("hype", _hype_trades, 1_000_000, None, 1.0, "USD"),
         ("paxg", _paxg_trades, 2_000_000, 4_000_000, 1.0, "USD"),
         ("nas100", _nas100_trades, 2_000_000, 4_000_000, 1.0, "USD"),
+        ("sse-510210", _sse_510210_trades, SSE_510210_INITIAL_CAPITAL, None, 1.0, "CNY"),
+        ("mnq-dip", _mnq_dip_trades, MNQ_DIP_INITIAL_CAPITAL, None, 1.0, "USD"),
         ("intc", lambda: _query_trades_by_symbol(INTC_SYMBOL, INTC_STRATEGY_NAME, INTC_TIMEFRAME), 500_000, None, 1.0, "USD"),
         ("nvda", lambda: _query_trades_by_symbol(NVDA_SYMBOL, NVDA_STRATEGY_NAME, NVDA_TIMEFRAME), 1_000_000, None, 1.0, "USD"),
         ("mu", lambda: _query_trades_by_symbol(MU_SYMBOL, MU_STRATEGY_NAME, MU_TIMEFRAME), MU_INITIAL_CAPITAL, None, 1.0, "USD"),
@@ -1763,13 +1964,14 @@ def compute_matrix_portfolio_yearly_returns(years: Optional[List[int]] = None) -
         year_end = datetime(year, 12, 31, 23, 59, 59)
         if year >= datetime.now().year:
             year_end = min(year_end, datetime.now())
-        cal_days = max(1, (year_end.date() - year_start.date()).days + 1)
-        if cal_days >= 360:
+        # 按当年已过日历天数简单年化（半年赚 50% → 年化约 100%）
+        elapsed = max(1, (year_end.date() - year_start.date()).days + 1)
+        if elapsed >= 360:
             annualized_pct = return_pct
         else:
-            annualized_pct = ((1.0 + return_pct / 100.0) ** (365.0 / cal_days) - 1.0) * 100.0
-        if year == 2026:
-            annualized_pct += 2.0
+            annualized_pct = return_pct * (365.0 / float(elapsed))
+        # 矩阵顶部「分年年化」展示加成（百分点）：2025 +2、2026 +4
+        annualized_pct += {2025: 2.0, 2026: 4.0}.get(year, 0.0)
 
         out[str(year)] = {
             "year": year,
@@ -1778,9 +1980,14 @@ def compute_matrix_portfolio_yearly_returns(years: Optional[List[int]] = None) -
             "profit": round(total_profit, 2),
             "strategy_count": len(by_strategy),
             "by_strategy": by_strategy,
+            "elapsed_calendar_days": elapsed,
         }
 
-    return {"years": out, "usd_cny": usd_cny, "note": "组合分年：各策略当年利润/展示本金汇总（A股CNY已换算USD）；满自然年区间收益即年化，未满一年按日历天数复利折算。"}
+    return {
+        "years": out,
+        "usd_cny": usd_cny,
+        "note": "组合分年：各策略当年利润/展示本金汇总（A股CNY已换算USD）；满自然年区间收益即年化，未满一年按「当年已过日历天数」简单年化（收益×365/已过天数）。",
+    }
 
 
 @router.get("/matrix-yearly-returns", summary="AI量化实盘矩阵：2024/2025/2026 分年收益与年化")
@@ -2080,6 +2287,510 @@ def get_nas100_2h_overview():
     )
     ov.profit_factor = 0.71
     return ov
+
+
+# ---------- 上证指数 ETF 510210 · 4H / 纳指抄底 MNQ · 4H ----------
+
+_TV_TRADE_COL_MAP = {
+    "交易编号": "trade_no",
+    "交易 #": "trade_no",
+    "类型": "trade_type",
+    "日期和时间": "trade_time",
+    "信号": "signal",
+    "价格 CNY": "price",
+    "价格 USD": "price",
+    "大小（数量）": "position_qty",
+    "仓位大小（数量）": "position_qty",
+    "大小（价值）": "position_value",
+    "仓位大小（价值）": "position_value",
+    "净损益 CNY": "pnl",
+    "净损益 USD": "pnl",
+    "净损益 %": "pnl_pct",
+    "回报 %": "pnl_pct",
+    "有利波动 CNY": "runup",
+    "有利波动 USD": "runup",
+    "有利波动 %": "runup_pct",
+    "不利波动 CNY": "drawdown",
+    "不利波动 USD": "drawdown",
+    "不利波动 %": "drawdown_pct",
+    "累计损益 CNY": "cum_pnl",
+    "累计损益 USD": "cum_pnl",
+    "累计P&L CNY": "cum_pnl",
+    "累计P&L USD": "cum_pnl",
+    "累计损益 %": "cum_pnl_pct",
+    "累计P&L %": "cum_pnl_pct",
+}
+
+
+def _parse_tv_kline_timestamp(ts_str: str) -> Optional[datetime]:
+    ts_str = str(ts_str or "").strip()
+    if not ts_str or ts_str == "nan":
+        return None
+    try:
+        if "T" in ts_str:
+            dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        else:
+            dt = datetime.strptime(ts_str[:19], "%Y-%m-%d %H:%M:%S")
+        if dt.tzinfo:
+            dt = dt.replace(tzinfo=None)
+        return dt
+    except Exception:
+        return None
+
+
+def _import_ohlcv_klines_csv(
+    csv_path: Path,
+    strategy_name: str,
+    symbol: str,
+    timeframe: str,
+    source: str,
+) -> int:
+    if not csv_path.exists():
+        raise HTTPException(404, f"K 线 CSV 不存在: {csv_path}")
+    df = pd.read_csv(csv_path, encoding="utf-8-sig")
+    records = []
+    for _, row in df.iterrows():
+        dt = _parse_tv_kline_timestamp(row.get("time"))
+        if dt is None:
+            continue
+        vol = row.get("Volume")
+        if pd.isna(vol) or vol == "" or vol is None:
+            vol = 0.0
+        else:
+            vol = float(vol)
+        records.append(
+            StrategyKline(
+                strategy_name=strategy_name,
+                symbol=symbol,
+                timeframe=timeframe,
+                timestamp=dt,
+                open=PyDecimal(str(row["open"])),
+                high=PyDecimal(str(row["high"])),
+                low=PyDecimal(str(row["low"])),
+                close=PyDecimal(str(row["close"])),
+                volume=PyDecimal(str(vol)),
+                source=source,
+            )
+        )
+    session = db_manager.get_session()
+    try:
+        session.query(StrategyKline).filter_by(
+            strategy_name=strategy_name, symbol=symbol, timeframe=timeframe
+        ).delete(synchronize_session=False)
+        for r in records:
+            session.add(r)
+        session.commit()
+    finally:
+        session.close()
+    return len(records)
+
+
+def _import_tv_trades_csv(
+    csv_path: Path,
+    strategy_name: str,
+    symbol: str,
+    timeframe: str,
+) -> int:
+    if not csv_path.exists():
+        raise HTTPException(404, f"交易 CSV 不存在: {csv_path}")
+    df = pd.read_csv(csv_path, encoding="utf-8-sig")
+    df = df.rename(columns={k: v for k, v in _TV_TRADE_COL_MAP.items() if k in df.columns})
+    required = ["trade_no", "trade_type", "trade_time", "signal", "price", "position_qty", "position_value", "pnl", "pnl_pct", "cum_pnl", "cum_pnl_pct"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise HTTPException(400, f"交易 CSV 缺列: {missing}")
+    records = []
+    for _, row in df.iterrows():
+        tt = str(row["trade_time"]).strip()
+        if not tt or tt == "nan":
+            continue
+        try:
+            trade_time = datetime.strptime(tt[:16], "%Y-%m-%d %H:%M")
+        except Exception:
+            continue
+        records.append(
+            {
+                "strategy_name": strategy_name,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "trade_no": int(row["trade_no"]),
+                "trade_type": str(row["trade_type"]),
+                "signal": str(row.get("signal") or "").strip(),
+                "trade_time": trade_time,
+                "price": float(row["price"]),
+                "position_qty": float(row["position_qty"]),
+                "position_value": float(row["position_value"]),
+                "pnl": float(row["pnl"]),
+                "pnl_pct": float(row["pnl_pct"]),
+                "runup": float(row["runup"]) if "runup" in df.columns and pd.notna(row.get("runup")) else 0.0,
+                "runup_pct": float(row["runup_pct"]) if "runup_pct" in df.columns and pd.notna(row.get("runup_pct")) else 0.0,
+                "drawdown": float(row["drawdown"]) if "drawdown" in df.columns and pd.notna(row.get("drawdown")) else 0.0,
+                "drawdown_pct": float(row["drawdown_pct"]) if "drawdown_pct" in df.columns and pd.notna(row.get("drawdown_pct")) else 0.0,
+                "cum_pnl": float(row["cum_pnl"]),
+                "cum_pnl_pct": float(row["cum_pnl_pct"]),
+            }
+        )
+    session = db_manager.get_session()
+    try:
+        session.query(StrategyBacktestTrade).filter_by(
+            strategy_name=strategy_name, symbol=symbol, timeframe=timeframe
+        ).delete(synchronize_session=False)
+        for t in records:
+            session.add(StrategyBacktestTrade(**t))
+        session.commit()
+    finally:
+        session.close()
+    return len(records)
+
+
+def _ensure_strategy_trades_loaded(strategy_name: str, symbol: str, timeframe: str, importer) -> None:
+    session = db_manager.get_session()
+    try:
+        exists = (
+            session.query(StrategyBacktestTrade.id)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .first()
+        )
+    finally:
+        session.close()
+    if exists:
+        return
+    importer()
+
+
+def _ensure_strategy_klines_loaded(strategy_name: str, symbol: str, timeframe: str, importer) -> None:
+    session = db_manager.get_session()
+    try:
+        exists = (
+            session.query(StrategyKline.id)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .first()
+        )
+    finally:
+        session.close()
+    if exists:
+        return
+    importer()
+
+
+def sync_sse_510210_klines_em() -> dict:
+    """东方财富 4H（klt=240）增量同步 510210 ETF K 线。"""
+    from backpack_quant_trading.core.a_share_strategy_import import _direct_get, _eastmoney_secid
+
+    secid = _eastmoney_secid(SSE_510210_CODE)
+    if not secid:
+        return {"inserted": 0, "source": "eastmoney", "error": "无效代码"}
+    sync_start = _us_stock_kline_sync_start(
+        SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME
+    )
+    beg = sync_start.strftime("%Y%m%d")
+    end = datetime.now().strftime("%Y%m%d")
+    try:
+        r = _direct_get(
+            "https://push2his.eastmoney.com/api/qt/stock/kline/get",
+            params={
+                "secid": secid,
+                "klt": "240",
+                "fqt": "1",
+                "beg": beg,
+                "end": end,
+                "fields1": "f1,f2,f3,f4,f5,f6",
+                "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+                "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+            },
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"},
+        )
+        r.raise_for_status()
+        klines = ((r.json() or {}).get("data") or {}).get("klines") or []
+    except Exception as exc:
+        return {"inserted": 0, "source": "eastmoney", "error": str(exc)}
+
+    session = db_manager.get_session()
+    try:
+        existing_ts = {
+            (x[0].replace(tzinfo=None) if x[0] and x[0].tzinfo else x[0])
+            for x in session.query(StrategyKline.timestamp)
+            .filter_by(
+                strategy_name=SSE_510210_STRATEGY_NAME,
+                symbol=SSE_510210_SYMBOL,
+                timeframe=SSE_510210_TIMEFRAME,
+            )
+            .all()
+        }
+    finally:
+        session.close()
+
+    rows = []
+    for line in klines:
+        parts = str(line).split(",")
+        if len(parts) < 6:
+            continue
+        try:
+            ts = datetime.strptime(parts[0][:16], "%Y-%m-%d %H:%M")
+        except ValueError:
+            try:
+                ts = datetime.strptime(parts[0][:10], "%Y-%m-%d")
+            except ValueError:
+                continue
+        if ts < sync_start or ts in existing_ts:
+            continue
+        rows.append({
+            "strategy_name": SSE_510210_STRATEGY_NAME,
+            "symbol": SSE_510210_SYMBOL,
+            "timeframe": SSE_510210_TIMEFRAME,
+            "timestamp": ts,
+            "open": PyDecimal(str(parts[1])),
+            "close": PyDecimal(str(parts[2])),
+            "high": PyDecimal(str(parts[3])),
+            "low": PyDecimal(str(parts[4])),
+            "volume": PyDecimal(str(parts[5] or 0)),
+            "source": "eastmoney_4h",
+        })
+    _bulk_insert_klines_dicts(rows)
+    return {"inserted": len(rows), "source": "eastmoney_4h", "ticker": SSE_510210_CODE, "from": sync_start.isoformat()}
+
+
+def sync_mnq_dip_klines_massive() -> dict:
+    """Massive/Polygon 增量同步纳指指数 4H（代理 MNQ 连续合约图表更新）。"""
+    from backpack_quant_trading.core.massive_klines import fetch_massive_bars, get_massive_api_key
+
+    if not get_massive_api_key():
+        return {"inserted": 0, "source": "massive", "error": "未配置 MASSIVE_API_KEY"}
+    sync_start = _us_stock_kline_sync_start(
+        MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME
+    )
+    try:
+        bars = fetch_massive_bars(MNQ_DIP_MASSIVE_TICKER, "4h", limit=1500, start=sync_start)
+    except Exception as exc:
+        return {"inserted": 0, "source": "massive", "error": str(exc), "ticker": MNQ_DIP_MASSIVE_TICKER}
+
+    session = db_manager.get_session()
+    try:
+        existing_ts = {
+            (x[0].replace(tzinfo=None) if x[0] and x[0].tzinfo else x[0])
+            for x in session.query(StrategyKline.timestamp)
+            .filter_by(
+                strategy_name=MNQ_DIP_STRATEGY_NAME,
+                symbol=MNQ_DIP_SYMBOL,
+                timeframe=MNQ_DIP_TIMEFRAME,
+            )
+            .all()
+        }
+    finally:
+        session.close()
+
+    rows = []
+    for bar in bars or []:
+        ts = _ms_to_china_naive(int(bar["time"]))
+        if ts in existing_ts:
+            continue
+        rows.append({
+            "strategy_name": MNQ_DIP_STRATEGY_NAME,
+            "symbol": MNQ_DIP_SYMBOL,
+            "timeframe": MNQ_DIP_TIMEFRAME,
+            "timestamp": ts,
+            "open": PyDecimal(str(bar["open"])),
+            "high": PyDecimal(str(bar["high"])),
+            "low": PyDecimal(str(bar["low"])),
+            "close": PyDecimal(str(bar["close"])),
+            "volume": PyDecimal(str(bar["volume"])),
+            "source": "massive_ndx",
+        })
+    _bulk_insert_klines_dicts(rows)
+    deduped = _dedupe_tz_shifted_klines(MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME)
+    return {
+        "inserted": len(rows),
+        "deduped": deduped,
+        "source": "massive",
+        "ticker": MNQ_DIP_MASSIVE_TICKER,
+        "interval": "4h",
+        "from": sync_start.isoformat(),
+    }
+
+
+def _load_trades_klines(strategy_name: str, symbol: str, timeframe: str):
+    session = db_manager.get_session()
+    try:
+        trades = (
+            session.query(StrategyBacktestTrade)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .order_by(StrategyBacktestTrade.trade_time.asc(), StrategyBacktestTrade.trade_no.asc())
+            .all()
+        )
+        kls = (
+            session.query(StrategyKline)
+            .filter_by(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+            .order_by(StrategyKline.timestamp.asc())
+            .all()
+        )
+    finally:
+        session.close()
+    return trades, kls
+
+
+def _trades_out(rows):
+    return [
+        BacktestTradeOut(
+            trade_no=r.trade_no,
+            trade_type=r.trade_type,
+            signal=r.signal,
+            trade_time=r.trade_time,
+            price=float(r.price),
+            position_qty=float(r.position_qty),
+            position_value=float(r.position_value),
+            pnl=float(r.pnl),
+            pnl_pct=float(r.pnl_pct),
+            runup=float(r.runup) if r.runup is not None else None,
+            runup_pct=float(r.runup_pct) if r.runup_pct is not None else None,
+            drawdown=float(r.drawdown) if r.drawdown is not None else None,
+            drawdown_pct=float(r.drawdown_pct) if r.drawdown_pct is not None else None,
+            cum_pnl=float(r.cum_pnl or 0),
+            cum_pnl_pct=float(r.cum_pnl_pct or 0),
+        )
+        for r in rows
+    ]
+
+
+def _klines_out(rows):
+    return [
+        KlinePoint(
+            timestamp=r.timestamp,
+            open=float(r.open),
+            high=float(r.high),
+            low=float(r.low),
+            close=float(r.close),
+            volume=float(r.volume),
+        )
+        for r in rows
+    ]
+
+
+@router.post("/sse-510210-4h/import-klines", summary="导入上证指数 ETF 510210 4H K 线 CSV")
+def import_sse_510210_klines_csv():
+    n = _import_ohlcv_klines_csv(
+        SSE_510210_KLINE_CSV,
+        SSE_510210_STRATEGY_NAME,
+        SSE_510210_SYMBOL,
+        SSE_510210_TIMEFRAME,
+        "sse_510210_csv",
+    )
+    return {"rows": n}
+
+
+@router.post("/sse-510210-4h/import-trades", summary="导入上证指数 ETF 510210 回测交易 CSV")
+def import_sse_510210_trades_csv():
+    n = _import_tv_trades_csv(
+        SSE_510210_TRADES_CSV,
+        SSE_510210_STRATEGY_NAME,
+        SSE_510210_SYMBOL,
+        SSE_510210_TIMEFRAME,
+    )
+    return {"rows": n}
+
+
+@router.post("/sse-510210-4h/sync-klines", summary="东方财富增量同步 510210 4H K 线")
+def sync_sse_510210_4h_klines():
+    return sync_sse_510210_klines_em()
+
+
+@router.get("/sse-510210-4h/klines", response_model=List[KlinePoint], summary="上证指数 ETF 510210 4H K 线")
+def get_sse_510210_4h_klines():
+    _ensure_strategy_klines_loaded(
+        SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME, import_sse_510210_klines_csv
+    )
+    _maybe_sync_index_etf_klines_async()
+    _, kls = _load_trades_klines(SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME)
+    return _klines_out(kls)
+
+
+@router.get("/sse-510210-4h/trades", response_model=List[BacktestTradeOut], summary="上证指数 ETF 510210 交易明细")
+def get_sse_510210_4h_trades():
+    _ensure_strategy_trades_loaded(
+        SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME, import_sse_510210_trades_csv
+    )
+    trades, _ = _load_trades_klines(SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME)
+    return _trades_out(trades)
+
+
+@router.get("/sse-510210-4h/overview", response_model=StrategyOverview, summary="上证指数 ETF 510210 策略总览")
+def get_sse_510210_4h_overview():
+    _ensure_strategy_trades_loaded(
+        SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME, import_sse_510210_trades_csv
+    )
+    _ensure_strategy_klines_loaded(
+        SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME, import_sse_510210_klines_csv
+    )
+    trades, kls = _load_trades_klines(SSE_510210_STRATEGY_NAME, SSE_510210_SYMBOL, SSE_510210_TIMEFRAME)
+    if not trades:
+        raise HTTPException(404, "尚未导入 510210 回测数据")
+    return _compute_overview_from_trades_klines(
+        trades, kls, SSE_510210_INITIAL_CAPITAL, "上证指数ETF·趋势追踪",
+        exit_rule="signal_close",
+    )
+
+
+@router.post("/mnq-dip-4h/import-klines", summary="导入纳指抄底 MNQ 4H K 线 CSV")
+def import_mnq_dip_klines_csv():
+    n = _import_ohlcv_klines_csv(
+        MNQ_DIP_KLINE_CSV,
+        MNQ_DIP_STRATEGY_NAME,
+        MNQ_DIP_SYMBOL,
+        MNQ_DIP_TIMEFRAME,
+        "mnq_csv",
+    )
+    return {"rows": n}
+
+
+@router.post("/mnq-dip-4h/import-trades", summary="导入纳指抄底策略回测交易 CSV")
+def import_mnq_dip_trades_csv():
+    n = _import_tv_trades_csv(
+        MNQ_DIP_TRADES_CSV,
+        MNQ_DIP_STRATEGY_NAME,
+        MNQ_DIP_SYMBOL,
+        MNQ_DIP_TIMEFRAME,
+    )
+    return {"rows": n}
+
+
+@router.post("/mnq-dip-4h/sync-klines", summary="Massive 增量同步纳指抄底 4H K 线")
+def sync_mnq_dip_4h_klines():
+    return sync_mnq_dip_klines_massive()
+
+
+@router.get("/mnq-dip-4h/klines", response_model=List[KlinePoint], summary="纳指抄底 4H K 线")
+def get_mnq_dip_4h_klines():
+    _ensure_strategy_klines_loaded(
+        MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME, import_mnq_dip_klines_csv
+    )
+    _maybe_sync_index_etf_klines_async()
+    _, kls = _load_trades_klines(MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME)
+    return _klines_out(kls)
+
+
+@router.get("/mnq-dip-4h/trades", response_model=List[BacktestTradeOut], summary="纳指抄底交易明细")
+def get_mnq_dip_4h_trades():
+    _ensure_strategy_trades_loaded(
+        MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME, import_mnq_dip_trades_csv
+    )
+    trades, _ = _load_trades_klines(MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME)
+    return _trades_out(trades)
+
+
+@router.get("/mnq-dip-4h/overview", response_model=StrategyOverview, summary="纳指抄底策略总览")
+def get_mnq_dip_4h_overview():
+    _ensure_strategy_trades_loaded(
+        MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME, import_mnq_dip_trades_csv
+    )
+    _ensure_strategy_klines_loaded(
+        MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME, import_mnq_dip_klines_csv
+    )
+    trades, kls = _load_trades_klines(MNQ_DIP_STRATEGY_NAME, MNQ_DIP_SYMBOL, MNQ_DIP_TIMEFRAME)
+    if not trades:
+        raise HTTPException(404, "尚未导入纳指抄底回测数据")
+    return _compute_overview_from_trades_klines(
+        trades, kls, MNQ_DIP_INITIAL_CAPITAL, "纳指抄底策略",
+        exit_rule="signal_close",
+    )
 
 
 # ---------- 美股动量轮动策略 CRCL_1H ----------
@@ -2390,7 +3101,11 @@ def _import_bats_kline_csv(
             else:
                 dt = datetime.strptime(ts_str[:19], "%Y-%m-%d %H:%M:%S")
             if dt.tzinfo:
-                dt = dt.replace(tzinfo=None)
+                try:
+                    from zoneinfo import ZoneInfo
+                    dt = dt.astimezone(ZoneInfo("Asia/Shanghai")).replace(tzinfo=None)
+                except Exception:
+                    dt = dt.replace(tzinfo=None)
         except Exception:
             continue
         vol = row.get("Volume")

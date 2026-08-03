@@ -4,6 +4,8 @@ import {
   getBubbleHistory,
   getLatestBubbleAnalysis,
   getBubbleReportById,
+  getBubbleStrategies,
+  triggerBubbleAnalyze,
 } from '../api/usWeeklyReport'
 import AisPageShell from '../components/AisPageShell'
 import './UsWeeklyReport.css'
@@ -46,39 +48,337 @@ const Stars = ({ n = 0 }) => (
   </span>
 )
 
+/** 将 Markdown 按 ## / 【Lx】 拆成章节卡片 */
+const parseMdSections = (md = '') => {
+  const lines = String(md || '').split('\n')
+  const sections = []
+  let cur = { title: '', body: [] }
+  const flush = () => {
+    const body = cur.body.join('\n').trim()
+    const title = cur.title || ''
+    // 去掉附注 / 免责声明
+    if (/附注|数据溯源|免责声明/.test(title)) return
+    if (cur.title || body) sections.push({ title, body })
+  }
+  for (const line of lines) {
+    const t = line.trim()
+    if (/^#{1,3}\s/.test(line) || /^【L\d】/.test(t) || /^##\s*【L/.test(line) || /^【附注】/.test(t)
+      || /^#{1,3}\s*[一二三四五六七八九十]+[、.]/.test(line)
+      || /^[一二三四五六七八九十]+[、.]/.test(t)) {
+      flush()
+      cur = { title: t.replace(/^#+\s*/, ''), body: [] }
+    } else {
+      cur.body.push(line)
+    }
+  }
+  flush()
+  return sections.length ? sections : [{ title: '报告正文', body: String(md || '').trim() }]
+}
+
+const sectionTone = (title = '') => {
+  if (/L1|终端|一[、.]|宏观/.test(title)) return 'cyan'
+  if (/L2|供应链|地图|二[、.]|产业/.test(title)) return 'indigo'
+  if (/L3|卡点|竞争|三[、.]|盈利/.test(title)) return 'amber'
+  if (/L4|财务|毛利|四[、.]|估值/.test(title)) return 'emerald'
+  if (/L5|管理|指引|五[、.]|资金/.test(title)) return 'violet'
+  if (/L6|估值|目标价|六[、.]|技术/.test(title)) return 'rose'
+  if (/L7|投资|仓位|操作|七[、.]|逆向/.test(title)) return 'sky'
+  if (/八[、.]|事件/.test(title)) return 'amber'
+  if (/九[、.]|综合|总分/.test(title)) return 'indigo'
+  if (/十[、.]|仓位模型|加减仓/.test(title)) return 'emerald'
+  if (/十二|十三|十四|投委会|情景/.test(title)) return 'violet'
+  if (/附注|免责|一句话/.test(title)) return 'slate'
+  return 'indigo'
+}
+
+const escapeHtml = (s) =>
+  String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+const inlineMd = (text) => {
+  let s = escapeHtml(text)
+  s = s.replace(/`([^`]+)`/g, '<code class="ssr-code">$1</code>')
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>')
+  return s
+}
+
+/** 轻量 Markdown → HTML（表格 / 列表 / 标题 / 引用） */
+const markdownToHtml = (md = '') => {
+  const lines = String(md || '').replace(/\r\n/g, '\n').split('\n')
+  const html = []
+  let i = 0
+  let inUl = false
+  let inOl = false
+  const closeLists = () => {
+    if (inUl) { html.push('</ul>'); inUl = false }
+    if (inOl) { html.push('</ol>'); inOl = false }
+  }
+
+  while (i < lines.length) {
+    const raw = lines[i]
+    const line = raw.trimEnd()
+    const t = line.trim()
+
+    // 表格块
+    if (t.startsWith('|') && t.includes('|', 1)) {
+      closeLists()
+      const rows = []
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        const cells = lines[i].trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+        if (!cells.every((c) => /^:?-{3,}:?$/.test(c))) rows.push(cells)
+        i += 1
+      }
+      if (rows.length) {
+        const head = rows[0]
+        const body = rows.slice(1)
+        html.push('<div class="ssr-table-wrap"><table class="ssr-table"><thead><tr>')
+        head.forEach((c) => html.push(`<th>${inlineMd(c)}</th>`))
+        html.push('</tr></thead><tbody>')
+        ;(body.length ? body : []).forEach((r) => {
+          html.push('<tr>')
+          head.forEach((_, j) => html.push(`<td>${inlineMd(r[j] ?? '')}</td>`))
+          html.push('</tr>')
+        })
+        html.push('</tbody></table></div>')
+      }
+      continue
+    }
+
+    if (!t) {
+      closeLists()
+      html.push('<div class="ssr-spacer"></div>')
+      i += 1
+      continue
+    }
+
+    if (/^#{1,3}\s/.test(t)) {
+      closeLists()
+      const level = (t.match(/^#+/) || ['#'])[0].length
+      const title = t.replace(/^#+\s*/, '')
+      html.push(`<h${Math.min(level + 2, 5)} class="ssr-h">${inlineMd(title)}</h${Math.min(level + 2, 5)}>`)
+      i += 1
+      continue
+    }
+
+    if (/^>\s?/.test(t)) {
+      closeLists()
+      html.push(`<blockquote class="ssr-quote">${inlineMd(t.replace(/^>\s?/, ''))}</blockquote>`)
+      i += 1
+      continue
+    }
+
+    if (/^[-*•]\s+/.test(t)) {
+      if (!inUl) { closeLists(); html.push('<ul class="ssr-ul">'); inUl = true }
+      html.push(`<li>${inlineMd(t.replace(/^[-*•]\s+/, ''))}</li>`)
+      i += 1
+      continue
+    }
+
+    if (/^\d+[.)、]\s+/.test(t)) {
+      if (!inOl) { closeLists(); html.push('<ol class="ssr-ol">'); inOl = true }
+      html.push(`<li>${inlineMd(t.replace(/^\d+[.)、]\s+/, ''))}</li>`)
+      i += 1
+      continue
+    }
+
+    if (/^---+$/.test(t)) {
+      closeLists()
+      html.push('<hr class="ssr-hr" />')
+      i += 1
+      continue
+    }
+
+    closeLists()
+    html.push(`<p class="ssr-p">${inlineMd(t)}</p>`)
+    i += 1
+  }
+  closeLists()
+  return html.join('')
+}
+
+const StockReportSections = ({ markdown }) => {
+  const sections = useMemo(() => parseMdSections(markdown), [markdown])
+  if (!markdown) {
+    return (
+      <div className="uwr-card">
+        <div className="uwr-meta" style={{ padding: '14px 16px' }}>
+          暂无报告。输入股票并点击「生成个股报告」。
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="ssr-stack">
+      {sections.map((sec, i) => {
+        const tone = sectionTone(sec.title)
+        return (
+          <article key={`${sec.title}-${i}`} className={`ssr-section ssr-tone-${tone}`}>
+            {sec.title && (
+              <div className="ssr-section-head">
+                <span className="ssr-section-badge">{`0${i + 1}`.slice(-2)}</span>
+                <h3 className="ssr-section-title">{sec.title}</h3>
+              </div>
+            )}
+            <div
+              className="ssr-section-body"
+              dangerouslySetInnerHTML={{ __html: markdownToHtml(sec.body) }}
+            />
+          </article>
+        )
+      })}
+    </div>
+  )
+}
+
 const UsWeeklyReport = () => {
+  // weekly=市场周报(美股泡沫周报)；stock=个股分析(美股+A股)
+  const [viewMode, setViewMode] = useState('weekly') // weekly | stock
+  const [strategy, setStrategy] = useState('A')
+  const [strategies, setStrategies] = useState([
+    { id: 'A', name: '策略A · 供应链个股深度', enabled: true, report_type: 'stock_supply_chain' },
+    { id: 'B', name: '策略B · 百分配仓评分卡', enabled: true, report_type: 'stock_scorecard' },
+  ])
+  const [stockQuery, setStockQuery] = useState('')
   const [analysis, setAnalysis] = useState(null)
   const [history, setHistory] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState('')
   const chartRef = useRef(null)
+
+  const market = analysis?.market || (viewMode === 'stock' ? 'a_share' : 'us')
+  const marketLabel = market === 'a_share' ? 'A股' : '美股'
+  const strategyMeta = strategies.find((s) => s.id === strategy) || strategies[0]
+  const isStockReport =
+    viewMode === 'stock' ||
+    ['stock_supply_chain', 'stock_scorecard'].includes(analysis?.report_type)
+  const focusLabel = analysis?.stock_name
+    ? `${analysis.stock_name}${analysis.symbol ? `（${analysis.symbol}）` : ''}`
+    : (analysis?.symbol || '')
+
+  const detectStockMarket = (q) => {
+    const s = String(q || '').trim()
+    if (!s) return 'a_share'
+    if (/^\$?[A-Za-z]{1,5}$/.test(s)) return 'us'
+    if (/^\d{6}$/.test(s) || /[\u4e00-\u9fff]/.test(s)) return 'a_share'
+    return 'a_share'
+  }
 
   const loadAll = useCallback(async () => {
     try {
+      if (viewMode === 'stock') {
+        const [latestA, latestU, histA, histU] = await Promise.all([
+          getLatestBubbleAnalysis('a_share', { strategy }).catch(() => null),
+          getLatestBubbleAnalysis('us', { strategy }).catch(() => null),
+          getBubbleHistory(80, 'a_share', { strategy }).catch(() => null),
+          getBubbleHistory(80, 'us', { strategy }).catch(() => null),
+        ])
+        const pickNewer = (a, b) => {
+          if (a && !a.empty && b && !b.empty) {
+            return (a.generated_at_utc || '') >= (b.generated_at_utc || '') ? a : b
+          }
+          if (a && !a.empty) return a
+          if (b && !b.empty) return b
+          return null
+        }
+        const latest = pickNewer(latestA, latestU)
+        if (latest) {
+          setAnalysis(latest)
+          setSelectedId(latest.generated_at_utc || null)
+        } else {
+          setAnalysis(null)
+          setSelectedId(null)
+        }
+        const merged = [...(histA?.items || []), ...(histU?.items || [])].filter(
+          (h) =>
+            ['stock_supply_chain', 'stock_scorecard'].includes(h.report_type) ||
+            (h.symbol && h.strategy && ['A', 'B'].includes(String(h.strategy).toUpperCase()))
+        )
+        setHistory(merged)
+        return
+      }
       const [latest, hist] = await Promise.all([
-        getLatestBubbleAnalysis().catch(() => null),
-        getBubbleHistory(80).catch(() => null),
+        getLatestBubbleAnalysis('us').catch(() => null),
+        getBubbleHistory(80, 'us').catch(() => null),
       ])
       if (latest && !latest.empty) {
         setAnalysis(latest)
         setSelectedId(latest.generated_at_utc || null)
+      } else {
+        setAnalysis(null)
+        setSelectedId(null)
       }
       if (hist?.items) setHistory(hist.items)
+      else setHistory([])
     } catch (_) {
       // ignore
     }
-  }, [])
+  }, [viewMode, strategy])
+
+  useEffect(() => {
+    if (viewMode !== 'stock') return
+    getBubbleStrategies('a_share', 'stock')
+      .then((res) => {
+        if (res?.items?.length) setStrategies(res.items)
+      })
+      .catch(() => {})
+  }, [viewMode])
 
   const onSelectReport = useCallback(async (id) => {
     if (!id || id === selectedId) return
     setSelectedId(id)
+    const hit = (history || []).find((h) => h.generated_at_utc === id)
+    const mkt = hit?.market || (viewMode === 'stock' ? 'a_share' : 'us')
     try {
-      const res = await getBubbleReportById(id)
+      const res = await getBubbleReportById(id, mkt)
       if (res && !res.empty) setAnalysis(res)
     } catch (_) {
       // ignore
     }
-  }, [selectedId])
+  }, [selectedId, history, viewMode])
+
+  const onGenerate = useCallback(async () => {
+    if (viewMode === 'stock' && !stockQuery.trim()) {
+      setGenError('请先输入股票名称或代码（A股如贵州茅台/600519，美股如 NVDA）')
+      return
+    }
+    if (viewMode === 'stock' && strategyMeta && strategyMeta.enabled === false) {
+      setGenError(`「${strategyMeta.name || strategy}」尚未开放，请选用策略 A`)
+      return
+    }
+    setGenerating(true)
+    setGenError('')
+    try {
+      const stockMkt = detectStockMarket(stockQuery)
+      const res = await triggerBubbleAnalyze({
+        market: viewMode === 'stock' ? stockMkt : 'us',
+        mode: viewMode === 'stock' ? 'stock' : 'weekly',
+        force_refresh: true,
+        save: true,
+        ...(viewMode === 'stock'
+          ? { strategy, symbol: stockQuery.trim() }
+          : {}),
+      })
+      if (res?.ok === false) {
+        setGenError(res.error || '生成失败')
+      } else if (res && !res.error) {
+        setAnalysis(res)
+        setSelectedId(res.generated_at_utc || null)
+        await loadAll()
+      } else {
+        setGenError(res?.error || '生成失败')
+      }
+    } catch (e) {
+      setGenError(e?.message || String(e))
+    } finally {
+      setGenerating(false)
+    }
+  }, [viewMode, strategy, strategyMeta, stockQuery, loadAll])
 
   useEffect(() => {
     loadAll()
@@ -86,7 +386,7 @@ const UsWeeklyReport = () => {
 
   // 主图：泡沫总分曲线（短/中/长/总分 四条折线）
   useEffect(() => {
-    if (!chartRef.current) return
+    if (!chartRef.current || isStockReport) return
     const items = (history || []).filter((x) => x.bubble_total_score != null)
     if (!items.length) return
     const ch = echarts.init(chartRef.current)
@@ -132,29 +432,126 @@ const UsWeeklyReport = () => {
       window.removeEventListener('resize', onResize)
       ch.dispose()
     }
-  }, [history])
+  }, [history, isStockReport])
 
   const report = analysis?.report || null
+  const hasStructuredReport = Boolean(
+    report && (report.top5_events || report.synthesis || report.actions || report.score_short)
+  )
+  const coreSummaryText =
+    typeof report?.core_summary === 'string'
+      ? report.core_summary
+      : report?.core_summary?.one_liner || analysis?.one_liner || ''
+  // 有卡片时不再强调「Markdown」；附录默认折叠
 
   const sortedHistory = useMemo(() => {
-    return [...(history || [])].sort((a, b) => {
+    let items = [...(history || [])]
+    if (isStockReport) {
+      items = items.filter((h) =>
+        ['stock_supply_chain', 'stock_scorecard'].includes(h.report_type) ||
+        (h.symbol && (h.markdown || '').length > 400 && h.report_type !== 'bubble_weekly')
+      )
+    }
+    return items.sort((a, b) => {
       const ta = a.generated_at_utc || a.report_date || ''
       const tb = b.generated_at_utc || b.report_date || ''
       return tb.localeCompare(ta)
     })
-  }, [history])
+  }, [history, isStockReport])
 
   return (
     <AisPageShell
-      title="美股泡沫阶段监测"
-      subtitle="周度泡沫评分、三层次综合判断与历史趋势；切换历史周报查看各期摘要与完整报告。"
+      title="泡沫检测"
+      subtitle={
+        viewMode === 'stock'
+          ? '个股分析支持美股与 A 股：策略A 供应链 L1-L7；策略B 百分评分卡。输入代码/名称生成 Markdown 报告。'
+          : '美股周度泡沫评分、供应链卡点视角与历史趋势；可切换至个股分析，或钉钉 @分析师 生成周报。'
+      }
     >
       <div className="uwr-stack">
+      <div className="uwr-toolbar">
+        <div className="uwr-toolbar-left">
+          <div className="uwr-market-toggle" role="tablist" aria-label="模式切换">
+            <button
+              type="button"
+              className={`uwr-market-btn ${viewMode === 'weekly' ? 'active' : ''}`}
+              onClick={() => setViewMode('weekly')}
+            >
+              市场周报
+            </button>
+            <button
+              type="button"
+              className={`uwr-market-btn ${viewMode === 'stock' ? 'active' : ''}`}
+              onClick={() => setViewMode('stock')}
+            >
+              个股分析
+            </button>
+          </div>
+          {viewMode === 'stock' && (
+            <div className="uwr-a-share-controls">
+              <label className="uwr-field">
+                <span className="uwr-field-label">股票</span>
+                <input
+                  className="uwr-stock-input"
+                  type="text"
+                  value={stockQuery}
+                  onChange={(e) => setStockQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') onGenerate()
+                  }}
+                  placeholder="A股名称/代码 或 美股代码，如 贵州茅台 / 600519 / NVDA"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="uwr-field">
+                <span className="uwr-field-label">策略</span>
+                <select
+                  className="uwr-strategy-select"
+                  value={strategy}
+                  onChange={(e) => setStrategy(e.target.value)}
+                >
+                  {strategies.map((s) => (
+                    <option key={s.id} value={s.id} disabled={s.enabled === false}>
+                      {s.name}{s.enabled === false ? '（未开放）' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          className="uwr-gen-btn"
+          disabled={generating}
+          onClick={onGenerate}
+        >
+          {generating
+            ? 'DeepSeek 生成中…'
+            : viewMode === 'stock'
+              ? '生成个股报告'
+              : '生成美股本周周报'}
+        </button>
+      </div>
+      {viewMode === 'stock' && strategyMeta?.description && (
+        <div className="uwr-strategy-hint">{strategyMeta.description}</div>
+      )}
+      {focusLabel && viewMode === 'stock' && (
+        <div className="uwr-focus-chip">
+          当前报告标的：{focusLabel}
+          {analysis?.market ? ` · ${analysis.market === 'us' ? '美股' : 'A股'}` : ''}
+        </div>
+      )}
+      {genError && (
+        <div className="uwr-meta" style={{ padding: '10px 14px', color: '#b91c1c' }}>
+          {genError}
+        </div>
+      )}
       {/* 历史周报选择栏 */}
       {sortedHistory.length > 0 && (
         <div className="uwr-history-bar">
           <div className="uwr-history-bar-l">
-            <span className="uwr-history-bar-title">历史周报</span>
+            <span className="uwr-history-bar-title">{isStockReport ? '历史个股报告' : '历史周报'}</span>
             <span className="uwr-history-bar-count">共 {sortedHistory.length} 期</span>
           </div>
           <div className="uwr-history-tabs">
@@ -172,7 +569,9 @@ const UsWeeklyReport = () => {
                 >
                   <span className="uwr-history-tab-date">{date}</span>
                   <span className="uwr-history-tab-score">
-                    {h.bubble_total_score ?? '—'}
+                    {isStockReport
+                      ? (h.stock_name || h.symbol || '—')
+                      : (h.bubble_total_score ?? '—')}
                   </span>
                   {h.report_label && <span className="uwr-history-tab-label">{h.report_label}</span>}
                 </button>
@@ -239,9 +638,29 @@ const UsWeeklyReport = () => {
         </div>
       )}
 
+      {isStockReport ? (
+        <>
+          <div className="ssr-hero">
+            <div className="ssr-hero-tag">
+              {strategyMeta?.report_type === 'stock_scorecard' || analysis?.report_type === 'stock_scorecard'
+                ? '百分配仓评分卡 · 个股'
+                : '供应链瓶颈投研 · 个股深度'}
+            </div>
+            <h2 className="ssr-hero-title">
+              {focusLabel || stockQuery.trim() || '—'}
+            </h2>
+            <div className="ssr-hero-sub">
+              报告日期：{analysis?.report_date || (analysis?.generated_at_utc || '').slice(0, 10) || '—'}
+              {analysis?.one_liner && <> ｜ {analysis.one_liner}</>}
+            </div>
+          </div>
+          <StockReportSections markdown={analysis?.markdown} />
+        </>
+      ) : (
+        <>
       <div className="uwr-hero">
         <div className="uwr-hero-left">
-          <div className="uwr-hero-tag">美股泡沫阶段监测 · 周度</div>
+          <div className="uwr-hero-tag">泡沫检测 · {marketLabel} · 周度</div>
           <h2
             className="uwr-hero-title"
             style={{
@@ -290,12 +709,12 @@ const UsWeeklyReport = () => {
         <div ref={chartRef} style={{ height: 360, padding: '8px 12px 16px' }} />
       </div>
 
-      {/* 仅评分摘要提示（无完整 report） */}
-      {analysis && !report && (
+      {/* 旧数据无卡片字段：提示重新生成 */}
+      {analysis && !hasStructuredReport && (
         <div className="uwr-card">
           <div className="uwr-meta" style={{ padding: '14px 16px' }}>
-            此周报为「仅评分摘要」（{analysis.report_date || (analysis.generated_at_utc || '').slice(0, 10) || '—'}）。
-            如需完整结构化内容，请切换至其他周报，或调用 DeepSeek 重新生成。
+            本期尚未生成结构化卡片（三层次判断 / 5 件事 / 评分模型等）。
+            请点击上方「生成{marketLabel}本周周报」重新生成，即可与历史周报同一版式对齐。
           </div>
         </div>
       )}
@@ -498,10 +917,10 @@ const UsWeeklyReport = () => {
       )}
 
       {/* 核心总结 */}
-      {report?.core_summary && (
+      {coreSummaryText && (
         <div className="uwr-card uwr-summary">
           <div className="uwr-card-h">核心总结</div>
-          <pre className="uwr-summary-body">{report.core_summary}</pre>
+          <pre className="uwr-summary-body">{coreSummaryText}</pre>
         </div>
       )}
 
@@ -512,10 +931,12 @@ const UsWeeklyReport = () => {
         </div>
       )}
 
-      {/* 完整 Markdown 兜底（如果有） */}
+      {/* 附录原文（有卡片时默认折叠，不当主内容） */}
       {analysis?.markdown && (
-        <details className="uwr-card">
-          <summary className="uwr-card-h" style={{ cursor: 'pointer' }}>查看完整 Markdown 原文</summary>
+        <details className="uwr-card" open={!hasStructuredReport}>
+          <summary className="uwr-card-h" style={{ cursor: 'pointer' }}>
+            {hasStructuredReport ? '附录：生成原文（可选）' : `${marketLabel}周报原文`}
+          </summary>
           <pre
             style={{
               whiteSpace: 'pre-wrap',
@@ -535,9 +956,12 @@ const UsWeeklyReport = () => {
       {!analysis && (
         <div className="uwr-card">
           <div className="uwr-meta" style={{ padding: '14px 16px' }}>
-            暂无报告。点击右上方按钮调用 DeepSeek 生成，或等待每周六 10:00 自动调度。
+            暂无{marketLabel}报告。点击上方「生成本周周报」，或等待每周六 10:00 自动调度；也可钉钉发送
+            「@{marketLabel}分析师 这周{marketLabel}周报」。
           </div>
         </div>
+      )}
+        </>
       )}
       </div>
     </AisPageShell>

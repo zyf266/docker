@@ -1,0 +1,98 @@
+.am-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0 2rem;
+}
+
+.am-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.am-stat {
+  min-width: 7rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.am-stat-k {
+  display: block;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.am-stat-v {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.am-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.am-toolbar select,
+.am-toolbar input,
+.am-toolbar button {
+  height: 2.25rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  padding: 0 0.75rem;
+}
+
+.am-toolbar button {
+  cursor: pointer;
+  background: rgba(56, 189, 248, 0.2);
+}
+
+.am-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.am-msg {
+  opacity: 0.85;
+  margin: 0;
+}
+
+.am-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.am-list li {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.am-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin-bottom: 0.5rem;
+}
+
+.am-doc {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

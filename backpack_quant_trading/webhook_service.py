@@ -29,6 +29,16 @@ logger = logging.getLogger("WebhookService")
 
 app = FastAPI(title="Ostium TradingView Webhook Service")
 
+
+def _api_base_url() -> str:
+    """Docker 内默认走 compose 服务名 api；本机开发可设 AGENT_API_BASE=http://127.0.0.1:8100。"""
+    return (
+        os.getenv("AGENT_API_BASE", "").strip()
+        or os.getenv("API_BASE", "").strip()
+        or "http://api:8100"
+    ).rstrip("/")
+
+
 # ====== TradingView → AI评分 → 钉钉（实盘筛选） ======
 _RECENT_WEBHOOK_EVENTS: List[Dict[str, Any]] = []
 _RECENT_LIMIT = 50
@@ -966,7 +976,7 @@ import aiohttp as _aiohttp
 
 @app.post("/adaptive-long/webhook")
 async def adaptive_long_webhook_proxy(request: Request):
-    """透传到主 API 8100 的 adaptive-long webhook"""
+    """透传 API：buy→开多；sell→做多实例平仓，并扇出到同币种自动平仓实例（共用链接）。"""
     body = await request.body()
     try:
         data = await request.json()
@@ -983,9 +993,10 @@ async def adaptive_long_webhook_proxy(request: Request):
         logger.error(f"📥 adaptive-long JSON 解析失败: {e}, 原始: {body[:200]}")
         raise HTTPException(status_code=400, detail=str(e))
     try:
+        url = f"{_api_base_url()}/api/trading/adaptive-long/webhook"
         async with _aiohttp.ClientSession() as client:
             async with client.post(
-                "http://127.0.0.1:8100/api/trading/adaptive-long/webhook",
+                url,
                 json=data,
                 headers={"Content-Type": "application/json"},
                 timeout=_aiohttp.ClientTimeout(total=10),
@@ -1016,9 +1027,10 @@ async def eth_trend_short_webhook_proxy(request: Request):
         logger.error(f"📥 eth-trend-short JSON 解析失败: {e}, 原始: {body[:200]}")
         raise HTTPException(status_code=400, detail=str(e))
     try:
+        url = f"{_api_base_url()}/api/trading/eth-trend-short/webhook"
         async with _aiohttp.ClientSession() as client:
             async with client.post(
-                "http://127.0.0.1:8100/api/trading/eth-trend-short/webhook",
+                url,
                 json=data,
                 headers={"Content-Type": "application/json"},
                 timeout=_aiohttp.ClientTimeout(total=10),

@@ -14,12 +14,24 @@ FROM python:3.11-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    TRADING_SERVER=1
+    TRADING_SERVER=1 \
+    TZ=Asia/Shanghai
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        gcc g++ libffi-dev default-libmysqlclient-dev pkg-config curl \
+# 国内构建：Debian 官方源极慢，改阿里云镜像
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i 's/deb.debian.org/mirrors.aliyun.com/g; s/security.debian.org/mirrors.aliyun.com/g' \
+        /etc/apt/sources.list.d/debian.sources; \
+    elif [ -f /etc/apt/sources.list ]; then \
+      sed -i 's/deb.debian.org/mirrors.aliyun.com/g; s/security.debian.org/mirrors.aliyun.com/g' \
+        /etc/apt/sources.list; \
+    fi; \
+    apt-get update && apt-get install -y --no-install-recommends \
+        gcc g++ libffi-dev default-libmysqlclient-dev pkg-config curl tzdata \
+    && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo Asia/Shanghai > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backpack_quant_trading/requirements.txt /app/backpack_quant_trading/requirements.txt

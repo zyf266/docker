@@ -691,7 +691,8 @@ def _eastmoney_secid(code: str) -> Optional[str]:
     c = str(code or "").strip()
     if not c.isdigit() or len(c) != 6:
         return None
-    market = "1" if c.startswith("6") else "0"
+    # 沪市：6xxxxx 股票、5xxxxx ETF/基金、9xxxxx；深市：0/3
+    market = "1" if c.startswith(("5", "6", "9")) else "0"
     return f"{market}.{c}"
 
 

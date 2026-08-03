@@ -120,6 +120,13 @@ def build_user_prompt(
             f"摘要: {us_overlay.get('summary_text') or ''}\n"
         )
 
+    try:
+        from backpack_quant_trading.agents.sr_calibrate import format_sr_candidates_for_prompt
+
+        sr_block = format_sr_candidates_for_prompt(snapshot)
+    except Exception:
+        sr_block = ""
+
     return f"""请严格按 system 角色完成分析，只输出一个 JSON 对象。
 你是{persona_hint}。
 
@@ -131,6 +138,7 @@ last_close: {last_close}
 指标摘要: {json.dumps(metrics, ensure_ascii=False)[:2500]}
 近期K线: {json.dumps(snapshot.get("recent_bars") or [], ensure_ascii=False)[:1500]}
 {us_block}
+{sr_block}
 {prefs_block}
 
 ## 检索新闻（可引用，勿编造）
@@ -215,20 +223,54 @@ def run_analyst_pipeline(
             degraded = True
             research_err = str(res.get("error") or "")
 
-    prefs = retrieve_global_preferences(agent_id, query=req.user_text or f"{symbol} 风格", n=5)
-    prefs_block = format_preferences_for_prompt(prefs)
+    # 偏好 RAG 与 K 线快照并行，缩短钉钉等待
+    from concurrent.futures import ThreadPoolExecutor
 
-    snapshot: Dict[str, Any] = {}
-    snap_err = ""
-    try:
-        snapshot, snap_err = snapshot_fn(symbol, req)
-    except Exception as exc:
-        snap_err = str(exc)
-        snapshot = {}
+    def _prefs():
+        return retrieve_global_preferences(
+            agent_id, query=req.user_text or f"{symbol} 风格", n=5
+        )
+
+    def _snap():
+        try:
+            return snapshot_fn(symbol, req)
+        except Exception as exc:
+            return {}, str(exc)
+
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="analyst-io") as pool:
+        f_prefs = pool.submit(_prefs)
+        f_snap = pool.submit(_snap)
+        prefs = f_prefs.result()
+        snapshot, snap_err = f_snap.result()
+
+    prefs_block = format_preferences_for_prompt(prefs)
 
     if not snapshot:
         degraded = True
         snapshot = {"symbol": symbol, "last_close": None, "metrics": {}, "recent_bars": []}
+
+    # 评分纠正向量库 → Agent RAG（与 agent_prefs 一并注入）；超时则跳过
+    try:
+        from backpack_quant_trading.core.score_feedback import (
+            format_feedback_prompt_section,
+            retrieve_feedback_for_scoring,
+        )
+
+        _patches, fb_items = retrieve_feedback_for_scoring(
+            snapshot.get("metrics") or {},
+            symbol=symbol,
+            timeframe=str(snapshot.get("interval") or req.timeframe or ""),
+            top_k=3,
+        )
+        fb_lines = format_feedback_prompt_section(fb_items)
+        if fb_lines:
+            prefs_block = (
+                (prefs_block or "")
+                + "\n\n## 用户历史评分纠正（向量检索，须参考）\n"
+                + "\n".join(fb_lines)
+            ).strip()
+    except Exception as exc:
+        logger.debug("score_feedback RAG 注入跳过: %s", exc)
 
     user_prompt = build_user_prompt(
         symbol=symbol,
@@ -254,6 +296,13 @@ def run_analyst_pipeline(
         )
 
     st = dict(llm.get("structured") or {})
+    try:
+        from backpack_quant_trading.agents.sr_calibrate import calibrate_structured_sr
+
+        st = calibrate_structured_sr(st, snapshot)
+    except Exception as exc:
+        logger.debug("sr calibrate skipped: %s", exc)
+
     action = str(st.get("action") or "hold").lower()
     if action not in ("buy", "sell", "hold", "reject"):
         action = "hold"
@@ -280,7 +329,7 @@ def run_analyst_pipeline(
 
     report = AnalyzeReport(
         agent_id=agent_id,
-        symbol=symbol,
+        symbol=str(snapshot.get("symbol") or symbol),
         market=market,
         action=action,
         support=_f("support"),
@@ -293,6 +342,7 @@ def run_analyst_pipeline(
             "structured": st,
             "snapshot": snapshot,
             "timeframe": snapshot.get("interval") or req.timeframe or "",
+            "code": snapshot.get("code") or symbol,
         },
         degraded=degraded,
         error=research_err if degraded and not citations else "",

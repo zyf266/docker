@@ -43,7 +43,7 @@ DEDUP_PATH = DATA_DIR / "deepseek_score_dedup_cache.json"
 
 DEFAULT_WEBHOOK = (
     "https://oapi.dingtalk.com/robot/send?"
-    "access_token=5c0c5fc145b217a7a10ec0d6356ae24d9dd31b620ccb4be0251ff729e5cd0adb"
+    "access_token=5dea0e1540ba7759a8dc65304552cfea54b468bba572f8a655fb71ec062c2f03"
 )
 
 _DEFAULT_CONFIG: Dict[str, Any] = {
@@ -1598,6 +1598,12 @@ def load_config() -> Dict[str, Any]:
     return cfg
 
 
+def resolve_signal_score_dingtalk_webhook() -> str:
+    """加密/美股 Webhook 信号评分卡统一推送地址（与 crypto_signal_scorer_config 一致）。"""
+    cfg = load_config()
+    return (cfg.get("dingtalk_webhook") or DEFAULT_WEBHOOK).strip()
+
+
 def save_config(updates: Dict[str, Any]) -> Dict[str, Any]:
     cfg = load_config()
     cfg.update(updates or {})
@@ -1740,6 +1746,20 @@ def _sr_dist_pct(close: float, level: float) -> float:
     return round((level - close) / close * 100.0, 2)
 
 
+def _sr_min_dist_ratio(df: pd.DataFrame, close: float, min_dist_pct: float) -> float:
+    """最小有效距离：配置下限与 0.5×ATR 取较大值，过滤贴价噪声位。"""
+    floor = max(0.002, float(min_dist_pct) / 100.0)  # 至少 0.2%
+    atr_ratio = 0.0
+    try:
+        if df is not None and "atr14" in df.columns and len(df) > 0:
+            atr = float(df.iloc[-1].get("atr14") or 0)
+            if atr > 0 and close > 0:
+                atr_ratio = 0.5 * atr / close
+    except Exception:
+        pass
+    return max(floor, atr_ratio)
+
+
 def _swing_levels_single_tf(
     df: pd.DataFrame,
     *,
@@ -1748,6 +1768,7 @@ def _swing_levels_single_tf(
     want: str,
     max_levels: int = 3,
     include_ema: bool = True,
+    min_dist_pct: float = 0.8,
 ) -> List[float]:
     """单周期 K 线上的摆动支撑/压力候选价（不含其他周期）。"""
     if df is None or len(df) < 25:
@@ -1757,6 +1778,7 @@ def _swing_levels_single_tf(
     if close <= 0:
         return []
 
+    min_ratio = _sr_min_dist_ratio(work, close, min_dist_pct)
     swing_highs: List[float] = []
     swing_lows: List[float] = []
     w = max(2, int(swing_window))
@@ -1785,7 +1807,14 @@ def _swing_levels_single_tf(
                 val = float(v)
                 if val < close:
                     swing_lows.append(val)
-        prices = sorted({round(x, 10) for x in swing_lows if x < close * 0.9995}, reverse=True)
+        prices = sorted(
+            {
+                round(x, 10)
+                for x in swing_lows
+                if x < close * (1.0 - min_ratio)
+            },
+            reverse=True,
+        )
     else:
         swing_highs.extend([
             float(work.tail(10)["high"].max()),
@@ -1801,9 +1830,20 @@ def _swing_levels_single_tf(
                 val = float(v)
                 if val > close:
                     swing_highs.append(val)
-        prices = sorted({round(x, 10) for x in swing_highs if x > close * 1.0005})
+        prices = sorted(
+            {
+                round(x, 10)
+                for x in swing_highs
+                if x > close * (1.0 + min_ratio)
+            }
+        )
 
-    return prices[:max_levels]
+    # 去重：相邻位间距过近只留更显著的一个
+    deduped: List[float] = []
+    for p in prices:
+        if not deduped or abs(p - deduped[-1]) / close >= min_ratio * 0.6:
+            deduped.append(p)
+    return deduped[:max_levels]
 
 
 def compute_support_resistance_levels(
@@ -1814,11 +1854,13 @@ def compute_support_resistance_levels(
     kline_limit: int = 200,
     swing_window: int = 3,
     lookback: int = 80,
+    min_dist_pct: float = 0.8,
     fetch_klines_fn: Optional[Callable[[str, str, int], Optional[List[Dict[str, Any]]]]] = None,
 ) -> Dict[str, Any]:
     """
     支撑：仅信号同级周期 K 线。
     压力：同级最近一处 + 小一级周期最近一处（如 4h 信号 → 4h 与 2h 各一个压力位）。
+    过滤距现价过近的噪声位（默认 ≥0.8% 或 0.5×ATR）。
     """
     if df is None or len(df) < 25:
         return {}
@@ -1828,11 +1870,30 @@ def compute_support_resistance_levels(
     if close <= 0:
         return {}
 
+    # 美股/短周期噪声更大：抬高最小距离，避免 ±1% 噪声位
+    eff_min = float(min_dist_pct)
+    if signal_tf in ("15m", "30m"):
+        eff_min = max(eff_min, 1.5)
+    elif signal_tf in ("1h", "2h"):
+        eff_min = max(eff_min, 2.0)
+    elif signal_tf in ("4h", "6h"):
+        eff_min = max(eff_min, 2.5)
+
     sup_prices = _swing_levels_single_tf(
-        df, swing_window=swing_window, lookback=lookback, want="support", max_levels=3,
+        df,
+        swing_window=swing_window,
+        lookback=lookback,
+        want="support",
+        max_levels=3,
+        min_dist_pct=eff_min,
     )
     res_same = _swing_levels_single_tf(
-        df, swing_window=swing_window, lookback=lookback, want="resistance", max_levels=1,
+        df,
+        swing_window=swing_window,
+        lookback=lookback,
+        want="resistance",
+        max_levels=1,
+        min_dist_pct=eff_min,
     )
 
     supports: List[Dict[str, Any]] = []
@@ -1863,8 +1924,13 @@ def compute_support_resistance_levels(
             if kl and len(kl) >= 25:
                 df_low = compute_technical_indicators(klines_to_df(kl))
                 res_low = _swing_levels_single_tf(
-                    df_low, swing_window=swing_window, lookback=lookback,
-                    want="resistance", max_levels=1, include_ema=False,
+                    df_low,
+                    swing_window=swing_window,
+                    lookback=lookback,
+                    want="resistance",
+                    max_levels=1,
+                    include_ema=False,
+                    min_dist_pct=eff_min,
                 )
                 if res_low:
                     p = res_low[0]
@@ -1933,11 +1999,18 @@ def build_indicator_snapshot(
     *,
     interval: Optional[str] = None,
     kline_limit: Optional[int] = None,
+    agent_fast: bool = False,
 ) -> Tuple[Optional[Dict[str, Any]], str]:
-    """拉取 Hyperliquid K 线并生成指标快照（供 DeepSeek 与钉钉）。"""
+    """拉取 Hyperliquid K 线并生成指标快照（供 DeepSeek 与钉钉）。
+
+    agent_fast=True：跳过三层过滤与 MTF 加分（少约 10 次 HL 请求），供钉钉 Agent 快答。
+    """
     cfg = load_config()
     hl_coin = to_hl_coin(symbol)
-    iv = interval or cfg.get("kline_interval") or "4h"
+    iv = _tf_map_webhook(interval) if interval else ""
+    iv = iv or (cfg.get("kline_interval") or "4h")
+    if isinstance(iv, str):
+        iv = iv.strip().lower() or "4h"
     limit = int(kline_limit or cfg.get("kline_limit") or 200)
 
     klines = fetch_klines_crypto(hl_coin, iv, total_limit=limit)
@@ -1947,27 +2020,29 @@ def build_indicator_snapshot(
 
     df = klines_to_df(klines)
     df = compute_technical_indicators(df)
+    # Agent 快路径：不传 hl_coin → 跳过三层过滤的额外 K 线
     is_up, metrics, chart = analyze_uptrend(
         df,
         min_bars=min(60, len(df) - 1),
-        hl_coin=hl_coin,
+        hl_coin=None if agent_fast else hl_coin,
     )
     metrics = dict(metrics or {})
     sr = compute_support_resistance_levels(
         df,
         signal_timeframe=iv,
-        hl_coin=hl_coin,
+        hl_coin="" if agent_fast else hl_coin,
         kline_limit=limit,
     )
     if sr:
         metrics.update(sr)
 
-    try:
-        mtf = compute_mtf_scoring_metrics(hl_coin, kline_limit=limit)
-        if mtf:
-            metrics.update(mtf)
-    except Exception as e:
-        logger.debug("mtf scoring metrics failed %s: %s", hl_coin, e)
+    if not agent_fast:
+        try:
+            mtf = compute_mtf_scoring_metrics(hl_coin, kline_limit=limit)
+            if mtf:
+                metrics.update(mtf)
+        except Exception as e:
+            logger.debug("mtf scoring metrics failed %s: %s", hl_coin, e)
 
     # 最近 10 根摘要
     tail = df.tail(10)
@@ -2527,7 +2602,81 @@ def schedule_live_trade_score_from_webhook(
         body_preview,
     )
     if not is_live_trade_us_stock_buy_signal(sym, action, merged):
+        # 非「实盘交易」筛选：加密 / 美股开仓信号统一走 Agent（旧海报已停用）
+        from backpack_quant_trading.agents.scheduler_hooks import agent_replace_legacy_push
+
+        if not agent_replace_legacy_push():
+            return False
+        try:
+            from backpack_quant_trading.agents.scheduler_hooks import schedule_agent_signal_push
+            from backpack_quant_trading.core.signal_asset_router import classify_signal_asset
+
+            kind = classify_signal_asset(sym, merged)
+            if kind in ("crypto", "us_stock") and should_score_webhook_action(
+                action,
+                strategy_name=strategy_name or None,
+                strategy_side="long",
+            ):
+                market = "us_stock" if kind == "us_stock" else "crypto"
+                schedule_agent_signal_push(
+                    sym,
+                    action,
+                    timeframe=tf,
+                    market=market,
+                    webhook_raw=merged,
+                )
+                logger.info(
+                    "[AgentHook] %s Webhook → 信号评分群 symbol=%s tf=%s",
+                    market,
+                    sym,
+                    tf,
+                )
+                return True
+        except Exception as exc:
+            logger.exception("Webhook Agent 调度失败（旧链路已停用）: %s", exc)
         return False
+
+    # 美股实盘买入：Agent 新链路（默认替换旧「AI 信号评分」海报）
+    from backpack_quant_trading.agents.scheduler_hooks import agent_replace_legacy_push
+
+    if agent_replace_legacy_push():
+        try:
+            from backpack_quant_trading.agents.scheduler_hooks import schedule_agent_signal_push
+
+            schedule_agent_signal_push(
+                sym,
+                action,
+                timeframe=tf,
+                market="us_stock",
+                webhook_raw=merged,
+            )
+            logger.info(
+                "[AgentHook] 美股 Webhook → 信号评分群 symbol=%s tf=%s",
+                sym,
+                tf,
+            )
+            return True
+        except Exception as exc:
+            logger.exception("美股 Agent 调度失败（旧链路已停用）: %s", exc)
+            return False
+
+    # 仅当显式 AGENT_REPLACE_LEGACY_PUSH=0 时保留旧链路
+    try:
+        from backpack_quant_trading.agents.scheduler_hooks import agent_signal_push_enabled
+
+        if agent_signal_push_enabled():
+            from backpack_quant_trading.agents.scheduler_hooks import schedule_agent_signal_push
+
+            schedule_agent_signal_push(
+                sym,
+                action,
+                timeframe=tf,
+                market="us_stock",
+                webhook_raw=merged,
+            )
+    except Exception as exc:
+        logger.warning("Agent 并存推送失败: %s", exc)
+
     schedule_webhook_dingtalk_score(
         sym,
         action,
@@ -3281,7 +3430,7 @@ def push_score_to_dingtalk(
     ds = score_result.get("deepseek") or {}
     tf = score_result.get("timeframe") or ""
 
-    webhook_url = (webhook_url or cfg.get("dingtalk_webhook") or DEFAULT_WEBHOOK).strip()
+    webhook_url = (webhook_url or resolve_signal_score_dingtalk_webhook()).strip()
     if not webhook_url:
         return False, "未配置钉钉 Webhook"
     body = format_dingtalk_message(sym, action_l, snapshot, ds, timeframe=tf)
@@ -3310,6 +3459,47 @@ def run_signal_score_and_push_dingtalk(
     )
 
     kind = classify_signal_asset(symbol, webhook_raw)
+
+    try:
+        from backpack_quant_trading.agents.scheduler_hooks import (
+            agent_replace_legacy_push,
+            run_agent_signal_hook,
+        )
+
+        if agent_replace_legacy_push():
+            market = "us_stock" if kind == "us_stock" else "crypto"
+            hook = run_agent_signal_hook(
+                symbol,
+                market=market,
+                timeframe=timeframe,
+                action=action,
+                dry_run=False,
+            )
+            return {
+                "ok": bool(hook.get("ok")),
+                "symbol": symbol,
+                "action": action,
+                "timeframe": timeframe,
+                "asset_kind": kind,
+                "channel": "agent",
+                "dingtalk_ok": bool(hook.get("pushed")),
+                "dingtalk_msg": hook.get("push_error") or ("ok" if hook.get("pushed") else "not_pushed"),
+                "markdown": hook.get("markdown"),
+                "agent": True,
+            }
+    except Exception as exc:
+        if agent_replace_legacy_push():
+            logger.exception("Agent 同步评分推送失败（旧链路已停用）: %s", exc)
+            return {
+                "ok": False,
+                "error": str(exc),
+                "symbol": symbol,
+                "action": action,
+                "channel": "agent",
+                "agent": True,
+            }
+        logger.warning("Agent 同步评分推送失败，回退旧链路: %s", exc)
+
     mode, early = score_request_gate(
         symbol,
         action,
@@ -3428,9 +3618,32 @@ def schedule_webhook_dingtalk_score(
     strategy_side: str | None = None,
 ) -> None:
     """路径2：Webhook 后台线程 → 预检 → 钉钉推送（与实盘开单无关）。"""
+    from backpack_quant_trading.agents.scheduler_hooks import (
+        agent_replace_legacy_push,
+        schedule_agent_signal_push,
+    )
     from backpack_quant_trading.core.signal_asset_router import classify_signal_asset
 
     kind = classify_signal_asset(symbol, webhook_raw)
+
+    # 新链路：Agent 评分卡 → 信号评分钉钉群
+    if agent_replace_legacy_push():
+        market = "us_stock" if kind == "us_stock" else "crypto"
+        schedule_agent_signal_push(
+            symbol,
+            action,
+            timeframe=timeframe,
+            market=market,
+            webhook_raw=webhook_raw,
+        )
+        logger.info(
+            "[AgentHook] schedule_webhook → 信号评分群 symbol=%s kind=%s tf=%s",
+            symbol,
+            kind,
+            timeframe,
+        )
+        return
+
     mode, early = score_request_gate(
         symbol,
         action,

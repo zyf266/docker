@@ -69,10 +69,13 @@ def _get_collection(kind: str):
         path.mkdir(parents=True, exist_ok=True)
         if _CLIENT is None:
             _CLIENT = chromadb.PersistentClient(path=str(path))
-        col = _CLIENT.get_or_create_collection(
-            name=name,
-            metadata={"hnsw:space": "cosine"},
-        )
+        from backpack_quant_trading.core.chroma_embedding import get_embedding_function
+
+        ef = get_embedding_function()
+        kwargs = {"name": name, "metadata": {"hnsw:space": "cosine"}}
+        if ef is not None:
+            kwargs["embedding_function"] = ef
+        col = _CLIENT.get_or_create_collection(**kwargs)
         _COLLECTIONS[name] = col
         return col
 

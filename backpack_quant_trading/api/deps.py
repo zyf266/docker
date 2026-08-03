@@ -1,4 +1,4 @@
-"""依赖注入：认证、数据库等"""
+"""Dependency injection: auth, DB, steward token."""
 import os
 from typing import Optional
 from fastapi import Depends, HTTPException
@@ -8,10 +8,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from backpack_quant_trading.database.models import db_manager
 
-# JWT 配置（生产环境应从环境变量读取）
 SECRET_KEY = os.environ.get("JWT_SECRET", "backpack-quant-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 天
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 security = HTTPBearer(auto_error=False)
 cookie_scheme = APIKeyCookie(name="access_token", auto_error=False)
@@ -45,7 +44,7 @@ async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     cookie: Optional[str] = Depends(cookie_scheme),
 ) -> Optional[dict]:
-    """从 Bearer Token 或 Cookie 获取当前用户"""
+    """Resolve user from Bearer token or cookie."""
     token = None
     if credentials:
         token = credentials.credentials
@@ -66,7 +65,28 @@ async def get_current_user(
 
 
 async def require_user(user: Optional[dict] = Depends(get_current_user)) -> dict:
-    """要求已登录，未登录则 401"""
+    """Require logged-in user; 401 otherwise."""
     if not user:
         raise HTTPException(status_code=401, detail="请先登录")
     return user
+
+
+def steward_token_ok(token: str) -> bool:
+    t = (token or "").strip()
+    if not t:
+        return False
+    expected = (
+        os.environ.get("AGENT_STEWARD_TOKEN", "").strip()
+        or os.environ.get("WEBHOOK_SECRET", "").strip()
+    )
+    return bool(expected) and t == expected
+
+
+async def require_steward(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
+    """Steward internal call: Bearer AGENT_STEWARD_TOKEN or WEBHOOK_SECRET."""
+    token = credentials.credentials if credentials else ""
+    if not steward_token_ok(token):
+        raise HTTPException(status_code=401, detail="小管家鉴权失败")
+    return {"id": 0, "username": "小管家", "role": "steward"}

@@ -42,24 +42,32 @@ FRED_GRAPH_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 
 UA = "Mozilla/5.0 (compatible; ApexAI-UsWeeklyReport/1.0; +https://example.local)"
 
-# 简单的进程内 TTL 缓存：避免每次刷新都把 25+ 外部请求重新打一遍
+# 简单的进程内 TTL 缓存：按市场分槽（snap:us / snap:a_share）
 _CACHE_LOCK = threading.Lock()
-_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
+_CACHE: Dict[str, Any] = {}
 _CACHE_TTL_SEC = 300  # 5 分钟
 
-# 历史分析结果持久化（JSON 文件，避免新建数据库表）
+# 历史分析结果持久化（JSON 文件，按市场分文件）
 _HISTORY_LOCK = threading.Lock()
 _HISTORY_PATH = Path(_app_config.data_dir) / "us_bubble_history.json"
+_A_SHARE_HISTORY_PATH = Path(_app_config.data_dir) / "a_share_bubble_history.json"
 
 # 泡沫阶段标签（与提示词一致）
-BUBBLE_STAGES = [
-    "1996-1998 早期扩散",
-    "1999 叙事和估值同步加速",
-    "2000Q1 顶部附近",
-    "2000H2 订单和资本开支恶化",
-    "2001-2002 信用风险暴露",
-    "2003 后幸存者阶段",
-]
+from backpack_quant_trading.core.bubble_weekly_prompts import (
+    BUBBLE_STAGES,
+    build_stock_focus_block,
+    build_stock_strategy_user_prompt,
+    build_ui_report,
+    get_output_format,
+    get_report_type,
+    get_strategy_meta,
+    get_system_prompt,
+    is_stock_focus_report,
+    is_stock_strategy,
+    list_a_share_strategies,
+    normalize_market,
+    normalize_strategy,
+)
 
 
 def _resolve_proxies() -> Optional[Dict[str, str]]:
@@ -76,6 +84,30 @@ def _resolve_proxies() -> Optional[Dict[str, str]]:
         return {"http": explicit, "https": explicit}
     # 返回 None 表示「让 requests 自行用系统代理」
     return None
+
+
+def _http_get_domestic(url: str, params: Optional[dict] = None, retries: int = 1) -> requests.Response:
+    """东财/国内源：强制直连，不走容器 HTTP_PROXY（避免 ProxyError）。"""
+    from backpack_quant_trading.core.a_share_strategy_import import _direct_get
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(retries + 1):
+        try:
+            return _direct_get(
+                url,
+                params=params or {},
+                headers={"User-Agent": UA, "Accept": "application/json,*/*", "Referer": "https://quote.eastmoney.com/"},
+                timeout=20,
+            )
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+            if attempt < retries:
+                time.sleep(0.6 * (attempt + 1))
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("_http_get_domestic unknown error")
 
 
 def _http_get(url: str, params: Optional[dict] = None, retries: int = 1) -> requests.Response:
@@ -344,34 +376,40 @@ def _build_snapshot_payload() -> Dict[str, Any]:
 def us_weekly_snapshot(
     user: dict = Depends(require_user),
     force_refresh: bool = Query(False, description="忽略缓存，强制重新抓取"),
+    market: str = Query("us", description="us | a_share"),
 ) -> Dict[str, Any]:
     """
-    免费数据源「半套」周报快照：指数/波动率/部分利率与信用 + 若干 AI 链标的。
-    不含：期权 put/call、市场宽度、Mag7 贡献分解、GPU 租赁价等（需付费或无法免费稳定验证）。
-
-    内存级 TTL 缓存（默认 5 分钟）：避免每次刷新都重新打 20+ 外部请求。
+    周报快照：美股为 Yahoo/FRED 半套；A股为东财指数 K 线。
+    内存级 TTL 缓存（默认 5 分钟），按 market 分槽。
     """
+    m = normalize_market(market)
+    cache_key = f"snap:{m}"
     now = time.time()
     if not force_refresh:
         with _CACHE_LOCK:
-            if _CACHE["data"] is not None and (now - _CACHE["ts"]) < _CACHE_TTL_SEC:
-                cached = dict(_CACHE["data"])
-                cached["_cache_age_sec"] = round(now - _CACHE["ts"], 1)
+            slot = _CACHE.get(cache_key) or {}
+            if slot.get("data") is not None and (now - (slot.get("ts") or 0)) < _CACHE_TTL_SEC:
+                cached = dict(slot["data"])
+                cached["_cache_age_sec"] = round(now - slot["ts"], 1)
                 cached["_cache_ttl_sec"] = _CACHE_TTL_SEC
                 return cached
 
     try:
-        payload = _build_snapshot_payload()
+        payload = (
+            _build_a_share_snapshot_payload()
+            if m == "a_share"
+            else _build_snapshot_payload()
+        )
         with _CACHE_LOCK:
-            _CACHE["data"] = payload
-            _CACHE["ts"] = time.time()
+            _CACHE[cache_key] = {"data": payload, "ts": time.time()}
         payload["_cache_age_sec"] = 0.0
         payload["_cache_ttl_sec"] = _CACHE_TTL_SEC
         return payload
     except Exception as e:
-        logger.exception("us_weekly_snapshot 聚合失败: %s", e)
+        logger.exception("us_weekly_snapshot(%s) 聚合失败: %s", m, e)
         return {
             "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "market": m,
             "fatal_error": repr(e),
             "disclaimer": "聚合过程发生异常，以下为占位；请查看 fatal_error 并重试或检查网络/代理。",
             "sections_included": [],
@@ -386,183 +424,500 @@ def us_weekly_snapshot(
 
 
 # ─────────────────────────────────────────────────────────
-# 历史分析存储（JSON 文件）
+# 历史分析存储（JSON 文件，按 market 分文件）
 # ─────────────────────────────────────────────────────────
-def _history_load() -> List[Dict[str, Any]]:
+def _history_file(market: str = "us") -> Path:
+    m = normalize_market(market)
+    return _A_SHARE_HISTORY_PATH if m == "a_share" else _HISTORY_PATH
+
+
+def _history_load(market: str = "us") -> List[Dict[str, Any]]:
+    path = _history_file(market)
     try:
-        if not _HISTORY_PATH.exists():
+        if not path.exists():
             return []
-        with open(_HISTORY_PATH, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, list) else []
     except Exception as e:
-        logger.warning("读取历史分析失败: %s", e)
+        logger.warning("读取历史分析失败(%s): %s", market, e)
         return []
 
 
-def _history_save(items: List[Dict[str, Any]]) -> None:
+def _history_save(items: List[Dict[str, Any]], market: str = "us") -> None:
+    path = _history_file(market)
     try:
-        _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_HISTORY_PATH, "w", encoding="utf-8") as f:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(items, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        logger.warning("写入历史分析失败: %s", e)
+        logger.warning("写入历史分析失败(%s): %s", market, e)
 
 
-def _history_append(item: Dict[str, Any]) -> None:
+def _history_append(item: Dict[str, Any], market: str = "us") -> None:
     with _HISTORY_LOCK:
-        items = _history_load()
+        items = _history_load(market)
+        item = dict(item)
+        item["market"] = normalize_market(market)
         items.append(item)
-        # 保留最近 200 条即可
         if len(items) > 200:
             items = items[-200:]
-        _history_save(items)
+        _history_save(items, market)
 
 
 # ─────────────────────────────────────────────────────────
-# DeepSeek 分析（按用户给定的“买方周度复盘”提示词）
+# DeepSeek 分析（提示词见 core/bubble_weekly_prompts.py）
 # ─────────────────────────────────────────────────────────
-_SYSTEM_PROMPT = """你是一名严谨的宏观科技周期研究员、买方策略分析师和交易风险顾问。
-任务时间：中国时间每周六上午 10:00。
-本任务用于复盘完整一周美股表现，并判断 AI 泡沫周期阶段和下一周交易计划。
 
-我的目标（用户视角）：
-1. 过去一周发生了什么；
-2. 哪些事件是真正的转折点；
-3. 当前 AI 泡沫接近互联网泡沫哪一阶段；
-4. 市场是继续上涨、顶部震荡、下跌初期，还是泡沫破裂；
-5. 下周应该持有、减仓、止盈、止损、对冲、买 put、做空还是等待；
-6. 输出要短、清楚、可执行。
+def _build_a_share_snapshot_payload() -> Dict[str, Any]:
+    """A股周报轻量快照：东财主要指数近约 30 根日K。"""
+    indices_map = [
+        ("1.000001", "上证指数"),
+        ("0.399001", "深证成指"),
+        ("0.399006", "创业板指"),
+        ("1.000688", "科创50"),
+        ("1.000300", "沪深300"),
+        ("1.000852", "中证1000"),
+    ]
+    out: List[Dict[str, Any]] = []
+    for secid, name in indices_map:
+        try:
+            url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+            r = _http_get_domestic(
+                url,
+                params={
+                    "secid": secid,
+                    "fields1": "f1,f2,f3,f4,f5,f6",
+                    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+                    "klt": "101",
+                    "fqt": "1",
+                    "end": "20500101",
+                    "lmt": "30",
+                },
+            )
+            r.raise_for_status()
+            kl = ((r.json() or {}).get("data") or {}).get("klines") or []
+            closes = []
+            for row in kl:
+                parts = str(row).split(",")
+                if len(parts) >= 3:
+                    try:
+                        closes.append({"date": parts[0], "close": float(parts[2])})
+                    except Exception:
+                        pass
+            chg = None
+            if len(closes) >= 6:
+                a, b = closes[-6]["close"], closes[-1]["close"]
+                if a:
+                    chg = (b / a - 1.0) * 100.0
+            out.append({
+                "name": name,
+                "secid": secid,
+                "last_close": closes[-1]["close"] if closes else None,
+                "week_chg_pct_approx": chg,
+                "bars": len(closes),
+            })
+        except Exception as exc:
+            out.append({"name": name, "secid": secid, "error": repr(exc)})
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "market": "a_share",
+        "indices": out,
+        "disclaimer": "A股快照来自东财公开K线接口，非官方；仅供周报上下文。",
+    }
 
-每周必须覆盖以下检查项（哪怕只能给出范围或「无法验证」也要逐项点名）：
-1. 指数：SPX、NDX、QQQ、Nasdaq Composite、SOX、SMH、IWM。
-2. 波动率：VIX、VVIX、期权 put/call、AI 龙头期权成交。
-3. 利率和信用：10Y、2Y、实际利率、美元指数、HY OAS、IG OAS、CDX HY（如可得）。
-4. 市场宽度：上涨家数、下跌家数、52 周新高新低、Mag 7 贡献、AI 股贡献。
-5. AI 资本开支：MSFT、GOOGL、AMZN、META、ORCL、TSLA、xAI、OpenAI、Anthropic、CoreWeave、Nebius。
-6. AI 供应链：NVDA、AMD、AVGO、TSM、ASML、SK Hynix、Micron、ANET、DELL、SMCI。
-7. AI 需求：云 AI 收入、企业 AI 付费、AI 软件 ARR、模型 API 收入、ChatGPT/Claude/Gemini 使用与收入。
-8. AI 单位经济：推理成本、GPU 租赁价格、毛利率、折旧、云毛利、AI 服务毛利。
-9. 融资和 IPO：SpaceX、OpenAI、Anthropic 是否有 IPO 文件/融资/估值变化/二级交易/锁定期/私募估值下调。
-10. 监管和地缘：芯片出口管制、反垄断、数据监管、电力审批、地缘冲突。
 
-硬性规则：
-1. 优先使用用户提供的数据快照；当某项缺失或 error，结合公开常识、长期估值锚、以及已知的近期宏观/AI 行业背景做**概率性**推断，**不要因为一两项数据缺失就整体拒绝判断**。
-2. 关键数字尽量标注来源、发布日期、口径。
-3. 不能凭空捏造数字；无法核实写「无法验证」，但其它判断仍要正常输出。
-4. 每个判断区分：**事实 / 推论 / 概率情景 / 交易行动建议**。
-5. 所有交易建议必须包含触发条件、失效条件、时间周期。
-6. 不要长篇大论，不要空泛表达。
-7. 没有明确交易机会，直接写「没有明确交易机会」。
-8. 本周美股若休市，必须说明日期与原因，不要编造数据。
-9. 不能输出整页空白或整页「无法判断」。即便没数据，也要给出 AI 周期阶段的**先验概率分布**和**三种情景计划**。
+def _fetch_a_share_stock_bars(code: str, limit: int = 60) -> Dict[str, Any]:
+    """个股近 N 根日K摘要（东财直连）。"""
+    from datetime import timedelta
 
-【关键】请在 Markdown 报告**末尾**额外输出一个 JSON 代码块（语言标记 json），用于程序化提取：
-```json
-{
-  "stage": "1996-1998 早期扩散|1999 叙事和估值同步加速|2000Q1 顶部附近|2000H2 订单和资本开支恶化|2001-2002 信用风险暴露|2003 后幸存者阶段",
-  "stage_probabilities": {
-    "1996-1998 早期扩散": 0.0,
-    "1999 叙事和估值同步加速": 0.0,
-    "2000Q1 顶部附近": 0.0,
-    "2000H2 订单和资本开支恶化": 0.0,
-    "2001-2002 信用风险暴露": 0.0,
-    "2003 后幸存者阶段": 0.0
-  },
-  "short_term_score": 0,
-  "short_term_max": 20,
-  "mid_term_score": 0,
-  "mid_term_max": 25,
-  "long_term_score": 0,
-  "long_term_max": 25,
-  "bubble_total_score": 0,
-  "bubble_total_max": 70,
-  "market_state": "上涨|强趋势|顶部震荡|下跌初期|泡沫破裂初期|信用压力阶段",
-  "next_week_bias": "进攻|防守|震荡交易|等待",
-  "short_term_bias": "进攻|防守|震荡交易",
-  "mid_term_bias": "持有核心|逐步止盈|对冲|降低敞口",
-  "analog_year": "1998|1999|2000Q1|2000H2|2001-2002|2003+"
+    from backpack_quant_trading.core.a_share_strategy_import import (
+        _eastmoney_secid,
+        fetch_eastmoney_klines_daily,
+    )
+
+    start = datetime.now() - timedelta(days=max(120, limit * 3))
+    bars, err = fetch_eastmoney_klines_daily(code, start)
+    if err:
+        return {"code": code, "error": err, "secid": _eastmoney_secid(code)}
+    closes = []
+    for b in (bars or [])[-limit:]:
+        ts = b.get("timestamp")
+        closes.append({
+            "date": ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10],
+            "open": b.get("open"),
+            "close": b.get("close"),
+            "high": b.get("high"),
+            "low": b.get("low"),
+            "volume": b.get("volume"),
+        })
+    chg_5d = chg_20d = chg_60d = None
+    try:
+        if len(closes) >= 6 and closes[-6].get("close"):
+            chg_5d = (float(closes[-1]["close"]) / float(closes[-6]["close"]) - 1.0) * 100.0
+        if len(closes) >= 21 and closes[-21].get("close"):
+            chg_20d = (float(closes[-1]["close"]) / float(closes[-21]["close"]) - 1.0) * 100.0
+        if len(closes) >= 2 and closes[0].get("close"):
+            chg_60d = (float(closes[-1]["close"]) / float(closes[0]["close"]) - 1.0) * 100.0
+    except Exception:
+        pass
+    return {
+        "code": code,
+        "secid": _eastmoney_secid(code),
+        "last_close": closes[-1]["close"] if closes else None,
+        "chg_5d_pct": chg_5d,
+        "chg_20d_pct": chg_20d,
+        "chg_60d_pct": chg_60d,
+        "bars": len(closes),
+        "recent_klines": closes[-30:],
+    }
+
+
+def _fetch_eastmoney_quote_snapshot(code: str) -> Dict[str, Any]:
+    """东财实时估值字段（直连）。"""
+    from backpack_quant_trading.core.a_share_strategy_import import _eastmoney_secid
+
+    secid = _eastmoney_secid(code)
+    if not secid:
+        return {"error": "invalid_code"}
+    try:
+        r = _http_get_domestic(
+            "https://push2.eastmoney.com/api/qt/stock/get",
+            params={
+                "secid": secid,
+                "fields": "f43,f44,f45,f46,f47,f48,f57,f58,f60,f169,f170,f162,f163,f167,f116,f117,f46",
+                "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+            },
+            retries=1,
+        )
+        r.raise_for_status()
+        data = ((r.json() or {}).get("data") or {})
+        def _div(v, n=100.0):
+            try:
+                return None if v in (None, "-", "") else float(v) / n
+            except Exception:
+                return None
+        return {
+            "source": "eastmoney_push2",
+            "name": data.get("f58"),
+            "price": _div(data.get("f43")),
+            "pct_chg": _div(data.get("f170")),
+            "pe_ttm": _div(data.get("f162"), 100.0) if data.get("f162") not in (None, "-") else None,
+            "pb": _div(data.get("f167"), 100.0) if data.get("f167") not in (None, "-") else None,
+            "total_mv": data.get("f116"),  # 元
+            "circ_mv": data.get("f117"),
+        }
+    except Exception as exc:
+        return {"source": "eastmoney_push2", "error": repr(exc)}
+
+
+def _fetch_eastmoney_finance_rows(code: str) -> Dict[str, Any]:
+    """东财业绩快报/主要指标（近几期）。"""
+    c = str(code or "").strip()
+    if not re.fullmatch(r"\d{6}", c):
+        return {"error": "invalid_code"}
+    try:
+        # RPT_F10_FINANCE_MAINFINADATA 常见字段
+        r = _http_get_domestic(
+            "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params={
+                "reportName": "RPT_F10_FINANCE_MAINFINADATA",
+                "columns": "ALL",
+                "filter": f'(SECURITY_CODE="{c}")',
+                "pageNumber": "1",
+                "pageSize": "6",
+                "sortTypes": "-1",
+                "sortColumns": "REPORT_DATE",
+                "source": "F10",
+                "client": "WEB",
+            },
+            retries=1,
+        )
+        r.raise_for_status()
+        rows = ((r.json() or {}).get("result") or {}).get("data") or []
+        slim = []
+        for row in rows[:6]:
+            if not isinstance(row, dict):
+                continue
+            slim.append({
+                "report_date": str(row.get("REPORT_DATE") or "")[:10],
+                "revenue": row.get("TOTALOPERATEREVE") or row.get("OPERATE_INCOME"),
+                "net_profit": row.get("PARENTNETPROFIT") or row.get("NETPROFIT"),
+                "eps": row.get("BASIC_EPS") or row.get("EPSJB"),
+                "roe": row.get("ROEJQ") or row.get("WEIGHTAVGROE"),
+                "gross_margin": row.get("XSMLL") or row.get("GROSSPROFITMARGIN"),
+            })
+        return {"source": "eastmoney_f10_main", "rows": slim}
+    except Exception as exc:
+        return {"source": "eastmoney_f10_main", "error": repr(exc)}
+
+
+def _fetch_ths_quote_fallback(code: str) -> Dict[str, Any]:
+    """同花顺简况页兜底（解析失败则返回错误，不阻断主流程）。"""
+    c = str(code or "").strip()
+    if not re.fullmatch(r"\d{6}", c):
+        return {"error": "invalid_code"}
+    try:
+        from backpack_quant_trading.core.a_share_strategy_import import _direct_get
+
+        # 10=上证 33=深证近似：6开头上证
+        market = "10" if c.startswith("6") else "33"
+        url = f"https://d.10jqka.com.cn/v2/realhead/{market}_{c}/last.js"
+        r = _direct_get(
+            url,
+            headers={
+                "User-Agent": UA,
+                "Referer": f"https://stockpage.10jqka.com.cn/{c}/",
+            },
+            timeout=12,
+        )
+        r.raise_for_status()
+        text = r.text or ""
+        # last.js 形如 quotebridge_v2_realhead_...({...});
+        m = re.search(r"\((\{[\s\S]*\})\)\s*;?\s*$", text.strip())
+        if not m:
+            return {"source": "ths_realhead", "error": "parse_failed", "raw_head": text[:120]}
+        payload = json.loads(m.group(1))
+        items = payload.get("items") or payload
+        if not isinstance(items, dict):
+            return {"source": "ths_realhead", "error": "no_items"}
+        return {
+            "source": "ths_realhead",
+            "price": items.get("10") or items.get("price"),
+            "pct_chg": items.get("199112") or items.get("percent"),
+            "pe": items.get("2034120") or items.get("pe"),
+            "pb": items.get("2034122") or items.get("pb"),
+            "name": items.get("name") or items.get("5"),
+        }
+    except Exception as exc:
+        return {"source": "ths_realhead", "error": repr(exc)}
+
+
+def _fetch_akshare_fundamentals(code: str) -> Dict[str, Any]:
+    """复用 stock_ai 的东财资料+新浪财报摘要（若环境有 akshare）。"""
+    out: Dict[str, Any] = {"source": "akshare_em_sina"}
+    try:
+        from backpack_quant_trading.core.stock_ai import (
+            _get_basic_info_summary,
+            _get_news_summary,
+            _get_sina_financial_snippet,
+        )
+
+        basic = _get_basic_info_summary(code) or ""
+        sina = _get_sina_financial_snippet(code) or ""
+        news = _get_news_summary(code, max_items=6) or ""
+        out["basic_summary"] = basic
+        out["sina_finance"] = sina
+        out["news_headlines"] = news
+        if not basic and not sina:
+            out["error"] = "empty"
+    except Exception as exc:
+        out["error"] = repr(exc)
+    return out
+
+
+def _build_stock_analysis_snapshot(code: str, name: str) -> Dict[str, Any]:
+    """策略A/B · A股个股：多源行情+财务快照（东财/同花顺/新浪）。"""
+    as_of = datetime.now().strftime("%Y-%m-%d")
+    quote = _fetch_a_share_stock_bars(code)
+    live_px, px_src = None, ""
+    try:
+        from backpack_quant_trading.core.research_card_prices import fetch_a_share_price
+
+        live_px, px_src = fetch_a_share_price(code)
+    except Exception as exc:
+        px_src = f"live_price_error:{exc!r}"
+
+    em_quote = _fetch_eastmoney_quote_snapshot(code)
+    em_fin = _fetch_eastmoney_finance_rows(code)
+    ths = _fetch_ths_quote_fallback(code)
+    ak = _fetch_akshare_fundamentals(code)
+
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "as_of_date": as_of,
+        "calendar_year": 2026,
+        "market": "a_share",
+        "symbol": code,
+        "name": name,
+        "currency": "CNY",
+        "live_price": live_px,
+        "live_price_source": px_src,
+        "quote_klines": quote,
+        "sources": {
+            "eastmoney_quote": em_quote,
+            "eastmoney_finance": em_fin,
+            "ths_quote": ths,
+            "akshare_em_sina": ak,
+        },
+        "note": (
+            "多源快照：东财行情/财务主表、同花顺 realhead、新浪/东财基本面摘要。"
+            "分析须优先引用 sources.*.report_date / 最新一期财务；当前年为 2026。"
+        ),
+    }
+
+
+def _build_us_stock_analysis_snapshot(ticker: str, name: str) -> Dict[str, Any]:
+    """策略A/B · 美股个股：Yahoo 日线 + 现价快照。"""
+    as_of = datetime.now().strftime("%Y-%m-%d")
+    series, yerr = _yahoo_series(ticker)
+    bars = series[-40:] if series else []
+    week = _week_like_return(series) if series else {}
+    live_px, px_src, currency = None, "", "USD"
+    try:
+        from backpack_quant_trading.core.research_card_prices import fetch_yahoo_quote
+
+        live_px, currency = fetch_yahoo_quote(ticker)
+        px_src = "yahoo"
+        currency = currency or "USD"
+    except Exception as exc:
+        px_src = f"yahoo_quote_error:{exc!r}"
+        if bars:
+            live_px = bars[-1].get("close")
+            px_src = "yahoo_chart_last_close"
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "as_of_date": as_of,
+        "calendar_year": 2026,
+        "market": "us",
+        "symbol": ticker,
+        "name": name or ticker,
+        "currency": currency or "USD",
+        "live_price": live_px,
+        "live_price_source": px_src,
+        "quote_klines": {
+            "bars": bars,
+            "week_like_return": week,
+            "error": yerr,
+            "source": "yahoo_chart",
+        },
+        "sources": {
+            "yahoo_chart": {
+                "ticker": ticker,
+                "bars_n": len(bars),
+                "last": bars[-1] if bars else None,
+                "error": yerr,
+            },
+        },
+        "note": (
+            "美股快照：Yahoo Finance 日线收盘与现价；财务/指引请结合 SEC 10-K/Q 与公司 IR。"
+            "当前年为 2026；勿套用 A 股涨跌停/北向机制。"
+        ),
+    }
+
+
+def _resolve_a_share_symbol(token: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """返回 (code, name, error)。"""
+    raw = (token or "").strip()
+    if not raw:
+        return None, None, "请输入股票名称或6位代码"
+    try:
+        from backpack_quant_trading.agents.a_share_resolve import resolve_a_share_token
+
+        hit = resolve_a_share_token(raw)
+    except Exception as exc:
+        return None, None, f"解析股票失败: {exc!r}"
+    if not hit:
+        return None, None, f"未识别股票「{raw}」，请换用6位代码或更完整名称"
+    code, name = hit
+    return code, name or code, None
+
+
+_US_TICKER_ALIASES = {
+    "英伟达": "NVDA",
+    "苹果": "AAPL",
+    "特斯拉": "TSLA",
+    "微软": "MSFT",
+    "谷歌": "GOOGL",
+    "亚马逊": "AMZN",
+    "META": "META",
+    "博通": "AVGO",
+    "台积电": "TSM",
 }
-```
-其中 bubble_total_score = short_term_score + mid_term_score + long_term_score（取值 0–70）。
-"""
-
-_OUTPUT_FORMAT = """请使用以下中文 Markdown 输出格式（**逐项严格执行，不可遗漏**）：
-
-【1. 本周总判断】
-- 市场状态：上涨 / 强趋势 / 顶部震荡 / 下跌初期 / 泡沫破裂初期 / 信用压力阶段
-- AI 泡沫阶段：1996-1998 早期扩散 / 1999 叙事和估值同步加速 / 2000Q1 顶部附近 /
-  2000H2 订单和资本开支恶化 / 2001-2002 信用风险暴露 / 2003 后幸存者阶段
-- 当前概率分布（表格）：| 阶段 | 概率 |
-- 一句话结论：下周应该偏进攻 / 防守 / 震荡交易 / 等待
-
-【2. 本周真正重要的 5 件事】
-每条包括：事件 / 事实 / 来源和日期 / 为什么重要 / 影响方向 / 是否改变交易计划。
-
-【3. 泡沫评分模型】
-分三个时间维度打分，每项 0–5 分（0 = 健康，5 = 极端泡沫），必须给出关键判断依据。
-
-评分锚定规则（强制）：
-- 中期总分应围绕 12–13/25（当前周期已进入泡沫加速，不应超过 15）
-- 长期总分应控制在 10/25 以下（结构性泡沫尚需验证，早期信号权重不宜过高）
-- 短期总分反映即时交易压力，不受此锚定约束
-
-3.1 短期泡沫压力（1–4 周交易窗口）
-- 估值极端度（PE、PS、市值/收入、远期 PEG）
-- 市场宽度与动量拥挤（Mag7 贡献、涨跌比、新高新低、SOX 超买幅度）
-- 信用与流动性预警（HY OAS 周度变化、VIX/VVIX、put/call 比、私募信贷赎回）
-- 事件催化剂风险（CPI、SpaceX IPO 招股书、NVDA 财报前仓位）
-短期总分：__/20
-短期结论：继续冲顶 / 震荡消化 / 已现下跌引信
-
-3.2 中期泡沫积累（3–6 个月趋势）
-评分基准：当前处于泡沫加速期，中期得分应在 12–15/25 区间，接近 15 即为高温预警。
-- 资本开支过热（九大云厂 Capex 增速、折旧压力、GPU 订货倍数的二阶导数）
-- 融资脆弱性（AI 私募估值上跳速度、IPO 抽水规模、非上市股权抵押贷款拒绝增加）
-- 真实需求兑现的边际变化（云 AI 收入加速/首次减速、软件 ARR 续约率下降、API 收入增速收窄）
-- 供给瓶颈缓解信号（HBM 交期开始缩短、租赁价格出现月度环比下降、电力审批通过加速）
-- 龙头盈利质量拐点（毛利率见顶、FCF/净债务恶化、应收账款周转天数上升）
-- 资本回报率边际递减（每 1 美元 Capex 带来的增量收入是否下降）
-中期总分：__/25（锚定 12–15）
-中期结论：泡沫加速 / 顶部构筑 / 需求首次出现边际放缓信号
-
-3.3 长期结构性泡沫（1–3 年周期）
-评分基准：长期得分应控制在 10/25 以下。仅当下列多项同时触发时才可给出 4–5 分：
-- 监管/地缘出现不可逆分水岭（出口管制升级至全面封锁、主要国家禁建 AI 数据中心）
-- Mega IPO 与私募抽水已实际发生并造成二级市场持续失血（非预期阶段）
-- 二三线公司出现批量破产或债务违约（而非个别解散）
-- 技术路线被确凿证伪（主流架构被替代方案全面超越，非实验室阶段）
-- 信用市场系统性压力（IG/HY OAS 走扩 >150bp、AI 数据中心 CMBS 降级、银行收 AI 贷款敞口）
-长期总分：__/25（锚定 ≤10）
-长期结论：当前类似互联网泡沫哪一阶段（1998-1999 扩散 / 1999-2000 加速顶部 / 2000H2 破裂前 /
-  2001-2002 信用出清 / 2003+ 幸存）
-
-【三层次综合判断】
-- 短期建议：进攻 / 防守 / 震荡交易
-- 中期建议：持有核心 / 逐步止盈 / 对冲 / 降低敞口
-- 长期类比年份：1998 / 1999 / 2000Q1 / 2000H2 / 2001-2002 / 2003+
-- 最关键反证条件：（出现什么现象，上述判断立即失效）
-- 总分（0–70）：__（短期 __/20 + 中期 __/25 + 长期 __/25；上期 __，变化 __）
-
-【4. 我的持仓周度处理】（表格）
-| 代码 | 当前状态 | 本周风险变化 | 建议动作（持有/加仓/减仓/止盈/止损/对冲/买 put/做空/不动）| 触发条件 | 失效条件 | 下周重点观察 |
-
-【5. 下周三种情景计划】
-情景一 继续上涨：触发条件 / 应该做什么 / 不能做什么
-情景二 顶部震荡：触发条件 / 应该做什么 / 不能做什么
-情景三 下跌或泡沫破裂：触发条件 / 应该做什么 / 不能做什么
-
-【6. 下周交易行动清单】（最多 8 条）
-每条：动作 / 标的 / 原因 / 触发条件 / 止损或失效条件 / 时间周期
-
-【7. 下周必须盯的转折点】（最多 10 条）
-重点：hyperscaler 资本开支、NVIDIA 毛利率/库存/应收、GPU 租赁价格、AI 云收入、
-AI 软件付费、SpaceX IPO、OpenAI IPO、Anthropic 融资或 IPO、AI 数据中心融资、
-高收益债利差、Nasdaq 和 SOX 趋势位。
-"""
 
 
-def _build_user_prompt(snapshot: Dict[str, Any], holdings: Optional[List[Dict[str, Any]]] = None, extra: str = "") -> str:
+def _resolve_us_stock_symbol(token: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """返回 (ticker, name, error)。Yahoo 不可达时仍接受合法 ticker，由快照标注数据缺失。"""
+    raw = (token or "").strip()
+    if not raw:
+        return None, None, "请输入美股代码，如 NVDA"
+    alias = _US_TICKER_ALIASES.get(raw) or _US_TICKER_ALIASES.get(raw.upper())
+    ticker = (alias or raw).upper().lstrip("$")
+    if not re.fullmatch(r"[A-Z]{1,5}(\.[A-Z])?", ticker):
+        return None, None, f"美股代码格式无效「{raw}」"
+    series, yerr = _yahoo_series(ticker)
+    if not series and yerr and "解析失败" in (yerr or ""):
+        return None, None, f"未识别美股「{ticker}」：{yerr}"
+    # 网络失败时仍放行合法 ticker，分析阶段快照会带 error
+    return ticker, ticker, None
+
+
+def _resolve_stock_symbol(
+    token: str,
+    preferred_market: Optional[str] = None,
+) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """返回 (code, name, market, error)。自动识别 A股 / 美股。"""
+    raw = (token or "").strip()
+    if not raw:
+        return None, None, None, "请输入股票名称或代码（A股如贵州茅台/600519，美股如 NVDA）"
+    pref = normalize_market(preferred_market) if preferred_market else None
+
+    # 已知美股中文别名优先
+    if raw in _US_TICKER_ALIASES or raw.upper() in {k.upper() for k in _US_TICKER_ALIASES}:
+        code, name, err = _resolve_us_stock_symbol(raw)
+        if not err:
+            return code, name, "us", None
+
+    # 纯 ticker / 显式美股：不再回落 A股
+    if pref == "us" or re.fullmatch(r"\$?[A-Za-z]{1,5}", raw):
+        code, name, err = _resolve_us_stock_symbol(raw)
+        if err:
+            return None, None, None, err
+        return code, name, "us", None
+
+    # 6 位代码 / 中文名 / 显式 A股
+    if pref == "a_share" or re.fullmatch(r"\d{6}", raw) or re.search(r"[\u4e00-\u9fff]", raw):
+        code, name, err = _resolve_a_share_symbol(raw)
+        if not err:
+            return code, name, "a_share", None
+        if pref == "a_share" or re.fullmatch(r"\d{6}", raw):
+            return None, None, None, err
+
+    code, name, err = _resolve_a_share_symbol(raw)
+    if not err:
+        return code, name, "a_share", None
+    code, name, err2 = _resolve_us_stock_symbol(raw)
+    if not err2:
+        return code, name, "us", None
+    return None, None, None, err or err2 or f"未识别标的「{raw}」"
+
+
+def _build_user_prompt(
+    snapshot: Dict[str, Any],
+    holdings: Optional[List[Dict[str, Any]]] = None,
+    extra: str = "",
+    market: str = "us",
+    strategy: str = "us",
+    focus_code: Optional[str] = None,
+    focus_name: Optional[str] = None,
+) -> str:
+    m = normalize_market(market)
+    sid = normalize_strategy(strategy, m)
+    rtype = get_report_type(sid, m)
+
+    if is_stock_focus_report(rtype) and focus_code:
+        return build_stock_strategy_user_prompt(
+            focus_code,
+            focus_name or focus_code,
+            snapshot,
+            extra,
+            strategy=sid,
+            market=m,
+        )
+
+    # 无个股时（周六全市场周报）强制泡沫周报输出格式，避免策略A的 L1-L7 模板串进来
+    from backpack_quant_trading.core.bubble_weekly_prompts import A_SHARE_OUTPUT, US_OUTPUT
+
     holdings = holdings or []
     holdings_lines: List[str] = []
     if holdings:
@@ -574,23 +929,42 @@ def _build_user_prompt(snapshot: Dict[str, Any], holdings: Optional[List[Dict[st
     else:
         holdings_lines.append("- 持仓未填写（仅给出宏观判断与三种情景计划）")
 
-    watchlist = (
-        "QQQ、SPY、IWM、SOXX、SMH、NVDA、AMD、AVGO、TSM、ASML、ANET、DELL、SMCI、"
-        "ORCL、MSFT、GOOGL、AMZN、META、PLTR、SNOW、DDOG、MDB、NOW、CRM、TSLA"
-    )
+    if m == "a_share":
+        if focus_code:
+            label = f"{focus_name or focus_code}（{focus_code}）"
+            watchlist = f"{label}；同主题对照股；上证/创业板/科创50作背景"
+        else:
+            watchlist = (
+                "上证、深成、创业板、科创50、沪深300、中证1000、半导体、机器人、光模块、算力租赁相关龙头"
+            )
+        out_fmt = A_SHARE_OUTPUT if not focus_code else get_output_format(m, sid)
+    else:
+        watchlist = (
+            "QQQ、SPY、IWM、SOXX、SMH、NVDA、AMD、AVGO、TSM、ASML、ANET、DELL、SMCI、"
+            "ORCL、MSFT、GOOGL、AMZN、META、PLTR、SNOW、DDOG、MDB、NOW、CRM、TSLA"
+        )
+        out_fmt = US_OUTPUT
 
     snapshot_text = json.dumps(snapshot, ensure_ascii=False)
-    # 数据量大，截断保留前 ~28KB
     if len(snapshot_text) > 28000:
-        snapshot_text = snapshot_text[:28000] + "...(已截断)"
+        snapshot_text = snapshot_text[:28000] + "...(truncated)"
+
+    focus_block = ""
+    if m == "a_share" and focus_code:
+        focus_block = build_stock_focus_block(focus_code, focus_name or focus_code) + "\n"
+
+    strat_line = f"## 策略模板\n{sid}\n\n" if m == "a_share" and focus_code else ""
 
     return (
+        f"## 市场\n{m}\n\n"
+        f"{strat_line}"
+        f"{focus_block}"
         f"## 用户持仓\n" + "\n".join(holdings_lines) + "\n\n"
         f"## 观察清单\n{watchlist}\n\n"
         f"## 额外说明\n{extra or '无'}\n\n"
-        f"## 本周市场数据快照（JSON，免费数据源聚合）\n"
+        f"## 本周市场数据快照（JSON）\n"
         f"```json\n{snapshot_text}\n```\n\n"
-        f"{_OUTPUT_FORMAT}"
+        f"{out_fmt}"
     )
 
 
@@ -610,28 +984,57 @@ def _extract_json_block(markdown: str) -> Dict[str, Any]:
         return {}
 
 
-def _call_deepseek(snapshot: Dict[str, Any], holdings: Optional[List[Dict[str, Any]]] = None, extra: str = "") -> Dict[str, Any]:
+def _call_deepseek(
+    snapshot: Dict[str, Any],
+    holdings: Optional[List[Dict[str, Any]]] = None,
+    extra: str = "",
+    market: str = "us",
+    strategy: str = "us",
+    focus_code: Optional[str] = None,
+    focus_name: Optional[str] = None,
+) -> Dict[str, Any]:
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
         return {"ok": False, "error": "未配置 DEEPSEEK_API_KEY"}
 
-    user_prompt = _build_user_prompt(snapshot, holdings, extra)
+    m = normalize_market(market)
+    sid = normalize_strategy(strategy, m)
+    rtype = get_report_type(sid, m)
+    is_stock = is_stock_focus_report(rtype) and bool(focus_code)
+
+    user_prompt = _build_user_prompt(
+        snapshot,
+        holdings,
+        extra,
+        market=m,
+        strategy=sid,
+        focus_code=focus_code,
+        focus_name=focus_name,
+    )
+    if is_stock:
+        system_content = get_system_prompt(m, sid)
+    elif m == "a_share" and not focus_code:
+        from backpack_quant_trading.core.bubble_weekly_prompts import A_SHARE_SYSTEM
+        system_content = A_SHARE_SYSTEM
+    else:
+        system_content = get_system_prompt(m, sid)
+
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {
-        "model": "deepseek-chat",
+        "model": os.getenv("DEEPSEEK_WEEKLY_MODEL", "deepseek-chat"),
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0.2,
+        "temperature": 0.25 if is_stock else 0.2,
+        "max_tokens": 8192 if is_stock else 4096,
     }
-    # DeepSeek 国内通常直连可用；如本机配了代理也允许走（由 _resolve_proxies 控制）
     try:
         r = requests.post(
             "https://api.deepseek.com/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=120,
+            timeout=300 if is_stock else 180,
             proxies=_resolve_proxies(),
         )
     except Exception as e:
@@ -649,11 +1052,19 @@ def _call_deepseek(snapshot: Dict[str, Any], holdings: Optional[List[Dict[str, A
         return {"ok": False, "error": f"DeepSeek 调用失败: {err}"}
 
     markdown = data["choices"][0]["message"]["content"] or ""
+    if is_stock:
+        return {
+            "ok": True,
+            "markdown": markdown,
+            "structured": {},
+            "report_type": rtype,
+        }
     structured = _extract_json_block(markdown)
     return {
         "ok": True,
         "markdown": markdown,
         "structured": structured,
+        "report_type": "bubble_weekly",
     }
 
 
@@ -672,39 +1083,181 @@ class HoldingItem(BaseModel):
 class AnalyzeRequest(BaseModel):
     holdings: Optional[List[HoldingItem]] = None
     extra: Optional[str] = ""
-    force_refresh: Optional[bool] = False  # 强制重新抓取快照
-    save: Optional[bool] = True  # 是否写入历史
+    force_refresh: Optional[bool] = False
+    save: Optional[bool] = True
+    market: Optional[str] = "us"  # us | a_share（个股分析时可由后端按代码重写）
+    mode: Optional[str] = None  # weekly | stock；stock 时走策略A/B
+    # 股票名称或代码（A股名称/6位；美股 ticker）；策略模板 id（A/B…）
+    symbol: Optional[str] = None
+    strategy: Optional[str] = "A"
 
 
-def _do_analyze(holdings: Optional[List[Dict[str, Any]]], extra: str, force_refresh: bool, save: bool) -> Dict[str, Any]:
-    # 1) 获取快照（默认走缓存以节省时间）
-    if force_refresh:
-        snapshot = _build_snapshot_payload()
-        with _CACHE_LOCK:
-            _CACHE["data"] = snapshot
-            _CACHE["ts"] = time.time()
-    else:
-        with _CACHE_LOCK:
-            cached = _CACHE.get("data")
-            cached_age = time.time() - (_CACHE.get("ts") or 0)
-        if cached and cached_age < _CACHE_TTL_SEC:
-            snapshot = cached
+def _stock_report_one_liner(md: str, name: Optional[str], code: Optional[str]) -> str:
+    for line in (md or "").splitlines():
+        t = line.strip().lstrip("#").strip()
+        if t and len(t) > 6 and not t.startswith("```") and "L1" not in t[:20]:
+            return t[:160]
+    label = f"{name}（{code}）" if name and code else (name or code or "标的")
+    return f"{label} · 供应链瓶颈深度报告"
+
+
+def _do_analyze(
+    holdings: Optional[List[Dict[str, Any]]],
+    extra: str,
+    force_refresh: bool,
+    save: bool,
+    market: str = "us",
+    symbol: Optional[str] = None,
+    strategy: Optional[str] = None,
+    mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    m = normalize_market(market)
+    mode_l = (mode or "").strip().lower()
+    sym_raw = (symbol or "").strip()
+    # 个股模式：显式 mode=stock，或传入策略A/B+标的
+    want_stock = mode_l == "stock" or (bool(sym_raw) and is_stock_strategy(strategy or "A"))
+    if mode_l == "stock" and not is_stock_strategy(strategy):
+        strategy = strategy or "A"
+    sid = normalize_strategy(strategy, m)
+    focus_code: Optional[str] = None
+    focus_name: Optional[str] = None
+
+    if want_stock:
+        if not is_stock_strategy(sid):
+            sid = "A"
+        meta = get_strategy_meta(sid, m)
+        if not meta.get("enabled"):
+            return {
+                "ok": False,
+                "error": f"策略 {sid} 尚未开放，请选用策略 A",
+                "market": m,
+                "strategy": sid,
+            }
+        if not sym_raw:
+            return {
+                "ok": False,
+                "error": "请输入股票名称或代码（A股如贵州茅台/600519，美股如 NVDA）",
+                "market": m,
+                "strategy": sid,
+            }
+        code, name, resolved_m, resolve_err = _resolve_stock_symbol(
+            sym_raw,
+            preferred_market=m if mode_l != "stock" else None,
+        )
+        if resolve_err:
+            return {
+                "ok": False,
+                "error": resolve_err,
+                "market": m,
+                "strategy": sid,
+            }
+        focus_code, focus_name = code, name
+        m = resolved_m or m
+    elif m == "a_share" and sym_raw:
+        # 兼容旧路径：A股+symbol 但未标 stock mode
+        code, name, resolve_err = _resolve_a_share_symbol(sym_raw)
+        if resolve_err:
+            return {
+                "ok": False,
+                "error": resolve_err,
+                "market": m,
+                "strategy": sid,
+            }
+        focus_code, focus_name = code, name
+        if is_stock_strategy(sid):
+            want_stock = True
+
+    rtype = get_report_type(sid, m)
+    is_stock_report = want_stock and is_stock_focus_report(rtype) and bool(focus_code)
+
+    if is_stock_report:
+        if m == "us":
+            snapshot = _build_us_stock_analysis_snapshot(focus_code, focus_name or focus_code)
         else:
-            snapshot = _build_snapshot_payload()
-            with _CACHE_LOCK:
-                _CACHE["data"] = snapshot
-                _CACHE["ts"] = time.time()
+            snapshot = _build_stock_analysis_snapshot(focus_code, focus_name or focus_code)
+    else:
+        cache_key = f"snap:{m}"
 
-    # 2) 调用 DeepSeek
-    ds = _call_deepseek(snapshot, holdings, extra)
+        if m == "a_share":
+            builder = _build_a_share_snapshot_payload
+        else:
+            builder = _build_snapshot_payload
+
+        if force_refresh:
+            snapshot = builder()
+            with _CACHE_LOCK:
+                _CACHE[cache_key] = {"data": snapshot, "ts": time.time()}
+        else:
+            with _CACHE_LOCK:
+                slot = _CACHE.get(cache_key) or {}
+                cached = slot.get("data")
+                cached_age = time.time() - (slot.get("ts") or 0)
+            if cached and cached_age < _CACHE_TTL_SEC:
+                snapshot = cached
+            else:
+                snapshot = builder()
+                with _CACHE_LOCK:
+                    _CACHE[cache_key] = {"data": snapshot, "ts": time.time()}
+
+        if m == "a_share" and focus_code:
+            snapshot = dict(snapshot or {})
+            snapshot["focus_stock"] = {
+                "code": focus_code,
+                "name": focus_name,
+                "quote": _fetch_a_share_stock_bars(focus_code),
+            }
+            snapshot["strategy"] = sid
+
+    ds = _call_deepseek(
+        snapshot,
+        holdings,
+        extra,
+        market=m,
+        strategy=sid,
+        focus_code=focus_code,
+        focus_name=focus_name,
+    )
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     record: Dict[str, Any] = {
         "generated_at_utc": now_utc,
         "ok": ds.get("ok", False),
+        "market": m,
+        "strategy": sid,
+        "symbol": focus_code,
+        "stock_name": focus_name,
     }
 
     if not ds.get("ok"):
         record["error"] = ds.get("error")
+        return record
+
+    md = ds.get("markdown", "") or ""
+    out_report_type = ds.get("report_type") or (rtype if is_stock_report else "bubble_weekly")
+
+    if is_stock_focus_report(out_report_type):
+        md = strip_disclaimer_markdown(md)
+        one_liner = _stock_report_one_liner(md, focus_name, focus_code)
+        strat_name = get_strategy_meta(sid, m).get("name") or f"策略{sid}"
+        record.update({
+            "report_type": out_report_type,
+            "markdown": md,
+            "one_liner": one_liner,
+            "report_date": now_utc[:10],
+            "report_label": f"{strat_name}·{focus_name or focus_code}（{focus_code}）",
+        })
+        if save:
+            _history_append({
+                "generated_at_utc": now_utc,
+                "market": m,
+                "strategy": sid,
+                "report_type": out_report_type,
+                "symbol": focus_code,
+                "stock_name": focus_name,
+                "report_date": record["report_date"],
+                "report_label": record["report_label"],
+                "one_liner": one_liner,
+                "markdown": md,
+            }, market=m)
         return record
 
     structured = ds.get("structured") or {}
@@ -719,13 +1272,35 @@ def _do_analyze(holdings: Optional[List[Dict[str, Any]]], extra: str, force_refr
     short_f = _num(structured.get("short_term_score"))
     mid_f = _num(structured.get("mid_term_score"))
     long_f = _num(structured.get("long_term_score"))
-    # 若模型没给 total，但三项分齐全，则自行加总
+    if score_f is None and (short_f is not None or mid_f is not None or long_f is not None):
+        score_f = sum(v for v in [short_f, mid_f, long_f] if v is not None)
+
+    md = ds.get("markdown", "") or ""
+    one_liner = (structured.get("one_liner") or "").strip() or (
+        f"状态={structured.get('market_state') or '—'}；"
+        f"阶段={structured.get('stage') or '—'}；"
+        f"下周={structured.get('next_week_bias') or '—'}"
+    )
+    # 组装前端卡片 report（与历史 seed 周报同结构）
+    report_obj = build_ui_report(structured, fallback_summary=one_liner)
+
+    # 若顶层分数缺失，用 report 分段总分回填
+    if short_f is None and report_obj.get("score_short_total") is not None:
+        short_f = _num(report_obj.get("score_short_total"))
+    if mid_f is None and report_obj.get("score_mid_total") is not None:
+        mid_f = _num(report_obj.get("score_mid_total"))
+    if long_f is None and report_obj.get("score_long_total") is not None:
+        long_f = _num(report_obj.get("score_long_total"))
     if score_f is None and (short_f is not None or mid_f is not None or long_f is not None):
         score_f = sum(v for v in [short_f, mid_f, long_f] if v is not None)
 
     record.update({
-        "markdown": ds.get("markdown", ""),
+        "report_type": "bubble_weekly",
+        "markdown": md,
         "structured": structured,
+        "report": report_obj,
+        "one_liner": one_liner,
+        "key_invalidation": structured.get("key_invalidation") or "",
         "bubble_total_score": score_f,
         "bubble_total_max": structured.get("bubble_total_max", 70),
         "short_term_score": short_f,
@@ -741,11 +1316,31 @@ def _do_analyze(holdings: Optional[List[Dict[str, Any]]], extra: str, force_refr
         "short_term_bias": structured.get("short_term_bias"),
         "mid_term_bias": structured.get("mid_term_bias"),
         "analog_year": structured.get("analog_year"),
+        "report_date": now_utc[:10],
+        "report_label": (
+            "美股周报"
+            if m == "us"
+            else (
+                f"A股·策略{sid}·{focus_name or focus_code}"
+                if focus_code
+                else f"A股·策略{sid}"
+            )
+        ),
+        "strategy": sid,
+        "symbol": focus_code,
+        "stock_name": focus_name,
     })
 
     if save:
         _history_append({
             "generated_at_utc": now_utc,
+            "market": m,
+            "strategy": sid,
+            "report_type": "bubble_weekly",
+            "symbol": focus_code,
+            "stock_name": focus_name,
+            "report_date": record["report_date"],
+            "report_label": record["report_label"],
             "bubble_total_score": score_f,
             "bubble_total_max": record["bubble_total_max"],
             "short_term_score": short_f,
@@ -761,25 +1356,122 @@ def _do_analyze(holdings: Optional[List[Dict[str, Any]]], extra: str, force_refr
             "mid_term_bias": record["mid_term_bias"],
             "analog_year": record["analog_year"],
             "stage_probabilities": record["stage_probabilities"],
+            "one_liner": one_liner,
+            "key_invalidation": record.get("key_invalidation") or "",
             "markdown": record["markdown"],
-        })
+            "report": report_obj,
+        }, market=m)
     return record
+
+
+@router.get("/strategies")
+def list_strategies(
+    user: dict = Depends(require_user),
+    market: str = Query("a_share", description="us | a_share"),
+    mode: Optional[str] = Query(None, description="weekly | stock"),
+) -> Dict[str, Any]:
+    """策略模板：个股分析返回 A/B；市场周报返回对应周报模板。"""
+    m = normalize_market(market)
+    mode_l = (mode or "").strip().lower()
+    if mode_l == "stock" or m == "a_share":
+        return {"market": m, "mode": "stock", "items": list_a_share_strategies()}
+    return {
+        "market": m,
+        "mode": "weekly",
+        "items": [{"id": "us", "name": "美股周报", "enabled": True, "description": "美股泡沫阶段周报"}],
+    }
 
 
 @router.post("/analyze")
 def analyze_now(req: AnalyzeRequest, user: dict = Depends(require_user)) -> Dict[str, Any]:
     """手动触发一次分析（调用 DeepSeek）。"""
     holdings = [h.model_dump() if hasattr(h, "model_dump") else h.dict() for h in (req.holdings or [])]
-    return _do_analyze(holdings, req.extra or "", bool(req.force_refresh), bool(req.save))
+    return _do_analyze(
+        holdings,
+        req.extra or "",
+        bool(req.force_refresh),
+        bool(req.save),
+        market=req.market or "us",
+        symbol=req.symbol,
+        strategy=req.strategy,
+        mode=req.mode,
+    )
 
 
 @router.get("/history")
-def list_history(user: dict = Depends(require_user), limit: int = Query(80, ge=1, le=200)) -> Dict[str, Any]:
-    items = _history_load()
+def list_history(
+    user: dict = Depends(require_user),
+    limit: int = Query(80, ge=1, le=200),
+    market: str = Query("us", description="us | a_share"),
+    strategy: Optional[str] = Query(None, description="A股策略模板 id，如 A"),
+    symbol: Optional[str] = Query(None, description="过滤个股代码或名称"),
+) -> Dict[str, Any]:
+    m = normalize_market(market)
+    items = _history_load(m)
+    sid_req = (strategy or "").strip()
+    if sid_req and is_stock_strategy(sid_req):
+        sid = normalize_strategy(sid_req, m)
+        items = [
+            x for x in items
+            if is_stock_strategy(x.get("strategy") or "")
+            and normalize_strategy(x.get("strategy") or "A", m) == sid
+        ]
+        sym_q = (symbol or "").strip()
+        if sym_q:
+            code, _, rm, err = _resolve_stock_symbol(sym_q, preferred_market=m)
+            if not err and code:
+                items = [x for x in items if (x.get("symbol") or "") == code]
+            else:
+                items = [
+                    x for x in items
+                    if sym_q in (x.get("symbol") or "")
+                    or sym_q in (x.get("stock_name") or "")
+                    or sym_q in (x.get("report_label") or "")
+                ]
+    elif m == "a_share":
+        sid = normalize_strategy(strategy or "A", m)
+        # 旧记录无 strategy 字段时视为策略 A
+        items = [
+            x for x in items
+            if normalize_strategy(x.get("strategy") or "A", m) == sid
+        ]
+        sym_q = (symbol or "").strip()
+        if sym_q:
+            code, _, err = _resolve_a_share_symbol(sym_q)
+            if not err and code:
+                items = [x for x in items if (x.get("symbol") or "") == code]
+            else:
+                # 解析失败则按原文模糊匹配历史标签
+                items = [
+                    x for x in items
+                    if sym_q in (x.get("symbol") or "")
+                    or sym_q in (x.get("stock_name") or "")
+                    or sym_q in (x.get("report_label") or "")
+                ]
+    else:
+        # 市场周报：排除个股策略记录，避免与美股个股混槽
+        items = [
+            x for x in items
+            if not is_stock_focus_report(x.get("report_type"))
+            and not (x.get("symbol") and is_stock_strategy(x.get("strategy")))
+        ]
     items = items[-limit:]
     series = [
         {
             "generated_at_utc": x.get("generated_at_utc"),
+            "market": x.get("market") or m,
+            "report_type": x.get("report_type") or (
+                "stock_scorecard"
+                if x.get("symbol") and normalize_strategy(x.get("strategy") or "A", m) == "B"
+                else (
+                    "stock_supply_chain"
+                    if x.get("symbol") and normalize_strategy(x.get("strategy") or "A", m) == "A"
+                    else "bubble_weekly"
+                )
+            ),
+            "strategy": x.get("strategy") or ("A" if m == "a_share" else "us"),
+            "symbol": x.get("symbol"),
+            "stock_name": x.get("stock_name"),
             "report_date": x.get("report_date"),
             "report_label": x.get("report_label"),
             "bubble_total_score": x.get("bubble_total_score"),
@@ -798,11 +1490,13 @@ def list_history(user: dict = Depends(require_user), limit: int = Query(80, ge=1
             "analog_year": x.get("analog_year"),
             "one_liner": x.get("one_liner"),
             "is_seed": x.get("is_seed", False),
-            "has_report": bool(x.get("report")),
+            "has_report": bool(x.get("report")) or len(x.get("markdown") or "") > 400,
         }
         for x in items
     ]
     return {
+        "market": m,
+        "strategy": normalize_strategy(strategy or "A", m) if m == "a_share" else "us",
         "stages": BUBBLE_STAGES,
         "count": len(series),
         "items": series,
@@ -810,10 +1504,45 @@ def list_history(user: dict = Depends(require_user), limit: int = Query(80, ge=1
 
 
 @router.get("/latest")
-def latest_analysis(user: dict = Depends(require_user)) -> Dict[str, Any]:
-    items = _history_load()
+def latest_analysis(
+    user: dict = Depends(require_user),
+    market: str = Query("us", description="us | a_share"),
+    strategy: Optional[str] = Query(None, description="策略模板 id（个股 A/B）"),
+    symbol: Optional[str] = Query(None, description="个股代码或名称"),
+) -> Dict[str, Any]:
+    m = normalize_market(market)
+    items = _history_load(m)
+    if strategy and is_stock_strategy(strategy):
+        sid = normalize_strategy(strategy, m)
+        items = [
+            x for x in items
+            if is_stock_strategy(x.get("strategy") or "")
+            and normalize_strategy(x.get("strategy") or "A", m) == sid
+        ]
+        sym_q = (symbol or "").strip()
+        if sym_q:
+            code, _, _, err = _resolve_stock_symbol(sym_q, preferred_market=m)
+            if not err and code:
+                items = [x for x in items if (x.get("symbol") or "") == code]
+    elif m == "a_share":
+        sid = normalize_strategy(strategy or "A", m)
+        items = [
+            x for x in items
+            if normalize_strategy(x.get("strategy") or "A", m) == sid
+        ]
+        sym_q = (symbol or "").strip()
+        if sym_q:
+            code, _, err = _resolve_a_share_symbol(sym_q)
+            if not err and code:
+                items = [x for x in items if (x.get("symbol") or "") == code]
+    else:
+        items = [
+            x for x in items
+            if not is_stock_focus_report(x.get("report_type"))
+            and not (x.get("symbol") and is_stock_strategy(x.get("strategy")))
+        ]
     if not items:
-        return {"empty": True}
+        return {"empty": True, "market": m}
     return items[-1]
 
 
@@ -821,20 +1550,169 @@ def latest_analysis(user: dict = Depends(require_user)) -> Dict[str, Any]:
 def get_report_by_id(
     user: dict = Depends(require_user),
     id: str = Query(..., description="generated_at_utc 作为报告 ID"),
+    market: str = Query("us", description="us | a_share"),
 ) -> Dict[str, Any]:
     """按 ID 取某一份完整周报。"""
-    items = _history_load()
+    items = _history_load(market)
     for x in items:
         if (x.get("generated_at_utc") or "") == id:
             return x
     return {"empty": True, "error": "report not found"}
 
 
-# 给定时任务用（无登录依赖）
-def run_weekly_analyze_task() -> Dict[str, Any]:
-    """由调度器调用：无 require_user 依赖，直接生成并落盘。"""
+def run_weekly_analyze_task(market: str = "us") -> Dict[str, Any]:
+    """由调度器 / 钉钉 Agent 调用：无 require_user 依赖，直接生成并落盘。"""
+    m = normalize_market(market)
+    label = "美股" if m == "us" else "A股"
     try:
-        return _do_analyze(holdings=None, extra="自动调度（每周六 10:00 CST）", force_refresh=True, save=True)
+        # 全市场周报：不走策略A个股模板（无 symbol 时强制泡沫周报提示词）
+        return _do_analyze(
+            holdings=None,
+            extra=f"自动/指令生成（{label}泡沫阶段周报）",
+            force_refresh=True,
+            save=True,
+            market=m,
+            strategy=None,
+            symbol=None,
+        )
     except Exception as e:
-        logger.exception("run_weekly_analyze_task 失败: %s", e)
-        return {"ok": False, "error": repr(e)}
+        logger.exception("run_weekly_analyze_task(%s) 失败: %s", m, e)
+        return {"ok": False, "error": repr(e), "market": m}
+
+
+def run_stock_strategy_task(
+    symbol: str,
+    strategy: str = "A",
+    extra: str = "",
+    save: bool = False,
+    market: Optional[str] = None,
+) -> Dict[str, Any]:
+    """钉钉 / 调度：生成个股策略报告（A股或美股）。钉钉默认 save=False。"""
+    try:
+        return _do_analyze(
+            holdings=None,
+            extra=extra or "钉钉指令生成（个股策略报告）",
+            force_refresh=True,
+            save=bool(save),
+            market=market or "a_share",
+            strategy=strategy or "A",
+            symbol=symbol,
+            mode="stock",
+        )
+    except Exception as e:
+        logger.exception("run_stock_strategy_task(%s) 失败: %s", symbol, e)
+        return {"ok": False, "error": repr(e), "market": market or "a_share", "symbol": symbol}
+
+
+def strip_disclaimer_markdown(md: str) -> str:
+    """去掉附注/免责声明章节。"""
+    text = (md or "").strip()
+    if not text:
+        return ""
+    lines = text.splitlines()
+    out: List[str] = []
+    skip = False
+    for line in lines:
+        t = line.strip()
+        if re.search(r"(附注|数据溯源|免责声明)", t) and (
+            t.startswith("#") or t.startswith("【") or re.match(r"^#{0,3}\s*【?附注", t)
+            or "免责声明" == t or t.startswith("免责声明")
+        ):
+            skip = True
+            continue
+        if skip:
+            if re.match(r"^#{1,3}\s+", t) or re.match(r"^【L?\d", t) or re.match(
+                r"^[一二三四五六七八九十]+[、.]", t
+            ):
+                skip = False
+            else:
+                continue
+        if skip:
+            continue
+        out.append(line)
+    # 再滤掉独立「免责声明」短段
+    cleaned = "\n".join(out)
+    cleaned = re.sub(
+        r"(?ms)^#{0,3}\s*免责声明\s*\n.*?(?=^#{1,3}\s|\Z)",
+        "",
+        cleaned,
+    )
+    return cleaned.strip()
+
+
+def markdown_for_dingtalk(md: str, max_len: Optional[int] = None) -> str:
+    """钉钉 Markdown 不支持表格：把 | 表 转成列表。默认不截断（完整报告）。"""
+    text = strip_disclaimer_markdown(md)
+    if not text:
+        return ""
+    lines = text.splitlines()
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith("|") and "|" in stripped[1:]:
+            rows: List[List[str]] = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                if cells and all(re.fullmatch(r":?-{3,}:?", c or "") for c in cells):
+                    i += 1
+                    continue
+                rows.append(cells)
+                i += 1
+            if rows:
+                headers = rows[0]
+                body = rows[1:] if len(rows) > 1 else []
+                for r in body or rows:
+                    parts = []
+                    for j, cell in enumerate(r):
+                        if not cell:
+                            continue
+                        label = headers[j] if j < len(headers) else f"列{j+1}"
+                        if body:
+                            parts.append(f"{label}：{cell}")
+                        else:
+                            parts.append(cell)
+                    if parts:
+                        out.append("- " + " ｜ ".join(parts))
+                out.append("")
+            continue
+        out.append(line)
+        i += 1
+    result = "\n".join(out).strip()
+    if max_len is not None and max_len > 0 and len(result) > max_len:
+        result = result[:max_len] + "\n\n…（内容过长已截断）"
+    return result
+
+
+def split_dingtalk_markdown(md: str, chunk_size: int = 3500) -> List[str]:
+    """按章节边界拆成多条钉钉消息，保证完整送达。"""
+    text = markdown_for_dingtalk(md, max_len=None)
+    if not text:
+        return []
+    if len(text) <= chunk_size:
+        return [text]
+    parts: List[str] = []
+    buf: List[str] = []
+    buf_len = 0
+    for line in text.splitlines(keepends=True):
+        is_heading = bool(re.match(r"^#{1,3}\s+", line.strip()) or re.match(r"^【", line.strip()))
+        if buf and is_heading and buf_len + len(line) > chunk_size * 0.85:
+            parts.append("".join(buf).strip())
+            buf = [line]
+            buf_len = len(line)
+            continue
+        if buf_len + len(line) > chunk_size and buf:
+            parts.append("".join(buf).strip())
+            buf = [line]
+            buf_len = len(line)
+        else:
+            buf.append(line)
+            buf_len += len(line)
+    if buf:
+        parts.append("".join(buf).strip())
+    # 加分页脚注
+    n = len(parts)
+    if n > 1:
+        parts = [f"{p}\n\n（第 {i}/{n} 段）" for i, p in enumerate(parts, 1) if p]
+    return [p for p in parts if p]

@@ -57,10 +57,18 @@ class AdaptiveShortStrategy:
         timeframe_filter: Optional[str] = None,
         lock_profit_pct: float = 0.0,
         lock_profit_sl_pct: float = 0.0,
+        margin_type: Optional[str] = None,  # Binance: ISOLATED=逐仓 / CROSSED=全仓
     ):
         self.exchange = (exchange or "hyperliquid").lower()
+        mt = str(margin_type or "ISOLATED").strip().upper()
+        if mt in ("CROSS", "CROSSED", "全仓"):
+            self.margin_type = "CROSSED"
+        else:
+            self.margin_type = "ISOLATED"
         if self.exchange == "binance":
-            self.client = BinanceAPIClient(api_key=api_key, secret_key=api_secret)
+            self.client = BinanceAPIClient(
+                api_key=api_key, secret_key=api_secret, margin_type=self.margin_type
+            )
         elif self.exchange == "lighter":
             from backpack_quant_trading.core.lighter_client import LighterAPIClient
             self.client = LighterAPIClient(
@@ -242,18 +250,31 @@ class AdaptiveShortStrategy:
                 else:
                     self._tp_oid = tp_res.get("orderId")
             elif self.exchange == "binance":
-                logger.info(f"🛡️ [Binance] SL 由软件御控周期守护  SL={self.sl_price:.4f}  每5s轮询触发")
-                tp_res = await self.client.place_tpsl_order(
+                sl_res = await self.client.place_tpsl_order(
                     symbol=self.symbol,
-                    trigger_price=self.tp_price,
-                    tpsl="tp",
                     side="BUY",
                     quantity=self.position_size,
+                    trigger_price=self.sl_price,
+                    tpsl="sl",
+                )
+                if sl_res.get("status") == "FAILED":
+                    logger.error(f"❌ Binance SL 挂单失败: {sl_res.get('error')}")
+                else:
+                    self._sl_oid = sl_res.get("orderId")
+                    logger.info(f"📌 Binance SL 挂单成功 oid={self._sl_oid}  触发价={self.sl_price:.4f}")
+
+                tp_res = await self.client.place_tpsl_order(
+                    symbol=self.symbol,
+                    side="BUY",
+                    quantity=self.position_size,
+                    trigger_price=self.tp_price,
+                    tpsl="tp",
                 )
                 if tp_res.get("status") == "FAILED":
-                    logger.error(f"❌ TP 挂单失败: {tp_res.get('error')}")
+                    logger.error(f"❌ Binance TP 挂单失败: {tp_res.get('error')}")
                 else:
                     self._tp_oid = tp_res.get("orderId")
+                    logger.info(f"📌 Binance TP 挂单成功 oid={self._tp_oid}  触发价={self.tp_price:.4f}")
             elif self.exchange == "lighter":
                 # Lighter 原生触发单：SHORT 的 SL/TP 都是 BUY（平空）
                 sl_res = await self.client.place_tpsl_order(
@@ -364,20 +385,35 @@ class AdaptiveShortStrategy:
                 logger.error(f"❌ 开空下单失败: {error_msg}")
                 return
 
-            # Hyperliquid：等待成交后同步真实持仓（用于挂 TP/SL 触发单）
+            # Hyperliquid / Binance：等待成交后同步真实持仓（用于挂 TP/SL 触发单）
             entry_price = price
             position_size = float(qty)
-            if self.exchange == "hyperliquid":
-                await asyncio.sleep(3)
+            if self.exchange in ("hyperliquid", "binance"):
+                await asyncio.sleep(2 if self.exchange == "binance" else 3)
                 try:
-                    positions = await self.client.get_positions(symbol=symbol, dex=dex_name)
-                    if positions:
-                        pos = positions[0]
-                        position_size = abs(float(pos.get("size", 0) or 0))
-                        if float(pos.get("entry_price") or 0) > 0:
-                            entry_price = float(pos.get("entry_price"))
+                    if self.exchange == "binance":
+                        positions = await self.client.get_positions(symbol=symbol)
+                    else:
+                        positions = await self.client.get_positions(symbol=symbol, dex=dex_name)
+                    short_pos = next(
+                        (
+                            p for p in (positions or [])
+                            if str(p.get("side") or "").upper() == "SHORT"
+                            and abs(float(p.get("size") or 0)) > 0
+                        ),
+                        None,
+                    )
+                    if not short_pos:
+                        logger.error(
+                            f"❌ 开空后交易所无空仓（下单响应={str(res)[:180]}）。"
+                            f"可能未成交/被对冲净空为0；已跳过挂 SL/TP，请检查币安持仓与成交记录"
+                        )
+                        return
+                    position_size = abs(float(short_pos.get("size", 0) or 0))
+                    if float(short_pos.get("entry_price") or 0) > 0:
+                        entry_price = float(short_pos.get("entry_price"))
                 except Exception as e:
-                    logger.warning(f"同步 Hyperliquid 持仓失败（将使用估算值继续）: {e}")
+                    logger.warning(f"同步持仓失败（将使用估算值继续）: {e}")
 
             async with self._lock:
                 self.position = "SHORT"
@@ -389,11 +425,11 @@ class AdaptiveShortStrategy:
                 self.break_even_activated = False
                 self.lock_profit_activated = False
 
-            # Hyperliquid / Lighter：开仓后在交易所挂 TP/SL 触发单（若失败会降级为软件御控）
-            if self.exchange in ("hyperliquid", "lighter"):
+            # Hyperliquid / Lighter / Binance：开仓后挂交易所 TP/SL
+            if self.exchange in ("hyperliquid", "lighter", "binance"):
                 await self._place_exchange_tpsl()
 
-            logger.info(f"🐻 开空成功: {symbol}")
+            logger.info(f"🐻 开空成功: {symbol}  数量={position_size:.6f}  入场≈{entry_price:.4f}")
         except Exception as e:
             logger.error(f"开空异常: {e}")
 
@@ -518,27 +554,25 @@ class AdaptiveShortStrategy:
         if not ep:
             return
 
-        if self.exchange in ("binance", "lighter"):
+        if self.exchange == "lighter":
             price = await self._get_price(self.symbol)
             if price <= 0:
                 return
             async with self._lock:
                 if self.position != "SHORT":
                     return
-                if self.exchange == "lighter":
-                    self._sync_count += 1
-                    if self._sync_count >= 3:
-                        self._sync_count = 0
-                        try:
-                            pos = await self.client.get_position(self.symbol)
-                            if not pos or float(pos.get("size") or 0) == 0:
-                                logger.info("🧾 [Lighter] 检测到持仓已为 0（可能 TP 已成交），自动重置状态")
-                                self._reset_position_state()
-                                return
-                        except Exception:
-                            pass
+                self._sync_count += 1
+                if self._sync_count >= 3:
+                    self._sync_count = 0
+                    try:
+                        pos = await self.client.get_position(self.symbol)
+                        if not pos or float(pos.get("size") or 0) == 0:
+                            logger.info("🧾 [Lighter] 检测到持仓已为 0（可能 TP 已成交），自动重置状态")
+                            self._reset_position_state()
+                            return
+                    except Exception:
+                        pass
 
-                # SHORT: 止损在上方；止盈在下方
                 if self.sl_price and price >= self.sl_price:
                     await self._safe_close("止损触发")
                     return
@@ -546,7 +580,6 @@ class AdaptiveShortStrategy:
                     await self._safe_close("止盈触发")
                     return
 
-                # 保本：盈利达到 break_even_pct → SL 下移到入场价
                 if (not self.break_even_activated) and self.break_even_pct > 0:
                     trig = ep * (1 - self.break_even_pct)
                     if price <= trig:
@@ -554,7 +587,6 @@ class AdaptiveShortStrategy:
                         self.sl_price = ep
                         logger.info(f"🟦 保本触发: price={price:.4f} <= {trig:.4f}，SL 下移到入场价 {ep:.4f}")
 
-                # 锁利：盈利达到 lock_profit_pct → SL 锁定在入场价 * (1 - lock_profit_sl_pct)
                 if (not self.lock_profit_activated) and self.lock_profit_pct > 0 and self.lock_profit_sl_pct > 0:
                     trig = ep * (1 - self.lock_profit_pct)
                     if price <= trig:
@@ -564,7 +596,7 @@ class AdaptiveShortStrategy:
                         logger.info(f"🟩 锁利触发: price={price:.4f} <= {trig:.4f}，SL 锁定到 {self.sl_price:.4f}")
             return
 
-        # Hyperliquid：交易所原生 TP/SL，轮询做保本/锁利 & 同步
+        # Hyperliquid / Binance：交易所原生 TP/SL，轮询做保本/锁利 & 同步
         price = await self._get_price(self.symbol)
         if price <= 0:
             return
@@ -576,15 +608,29 @@ class AdaptiveShortStrategy:
             if self._sync_count >= 3:
                 self._sync_count = 0
                 try:
-                    pos = await self.client.get_position(self.symbol)
-                    if not pos or float(pos.get("size") or 0) == 0:
-                        logger.info("🧾 [HL] 检测到持仓已为 0（可能 TP/SL 已触发），自动重置状态")
+                    if self.exchange == "binance":
+                        positions = await self.client.get_positions(symbol=self.symbol)
+                        has_pos = any(abs(float(p.get("size") or 0)) > 0 for p in positions)
+                    else:
+                        pos = await self.client.get_position(self.symbol)
+                        has_pos = bool(pos and float(pos.get("size") or 0) != 0)
+                    if not has_pos:
+                        logger.info("🧾 检测到持仓已为 0（可能 TP/SL 已触发），自动重置状态")
+                        try:
+                            await self._cancel_exchange_tpsl()
+                        except Exception:
+                            pass
+                        # 顺带清掉该币种残留条件单，避免“只有止盈止损、没有仓位”
+                        if self.exchange == "binance" and self.symbol:
+                            try:
+                                await self.client.cancel_all_orders(self.symbol)
+                            except Exception:
+                                pass
                         self._reset_position_state()
                         return
                 except Exception:
                     pass
 
-            # 保本/锁利：需要撤销旧 SL，重挂新的 SL
             if (not self.break_even_activated) and self.break_even_pct > 0:
                 trig = ep * (1 - self.break_even_pct)
                 if price <= trig:
@@ -592,7 +638,7 @@ class AdaptiveShortStrategy:
                     await self._cancel_exchange_tpsl()
                     self.sl_price = ep
                     await self._place_exchange_tpsl()
-                    logger.info(f"🟦 保本触发(HL): SL 下移到入场价 {ep:.4f}")
+                    logger.info(f"🟦 保本触发: SL 下移到入场价 {ep:.4f}")
 
             if (not self.lock_profit_activated) and self.lock_profit_pct > 0 and self.lock_profit_sl_pct > 0:
                 trig = ep * (1 - self.lock_profit_pct)
@@ -601,7 +647,7 @@ class AdaptiveShortStrategy:
                     await self._cancel_exchange_tpsl()
                     self.sl_price = round(ep * (1 - self.lock_profit_sl_pct), 6)
                     await self._place_exchange_tpsl()
-                    logger.info(f"🟩 锁利触发(HL): SL 锁定到 {self.sl_price:.4f}")
+                    logger.info(f"🟩 锁利触发: SL 锁定到 {self.sl_price:.4f}")
 
     def get_status(self) -> Dict[str, Any]:
         return {

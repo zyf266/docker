@@ -1,5 +1,8 @@
 services:
+  # 测试机 / 本地：COMPOSE_PROFILES=local-mysql 或 deploy.sh 自动启用
+  # 正式机：.env 中 DB_HOST 指向宿主机已有 MySQL，不启本服务
   mysql:
+    profiles: ["local-mysql"]
     image: mysql:8.0
     container_name: backpack-mysql
     restart: unless-stopped
@@ -35,20 +38,24 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
       TRADING_SERVER: "1"
       GUNICORN_WORKERS: "${GUNICORN_WORKERS:-1}"
       DB_POOL_SIZE: "${DB_POOL_SIZE:-5}"
       DB_MAX_OVERFLOW: "${DB_MAX_OVERFLOW:-5}"
+      TZ: Asia/Shanghai
+      # 容器出站代理：勿用 127.0.0.1（指向容器自身）。宿主机 mihomo 需 allow-lan
+      HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-${HTTP_PROXY:-}}
+      HTTPS_PROXY: ${CONTAINER_HTTPS_PROXY:-${HTTPS_PROXY:-}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,mysql,api,webhook,dingtalk-agent,host.docker.internal}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8100:8100"
     volumes:
       - app_data:/app/backpack_quant_trading/data
       - app_log:/app/backpack_quant_trading/log
-    depends_on:
-      mysql:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8100/api/health"]
       interval: 15s
@@ -67,19 +74,23 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
       TRADING_SERVER: "1"
       DB_POOL_SIZE: "${DB_POOL_SIZE:-5}"
       DB_MAX_OVERFLOW: "${DB_MAX_OVERFLOW:-5}"
+      TZ: Asia/Shanghai
+      HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-${HTTP_PROXY:-}}
+      HTTPS_PROXY: ${CONTAINER_HTTPS_PROXY:-${HTTPS_PROXY:-}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,mysql,api,webhook,dingtalk-agent,host.docker.internal}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8005:8005"
     volumes:
       - app_data:/app/backpack_quant_trading/data
       - app_log:/app/backpack_quant_trading/log
     depends_on:
-      mysql:
-        condition: service_healthy
       # api 不设 condition: service_healthy，避免 compose up 时因启动竞态整批失败
       api:
         condition: service_started
@@ -90,21 +101,34 @@ services:
     image: backpack-quant:latest
     container_name: backpack-dingtalk-agent
     restart: unless-stopped
-    mem_limit: 384m
+    # Agent 会加载 Chroma ONNX + K线/新闻；384m 易在分析中途 OOM(137) 只回「收到」
+    mem_limit: 1024m
     command: ["dingtalk-agent"]
     env_file:
       - .env
-    environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
-      TRADING_SERVER: "1"
-      AGENT_ORCH_ENABLED: "${AGENT_ORCH_ENABLED:-1}"
-      AGENT_MEMORY_CHROMA_ENABLED: "${AGENT_MEMORY_CHROMA_ENABLED:-1}"
-      WEBHOOK_BASE: "${WEBHOOK_BASE:-http://webhook:8005}"
-      GUNICORN_WORKERS: "1"
     volumes:
       - app_data:/app/backpack_quant_trading/data
       - app_log:/app/backpack_quant_trading/log
+      # 持久化 ONNX 嵌入模型，避免容器重建反复从 AWS 下载 79MB
+      - chroma_onnx_cache:/root/.cache/chroma/onnx_models
+    environment:
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      TRADING_SERVER: "1"
+      AGENT_ORCH_ENABLED: "${AGENT_ORCH_ENABLED:-1}"
+      AGENT_MEMORY_CHROMA_ENABLED: "${AGENT_MEMORY_CHROMA_ENABLED:-1}"
+      # auto=无本地 onnx 则用 hash（国内推荐）；onnx=强制下模型；hash=永不下载
+      CHROMA_EMBEDDING_MODE: "${CHROMA_EMBEDDING_MODE:-auto}"
+      WEBHOOK_BASE: "${WEBHOOK_BASE:-http://webhook:8005}"
+      # 小管家转发到 api（监视 singleton 在 api 进程）
+      AGENT_API_BASE: "${AGENT_API_BASE:-http://api:8100}"
+      GUNICORN_WORKERS: "1"
+      TZ: Asia/Shanghai
+      HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-${HTTP_PROXY:-}}
+      HTTPS_PROXY: ${CONTAINER_HTTPS_PROXY:-${HTTPS_PROXY:-}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,mysql,api,webhook,dingtalk-agent,host.docker.internal}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       api:
         condition: service_started
@@ -117,6 +141,7 @@ volumes:
   mysql_data:
   app_data:
   app_log:
+  chroma_onnx_cache:
 
 networks:
   backpack-net:

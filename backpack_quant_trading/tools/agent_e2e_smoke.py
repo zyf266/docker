@@ -148,6 +148,32 @@ def main() -> None:
     # 钉钉路由桥
     _pass("钉钉路由识别Agent", should_route_to_agent("@美股分析师 NVDA"))
     _pass("钉钉路由不误伤空串", not should_route_to_agent(""))
+    from backpack_quant_trading.agents.dingtalk_bridge import is_steward_command
+    from backpack_quant_trading.agents.steward_agent import parse_steward_intent
+
+    _pass("小管家路由", is_steward_command("@小管家 新增 ETH 2h 币种监视"))
+    _pass(
+        "小管家币种意图",
+        parse_steward_intent("@小管家 新增 ETH 2h 币种监视").action == "currency_add",
+    )
+    _pass(
+        "小管家合约意图",
+        parse_steward_intent(
+            "@小管家 新增 BTC 1分钟合约监视，订单薄改成2000000"
+        ).params.get("ob_notional_threshold")
+        == 2000000.0,
+    )
+    _pass(
+        "小管家MACD意图",
+        parse_steward_intent(
+            "@小管家 MACD金叉形态 ETH 1h，死叉转水上金叉"
+        ).action
+        == "macd_add",
+    )
+    _pass(
+        "小管家新闻意图",
+        parse_steward_intent("@小管家 增加 NVDA 上调评级的新闻监控").action == "news_add",
+    )
 
     # 定时钩子 dry-run
     hook = run_agent_signal_hook("NVDA", market="us_stock", dry_run=True)

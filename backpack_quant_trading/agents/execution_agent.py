@@ -131,7 +131,10 @@ def propose_order(report: AnalyzeReport, *, staff_id: str = "") -> Dict[str, Any
         latest_map[staff_id.strip()] = pending_id
         data["latest_id"] = pending_id
         _save(data)
-    msg = f"已生成待确认订单 `{pending_id}`，请回复「确认」或「确认 {pending_id}」提交"
+    msg = (
+        f"已生成待确认订单 `{pending_id}`（约 {_ttl_min()} 分钟内有效），"
+        f"请回复「确认」或「确认 {pending_id}」提交；也可「取消」/「待确认列表」"
+    )
     if not instance_id:
         msg += "\n（未配置 AGENT_EXEC_INSTANCE_ID：确认时将只校验不实盘，避免广播误触）"
     return {
@@ -139,6 +142,8 @@ def propose_order(report: AnalyzeReport, *, staff_id: str = "") -> Dict[str, Any
         "pending_id": pending_id,
         "message": msg,
         "order": order,
+        "ttl_min": _ttl_min(),
+        "expires_at": order["expires_at"],
     }
 
 
@@ -276,14 +281,155 @@ def confirm_order(
 
 
 def parse_confirm_command(text: str) -> Tuple[bool, str]:
+    """兼容旧接口：仅识别「确认」；取消/列表见 parse_exec_command。"""
+    kind, pid = parse_exec_command(text)
+    if kind == "confirm":
+        return True, pid
+    return False, ""
+
+
+def parse_exec_command(text: str) -> Tuple[str, str]:
+    """
+    解析执行工作流口令。
+    返回 (kind, pending_id)：
+      kind: confirm | cancel | list | ""
+    """
     t = (text or "").strip()
     if not t:
-        return False, ""
+        return "", ""
+    low = t.lower()
+
+    if t in ("待确认列表", "待确认单", "确认列表", "pending", "list pending") or (
+        "待确认" in t and "列表" in t
+    ):
+        return "list", ""
+
+    if t in ("取消", "取消确认", "取消下单", "cancel") or t.startswith("取消确认"):
+        rest = ""
+        if t.startswith("取消确认"):
+            rest = t[4:].strip()
+        elif t.startswith("取消") and t not in ("取消", "取消确认", "取消下单"):
+            rest = t[2:].strip()
+        if rest.startswith("`") and rest.endswith("`"):
+            rest = rest[1:-1]
+        return "cancel", rest
+
     if t in ("确认", "确认下单", "confirm"):
-        return True, ""
+        return "confirm", ""
     if t.startswith("确认"):
         rest = t[2:].strip()
         if rest.startswith("`") and rest.endswith("`"):
             rest = rest[1:-1]
-        return True, rest
-    return False, ""
+        # 「确认停止实例」不是下单确认
+        if rest.startswith("停止实例") or rest.startswith("启动实例"):
+            return "", ""
+        return "confirm", rest
+    return "", ""
+
+
+def _purge_expired_locked(data: Dict[str, Any], now: int) -> int:
+    n = 0
+    orders = data.get("orders") or {}
+    for pid, order in list(orders.items()):
+        if order.get("status") != "pending":
+            continue
+        if int(order.get("expires_at") or 0) < now:
+            orders[pid]["status"] = "expired"
+            orders[pid]["expired_note"] = "TTL 到期自动标记 expired"
+            n += 1
+    return n
+
+
+def list_pending(staff_id: str = "") -> Dict[str, Any]:
+    staff = (staff_id or "").strip()
+    now = int(time.time())
+    with _file_lock():
+        data = _load()
+        _purge_expired_locked(data, now)
+        _save(data)
+        rows = []
+        for pid, order in (data.get("orders") or {}).items():
+            if order.get("status") != "pending":
+                continue
+            owner = str(order.get("staff_id") or "").strip()
+            if staff and owner and owner != staff:
+                continue
+            exp = int(order.get("expires_at") or 0)
+            left = max(0, (exp - now) // 60)
+            rows.append(
+                {
+                    "id": pid,
+                    "symbol": order.get("symbol"),
+                    "action": order.get("action"),
+                    "expires_at": exp,
+                    "minutes_left": left,
+                    "staff_id": owner,
+                }
+            )
+        rows.sort(key=lambda x: int(x.get("expires_at") or 0))
+    return {"ok": True, "orders": rows, "count": len(rows)}
+
+
+def cancel_order(pending_id: str = "", *, staff_id: str = "") -> Dict[str, Any]:
+    staff = (staff_id or "").strip()
+    if not staff:
+        return {"ok": False, "error": "缺少 staff_id，拒绝取消"}
+    now = int(time.time())
+    with _file_lock():
+        data = _load()
+        _purge_expired_locked(data, now)
+        orders = data.get("orders") or {}
+        pid = (pending_id or "").strip()
+        if not pid:
+            pid = str((data.get("latest_by_staff") or {}).get(staff) or "")
+        if not pid or pid not in orders:
+            _save(data)
+            return {"ok": False, "error": "没有可取消的待确认订单"}
+        order = orders[pid]
+        owner = str(order.get("staff_id") or "").strip()
+        if owner and owner != staff:
+            return {"ok": False, "error": "无权取消他人订单"}
+        if order.get("status") != "pending":
+            return {"ok": False, "error": f"订单状态为 {order.get('status')}，无法取消"}
+        orders[pid]["status"] = "cancelled"
+        orders[pid]["cancelled_at"] = now
+        orders[pid]["cancelled_by"] = staff
+        latest_map = data.get("latest_by_staff") or {}
+        if latest_map.get(staff) == pid:
+            latest_map.pop(staff, None)
+        _save(data)
+    return {"ok": True, "pending_id": pid, "message": f"已取消待确认订单 `{pid}`"}
+
+
+def count_pending_expiring_soon(within_min: int = 30) -> Tuple[int, int]:
+    """返回 (pending 总数, within_min 内将过期数)。顺带标记已过期。"""
+    now = int(time.time())
+    horizon = now + max(1, int(within_min)) * 60
+    with _file_lock():
+        data = _load()
+        _purge_expired_locked(data, now)
+        _save(data)
+        total = 0
+        soon = 0
+        for order in (data.get("orders") or {}).values():
+            if order.get("status") != "pending":
+                continue
+            total += 1
+            exp = int(order.get("expires_at") or 0)
+            if now <= exp <= horizon:
+                soon += 1
+        return total, soon
+
+
+def format_pending_list_markdown(result: Dict[str, Any]) -> str:
+    rows = result.get("orders") or []
+    if not rows:
+        return "### 待确认列表\n（暂无 pending 订单）"
+    lines = ["### 待确认列表", ""]
+    for r in rows:
+        lines.append(
+            f"- `{r.get('id')}` · {r.get('symbol')} · {r.get('action')} · "
+            f"剩余约 **{r.get('minutes_left')}** 分钟"
+        )
+    lines.append("\n回复「确认 <id>」提交，或「取消」/「取消确认 <id>」")
+    return "\n".join(lines)

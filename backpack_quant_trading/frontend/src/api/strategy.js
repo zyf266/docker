@@ -118,6 +118,44 @@ export function getNas100TrendTrades(cacheBust = false) {
   return cacheBust ? bust(key, fn) : cached(key, fn)
 }
 
+// ---------- 上证指数 ETF 510210 ----------
+export function getSse510210Overview(cacheBust = false) {
+  const key = 'sse-510210-overview'
+  const fn = () => request.get('/strategy/sse-510210-4h/overview')
+  return cacheBust ? bust(key, fn) : cached(key, fn)
+}
+
+export function getSse510210Klines(cacheBust = false) {
+  const key = 'sse-510210-klines'
+  const fn = () => request.get('/strategy/sse-510210-4h/klines')
+  return cacheBust ? bust(key, fn) : cached(key, fn)
+}
+
+export function getSse510210Trades(cacheBust = false) {
+  const key = 'sse-510210-trades'
+  const fn = () => request.get('/strategy/sse-510210-4h/trades')
+  return cacheBust ? bust(key, fn) : cached(key, fn)
+}
+
+// ---------- 纳指抄底 MNQ ----------
+export function getMnqDipOverview(cacheBust = false) {
+  const key = 'mnq-dip-overview'
+  const fn = () => request.get('/strategy/mnq-dip-4h/overview')
+  return cacheBust ? bust(key, fn) : cached(key, fn)
+}
+
+export function getMnqDipKlines(cacheBust = false) {
+  const key = 'mnq-dip-klines'
+  const fn = () => request.get('/strategy/mnq-dip-4h/klines')
+  return cacheBust ? bust(key, fn) : cached(key, fn)
+}
+
+export function getMnqDipTrades(cacheBust = false) {
+  const key = 'mnq-dip-trades'
+  const fn = () => request.get('/strategy/mnq-dip-4h/trades')
+  return cacheBust ? bust(key, fn) : cached(key, fn)
+}
+
 // ---------- CRCL 美股动量轮动 ----------
 export function getCrclOverview(cacheBust = false) {
   const key = 'crcl-overview'

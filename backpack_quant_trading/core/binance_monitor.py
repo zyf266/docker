@@ -1097,3 +1097,41 @@ def set_currency_monitor_user_stopped(stopped: bool):
 
 def get_currency_monitor_user_stopped() -> bool:
     return _currency_monitor_user_stopped
+
+
+def restore_currency_monitor_from_db_if_needed() -> Optional["BinanceMonitorService"]:
+    """API 重启后从 DB 恢复币种监视（用户主动停止过则不恢复）。
+
+    与 /api/currency-monitor/status 行为一致，供启动钩子 / 小管家状态查询复用，
+    避免「网页已恢复 53 对、钉钉仍显示 0 对」。
+    """
+    if _currency_monitor_user_stopped:
+        return None
+    inst = get_monitor_instance()
+    if inst and getattr(inst, "_running", False):
+        return inst
+    try:
+        from backpack_quant_trading.database.models import DatabaseManager
+        import json
+
+        cfg = DatabaseManager().get_currency_monitor_config()
+        if not cfg:
+            return None
+        _, data = cfg
+        d = json.loads(data) if isinstance(data, str) else data
+        pairs = d.get("pairs") or []
+        if not pairs:
+            return None
+        if inst:
+            try:
+                inst.stop()
+            except Exception:
+                pass
+        service = BinanceMonitorService(pairs=pairs, user_id=None)
+        set_monitor_instance(service)
+        service.start()
+        logger.info("[币种监视] 已从 DB 恢复 %s 对", len(pairs))
+        return service
+    except Exception as e:
+        logger.warning("[币种监视] 从 DB 恢复失败: %s", e)
+        return None

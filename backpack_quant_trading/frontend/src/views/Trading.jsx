@@ -27,6 +27,8 @@ const PLATFORMS = [
   { label: 'Lighter', value: 'lighter' },
 ]
 
+const WEBHOOK_STRATEGY_PLATFORMS = ['hyperliquid', 'binance', 'lighter']
+
 const Trading = () => {
   const ADAPTIVE_KEYS = ['adaptive_long', 'adaptive_short']
   const [showModal, setShowModal] = useState(false)
@@ -79,6 +81,7 @@ const Trading = () => {
     adaptive_short_timeframe: '',
     adaptive_short_lock_profit: 0,
     adaptive_short_lock_profit_sl: 0,
+    binance_margin_type: 'ISOLATED', // Binance: ISOLATED=逐仓 / CROSSED=全仓
     auto_close_coin: '',        // 自动平仓：交易对币种
     auto_close_account_index: 0, // 自动平仓：Lighter 账户索引
     auto_close_api_key_index: 2, // 自动平仓：Lighter API key index
@@ -125,10 +128,10 @@ const Trading = () => {
     if (name === 'strategy' && value === 'auto_close') {
       setForm((prev) => ({
         ...prev,
-        // 自动平仓：仅需私钥+币种（支持 hyperliquid / lighter）
-        platform: (prev.platform === 'lighter' ? 'lighter' : 'hyperliquid'),
-        api_key: '',
-        api_secret: '',
+        // 自动平仓：Hyperliquid / Lighter / Binance
+        platform: ['hyperliquid', 'lighter', 'binance'].includes(prev.platform)
+          ? prev.platform
+          : 'hyperliquid',
         passphrase: '',
         auto_close_account_index: prev.auto_close_account_index ?? 0,
         auto_close_api_key_index: prev.auto_close_api_key_index ?? 2,
@@ -198,6 +201,7 @@ const Trading = () => {
           timeframe_filter: isLong ? (form.adaptive_long_timeframe || undefined) : (form.adaptive_short_timeframe || undefined),
           margin_amount: isLong ? form.adaptive_long_margin : form.adaptive_short_margin,
           leverage: isLong ? form.adaptive_long_leverage : form.adaptive_short_leverage,
+          margin_type: isBinance ? (form.binance_margin_type || 'ISOLATED') : undefined,
           stop_loss_pct: form.hype_stop_loss / 100,
           take_profit_pct: form.hype_take_profit / 100,
           break_even_pct: form.hype_break_even / 100,
@@ -279,6 +283,7 @@ const Trading = () => {
           lock_profit_sl_pct: form.adaptive_long_lock_profit > 0 ? form.adaptive_long_lock_profit_sl / 100 : undefined,
           margin_amount:     form.adaptive_long_margin,
           leverage:          form.adaptive_long_leverage,
+          margin_type:       isBinance ? (form.binance_margin_type || 'ISOLATED') : undefined,
           min_ai_score_for_trade: Math.max(0, Number(form.adaptive_long_min_ai_score) || 0),
           allow_repeat_open: !!form.adaptive_long_allow_repeat_open,
           use_ai_sr_tpsl: !!form.adaptive_long_use_ai_sr_tpsl,
@@ -315,6 +320,7 @@ const Trading = () => {
           lock_profit_sl_pct: form.adaptive_short_lock_profit > 0 ? form.adaptive_short_lock_profit_sl / 100 : undefined,
           margin_amount:     form.adaptive_short_margin,
           leverage:          form.adaptive_short_leverage,
+          margin_type:       isBinance ? (form.binance_margin_type || 'ISOLATED') : undefined,
           stop_loss_pct:     form.hype_stop_loss / 100,
           take_profit_pct:   form.hype_take_profit / 100,
           break_even_pct:    form.hype_break_even / 100,
@@ -330,11 +336,15 @@ const Trading = () => {
     if (form.strategy === 'auto_close') {
       const coin = form.auto_close_coin.toUpperCase().trim()
       if (!coin) { alert('请填写交易对（如 BTC、ETH、HYPE）'); return }
-      if (!['hyperliquid', 'lighter'].includes(form.platform)) {
-        alert('自动平仓策略目前仅支持 Hyperliquid / Lighter')
+      if (!['hyperliquid', 'lighter', 'binance'].includes(form.platform)) {
+        alert('自动平仓策略支持 Hyperliquid / Lighter / Binance')
         return
       }
-      if (!form.private_key) { alert('请输入私鑰'); return }
+      if (form.platform === 'binance') {
+        if (!form.api_key || !form.api_secret) { alert('请输入 Binance API Key 和 Secret'); return }
+      } else {
+        if (!form.private_key) { alert('请输入私鑰'); return }
+      }
       if (form.platform === 'lighter') {
         const idx = Number(form.auto_close_account_index)
         if (!Number.isFinite(idx) || idx <= 0) {
@@ -348,7 +358,9 @@ const Trading = () => {
           coin,
           exchange: form.platform,
           wallet_memo: form.wallet_memo || '',
-          private_key: form.private_key || undefined,
+          private_key: form.platform === 'binance' ? undefined : (form.private_key || undefined),
+          api_key: form.platform === 'binance' ? form.api_key : undefined,
+          api_secret: form.platform === 'binance' ? form.api_secret : undefined,
           account_index: form.platform === 'lighter' ? Number(form.auto_close_account_index) : undefined,
           api_key_index: form.platform === 'lighter' ? Number(form.auto_close_api_key_index ?? 2) : undefined,
         })
@@ -485,6 +497,7 @@ const Trading = () => {
       adaptive_short_margin: cfg.margin_amount ?? prev.adaptive_short_margin,
       adaptive_long_leverage: cfg.leverage ?? prev.adaptive_long_leverage,
       adaptive_short_leverage: cfg.leverage ?? prev.adaptive_short_leverage,
+      binance_margin_type: (cfg.margin_type === 'CROSSED' || cfg.margin_type === '全仓') ? 'CROSSED' : 'ISOLATED',
       adaptive_long_account_index: cfg.account_index ?? prev.adaptive_long_account_index,
       adaptive_short_account_index: cfg.account_index ?? prev.adaptive_short_account_index,
       adaptive_long_api_key_index: cfg.api_key_index ?? prev.adaptive_long_api_key_index,
@@ -664,7 +677,7 @@ const Trading = () => {
             <span className="log-title">系统日志</span>
           </button>
           <span className="log-badge">实时更新</span>
-          <span className="log-filename">system.log</span>
+          <span className="log-filename">交易相关日志</span>
         </div>
         {!logsCollapsed && (
           <div className="log-window">
@@ -692,7 +705,11 @@ const Trading = () => {
                     value={form.platform}
                     onChange={(e) => setField('platform', e.target.value)}
                   >
-                    {PLATFORMS.map((p) => (
+                    {(
+                      ['adaptive_long', 'adaptive_short', 'auto_close'].includes(form.strategy)
+                        ? PLATFORMS.filter((p) => WEBHOOK_STRATEGY_PLATFORMS.includes(p.value))
+                        : PLATFORMS
+                    ).map((p) => (
                       <option key={p.value} value={p.value}>
                         {p.label}
                       </option>
@@ -959,6 +976,16 @@ const Trading = () => {
                       <small style={{color:'#888',fontSize:'12px'}}>实际仓位 = 保证金 × 杠杆</small>
                     </div>
                   </div>
+                  {form.platform === 'binance' && (
+                    <div className="form-item" style={{marginTop: '12px'}}>
+                      <label>保证金模式</label>
+                      <select value={form.binance_margin_type || 'ISOLATED'} onChange={(e) => setField('binance_margin_type', e.target.value)}>
+                        <option value="ISOLATED">逐仓（ISOLATED）</option>
+                        <option value="CROSSED">全仓（CROSSED）</option>
+                      </select>
+                      <small style={{color:'#888',fontSize:'12px'}}>开仓前写入币安；有持仓时无法切换模式</small>
+                    </div>
+                  )}
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>止损比例 (%)</label>
@@ -1003,7 +1030,10 @@ const Trading = () => {
                       onChange={(e) => setField('auto_close_coin', e.target.value.toUpperCase())}
                       placeholder="如: BTC / ETH / HYPE"
                     />
-                    <small style={{color:'#888',fontSize:'12px'}}>只在收到 sell 信号时对该币种执行平仓；buy 信号会被忽略</small>
+                    <small style={{color:'#888',fontSize:'12px'}}>
+                      收到 sell 信号时对该币种平仓；buy 忽略。可与 HL 同时挂同一币种，一条 Webhook 会扇出到两边。
+                      {form.platform === 'binance' ? '（Binance 请在上方填写独立 API Key/Secret）' : ''}
+                    </small>
                   </div>
                   {form.platform === 'lighter' && (
                     <>
@@ -1110,6 +1140,16 @@ const Trading = () => {
                       <small style={{color:'#888',fontSize:'12px'}}>实际仓位 = 保证金 × 杠杆</small>
                     </div>
                   </div>
+                  {form.platform === 'binance' && (
+                    <div className="form-item" style={{marginTop: '12px'}}>
+                      <label>保证金模式</label>
+                      <select value={form.binance_margin_type || 'ISOLATED'} onChange={(e) => setField('binance_margin_type', e.target.value)}>
+                        <option value="ISOLATED">逐仓（ISOLATED）</option>
+                        <option value="CROSSED">全仓（CROSSED）</option>
+                      </select>
+                      <small style={{color:'#888',fontSize:'12px'}}>开仓前写入币安；有持仓时无法切换模式</small>
+                    </div>
+                  )}
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>止损比例 (%)</label>

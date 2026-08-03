@@ -1,0 +1,12 @@
+# 正式机可选覆盖：与 docker-compose.yml 合用
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# 正式机默认不启 mysql（见 local-mysql profile）；本文件仅作文档化约定与代理默认值。
+#
+# 推荐在 /opt/backpack-quant/.env 中设置：
+#   DB_HOST=host.docker.internal   # 或 172.17.0.1
+#   DB_PORT=3306
+#   HTTP_PROXY=http://host.docker.internal:7891
+#   HTTPS_PROXY=http://host.docker.internal:7891
+#   NO_PROXY=localhost,127.0.0.1,api,webhook,dingtalk-agent,host.docker.internal
+
+services: {}

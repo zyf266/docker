@@ -308,7 +308,22 @@ def is_material_news(
         return True
     if not strict_custom_impact_only and important and important != 0:
         return True
+    # keywords 已由 _impact_keyword_list expand 过；此处不再二次展开
     return text_matches_any_term(text, keywords)
+
+
+def _normalize_related_ticker(raw: str) -> str:
+    """NVDA.O / nasdaq:nvda / NVIDIA → 便于与自选比对。"""
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    if ":" in s:
+        s = s.split(":")[-1]
+    s = s.strip()
+    # 去交易所后缀 .O .N 等
+    if "." in s and len(s.split(".")[0]) <= 5:
+        s = s.split(".", 1)[0]
+    return s.casefold()
 
 
 def matches_watch(text: str, watch_names: List[str], item: Optional[Dict[str, Any]] = None) -> bool:
@@ -316,17 +331,43 @@ def matches_watch(text: str, watch_names: List[str], item: Optional[Dict[str, An
         return True
     if not watch_names:
         return False
+    from backpack_quant_trading.core.stock_news_keyword_i18n import _is_ascii_ticker
+
     expanded = expand_terms(watch_names)
-    if text_matches_watch_terms(text, expanded):
-        return True
+    text_hit = text_matches_watch_terms(text, expanded)
+
+    ticker_set: set = set()
     if item:
         tickers = item.get("related_tickers") or []
         if isinstance(tickers, list):
-            ticker_set = {str(x).strip().casefold() for x in tickers if str(x).strip()}
-            for alias in expanded:
-                a = str(alias).strip().casefold()
-                if a and a in ticker_set:
-                    return True
+            for x in tickers:
+                n = _normalize_related_ticker(str(x))
+                if n:
+                    ticker_set.add(n)
+                # 公司名也进集合，便于与 expand 后的 nvidia 等对齐
+                cf = str(x).strip().casefold()
+                if cf:
+                    ticker_set.add(cf)
+
+    ascii_terms = [str(a).strip().casefold() for a in expanded if a and _is_ascii_ticker(str(a))]
+    # 雅虎 Search 常把「整串搜索词」塞进每篇文章的 relatedTickers。
+    # 若标签覆盖多个自选代码，不可只信标签，改以正文命中为准。
+    if ticker_set and ascii_terms:
+        overlap = {a for a in ascii_terms if a in ticker_set}
+        if len(overlap) >= 2 or len(ticker_set) >= 4:
+            return text_hit
+        if overlap:
+            return True
+        # 标签有值但与自选无交集：仍允许正文命中（避免漏推）
+        return text_hit
+
+    if text_hit:
+        return True
+    if ticker_set:
+        for alias in expanded:
+            a = str(alias).strip().casefold()
+            if a and a in ticker_set:
+                return True
     return False
 
 
@@ -827,7 +868,7 @@ def build_monitor_pool(cfg: Dict[str, Any], *, running: bool) -> List[Dict[str, 
                 "last_push": _last_push_for_keyword(
                     kw,
                     history,
-                    impact_keywords=extra if only_extra else _impact_keyword_list(cfg),
+                    impact_keywords=_impact_keyword_list(cfg),
                     only_material=only_material,
                 ),
             }

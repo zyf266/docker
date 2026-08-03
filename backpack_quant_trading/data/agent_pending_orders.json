@@ -52,10 +52,38 @@
       "expires_at": 1784195641,
       "status": "confirmed_dry_run",
       "agent_id": "us_analyst"
+    },
+    "ord_9b2ec22f06": {
+      "id": "ord_9b2ec22f06",
+      "symbol": "NVDA",
+      "market": "us_stock",
+      "action": "buy",
+      "support": 100.0,
+      "resistance": 120.0,
+      "staff_id": "e2e",
+      "instance_id": "",
+      "created_at": 1784278787,
+      "expires_at": 1784280587,
+      "status": "confirmed_dry_run",
+      "agent_id": "us_analyst"
+    },
+    "ord_9380480d35": {
+      "id": "ord_9380480d35",
+      "symbol": "NVDA",
+      "market": "us_stock",
+      "action": "buy",
+      "support": 100.0,
+      "resistance": 120.0,
+      "staff_id": "e2e",
+      "instance_id": "",
+      "created_at": 1784705459,
+      "expires_at": 1784707259,
+      "status": "confirmed_dry_run",
+      "agent_id": "us_analyst"
     }
   },
-  "latest_id": "ord_12df9ed759",
+  "latest_id": "ord_9380480d35",
   "latest_by_staff": {
-    "e2e": "ord_12df9ed759"
+    "e2e": "ord_9380480d35"
   }
 }

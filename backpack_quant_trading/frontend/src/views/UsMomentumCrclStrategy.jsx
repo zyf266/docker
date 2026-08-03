@@ -2,7 +2,7 @@ import React from 'react'
 import StrategyDetail from './StrategyDetail'
 import { getCrclOverview, getCrclTrades, getCrclKlines } from '../api/strategy'
 
-const title = '美股动量轮动策略·CRCL'
+const title = '美股趋势追踪策略·CRCL'
 const subtitle =
   '聚焦美股核心指数与强势板块，结合趋势强度、回撤过滤与风险预算，进行中短期动量轮动配置。捕捉CRCL等高动量标的的主升浪行情。'
 

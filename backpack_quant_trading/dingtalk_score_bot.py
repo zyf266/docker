@@ -120,6 +120,18 @@ class ManualScoreBotHandler:
         try:
             if result and result.get("reply_markdown"):
                 title = str(result.get("reply_title") or "AI 信号评分")
+                try:
+                    from backpack_quant_trading.core.score_feedback import remember_last_signal_context
+
+                    remember_last_signal_context(
+                        symbol=str(result.get("symbol") or parsed.get("symbol") or ""),
+                        timeframe=str(result.get("timeframe") or parsed.get("timeframe") or ""),
+                        score=int(result["score"]) if result.get("score") is not None else None,
+                        recommendation=str(result.get("recommendation") or ""),
+                        source="manual_score",
+                    )
+                except Exception:
+                    pass
                 self._handler.reply_markdown(title, reply_body, incoming)
             else:
                 self._handler.reply_text(reply_body, incoming)
@@ -143,9 +155,55 @@ class ManualScoreBotHandler:
             body = str(result.get("markdown") or result.get("error") or "无输出")
             title = "Agent 分析" if result.get("ok") else "Agent 提示"
             try:
-                self._handler.reply_markdown(title, body, incoming)
+                from backpack_quant_trading.core.score_feedback import (
+                    parse_score_card_from_reply,
+                    remember_last_signal_context,
+                )
+
+                reports = result.get("reports") or []
+                if reports:
+                    r0 = reports[0]
+                    raw0 = getattr(r0, "raw", None) or {}
+                    tf = ""
+                    if isinstance(raw0, dict):
+                        tf = str(raw0.get("timeframe") or "")
+                    remember_last_signal_context(
+                        symbol=str(getattr(r0, "symbol", "") or ""),
+                        timeframe=tf,
+                        score=int(r0.score) if getattr(r0, "score", None) is not None else None,
+                        recommendation=str(
+                            (raw0.get("structured") or {}).get("recommendation")
+                            if isinstance(raw0, dict)
+                            else ""
+                        ),
+                        source="agent",
+                    )
+                else:
+                    sym, tf, sc = parse_score_card_from_reply(body)
+                    if sym:
+                        remember_last_signal_context(
+                            symbol=sym, timeframe=tf, score=sc, source="agent_md"
+                        )
             except Exception:
-                self._handler.reply_text(body[:1800], incoming)
+                pass
+            try:
+                parts = result.get("markdown_parts")
+                if isinstance(parts, list) and len(parts) > 1:
+                    for idx, part in enumerate(parts):
+                        part_title = title if idx == 0 else f"{title}（续{idx + 1}）"
+                        try:
+                            self._handler.reply_markdown(part_title, str(part), incoming)
+                        except Exception:
+                            self._handler.reply_text(str(part)[:3500], incoming)
+                else:
+                    self._handler.reply_markdown(title, body, incoming)
+            except Exception:
+                # 过长时分段文本兜底
+                if len(body) > 1800:
+                    for i in range(0, len(body), 1700):
+                        self._handler.reply_text(body[i : i + 1700], incoming)
+                else:
+                    self._handler.reply_text(body[:1800], incoming)
         except Exception as exc:
             logger.exception("[钉钉Agent] 异常: %s", exc)
             try:
@@ -176,6 +234,8 @@ class ManualScoreBotHandler:
 
         # 多 Agent 编排优先（与旧评分并存；AGENT_ORCH_ENABLED=0 可回滚）
         if should_route_to_agent(user_text):
+            from backpack_quant_trading.agents.dingtalk_bridge import is_steward_command
+
             threading.Thread(
                 target=self._agent_work,
                 args=(incoming, raw, user_text),
@@ -184,10 +244,17 @@ class ManualScoreBotHandler:
             ).start()
             try:
                 host = (os.getenv("HOSTNAME") or "")[:12] or "ecs"
-                self._handler.reply_text(
-                    f"收到，分析师 Agent 处理中…〔{host}〕",
-                    incoming,
-                )
+                if is_steward_command(user_text):
+                    ack = f"收到，小管家处理中…〔{host}〕"
+                else:
+                    from backpack_quant_trading.agents.intent_router import classify_intent
+
+                    intent = classify_intent(user_text)
+                    if intent in ("meta", "chat"):
+                        ack = f"收到，正在理解你的问题…〔{host}〕"
+                    else:
+                        ack = f"收到，分析师 Agent 处理中…〔{host}〕"
+                self._handler.reply_text(ack, incoming)
             except Exception:
                 pass
             return

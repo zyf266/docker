@@ -11,7 +11,7 @@ _SCORE_TRIGGERS = ("评分", "打分", "分析", "score", "evaluate")
 
 
 _AGENT_AT_KEEP = re.compile(
-    r"^@?(美股分析师|A股分析师|加密分析师|信息检索|风控|复盘|执行|协调)$"
+    r"^@?(美股分析师|A股分析师|加密分析师|信息检索|风控|复盘|执行|协调|小管家)$"
 )
 
 
@@ -64,6 +64,14 @@ def is_manual_score_command(text: str) -> bool:
     plain = plain.strip().lower()
     if not plain:
         return False
+    # 问规则/权重/用法 → 不是「去评分」
+    try:
+        from backpack_quant_trading.agents.intent_router import is_meta_question
+
+        if is_meta_question(text):
+            return False
+    except Exception:
+        pass
     if any(k in plain for k in _SCORE_TRIGGERS):
         return True
     if re.search(r"评[一下个]*分", plain):
@@ -581,6 +589,7 @@ def parse_inline_score_request(user_text: str) -> Dict[str, Any]:
     从 @ 消息正文直接解析，例如：
     - 对 eth 2h 的买入信号进行评分
     - BTCUSDT 8h 买入 评分
+    - 分析一下 2h NVDA 打分（周期在品种前）
     """
     plain = re.sub(r"@[^\s@　]+", " ", user_text or "", flags=re.IGNORECASE)
     plain = plain.strip()
@@ -600,20 +609,25 @@ def parse_inline_score_request(user_text: str) -> Dict[str, Any]:
         return parsed
 
     patterns = [
-        r"(?:对|将|把)?\s*([A-Za-z]{2,15})(\d+[hHdDmMwW])(?:USDT|USDC)?",
-        r"(?:对|将|把)?\s*([A-Za-z]{2,15})(?:USDT|USDC)?\s*(\d+[hHdDmMwW])?\s*(?:的)?\s*(买入|卖出|做多|做空|buy|sell|long|short)?",
-        r"([A-Za-z]{2,15})(?:USDT|USDC)?\s+(\d+[hHdDmMwW])\s*(买入|卖出|做多|做空|buy|sell|long|short)?",
-        r"([A-Za-z]{2,15}USDT(?:\.P)?)\s*(\d+[hHdDmMwW])?",
+        # 周期在前：2h NVDA
+        r"(?P<tf>\d+[hHdDmMwW])\s+(?P<sym>[A-Za-z]{2,15})(?:USDT|USDC)?",
+        r"(?:对|将|把)?\s*(?P<sym>[A-Za-z]{2,15})(?P<tf>\d+[hHdDmMwW])(?:USDT|USDC)?",
+        r"(?:对|将|把)?\s*(?P<sym>[A-Za-z]{2,15})(?:USDT|USDC)?\s*(?P<tf>\d+[hHdDmMwW])?\s*(?:的)?\s*(?P<act>买入|卖出|做多|做空|buy|sell|long|short)?",
+        r"(?P<sym>[A-Za-z]{2,15})(?:USDT|USDC)?\s+(?P<tf>\d+[hHdDmMwW])\s*(?P<act>买入|卖出|做多|做空|buy|sell|long|short)?",
+        r"(?P<sym>[A-Za-z]{2,15}USDT(?:\.P)?)\s*(?P<tf>\d+[hHdDmMwW])?",
     ]
     for pat in patterns:
         m = re.search(pat, plain, re.IGNORECASE)
         if not m:
             continue
-        sym = m.group(1).upper().replace(".P", "")
+        gd = m.groupdict()
+        sym = (gd.get("sym") or "").upper().replace(".P", "")
+        if not sym:
+            continue
         if not sym.endswith(("USDT", "USDC")) and classify_maybe_crypto(sym):
             sym = f"{sym}USDT"
-        tf = (m.group(2) or "").strip() if m.lastindex and m.lastindex >= 2 else ""
-        act_raw = m.group(3) if m.lastindex and m.lastindex >= 3 else ""
+        tf = (gd.get("tf") or "").strip()
+        act_raw = gd.get("act") or ""
         parsed.update(
             {
                 "symbol": sym,
@@ -622,6 +636,17 @@ def parse_inline_score_request(user_text: str) -> Dict[str, Any]:
             }
         )
         break
+
+    # 周期写在别处（或中文「两小时」）时补齐，避免美股落到默认 1d
+    if parsed.get("symbol") and not (parsed.get("timeframe") or "").strip():
+        try:
+            from backpack_quant_trading.agents.coordinator import extract_timeframe
+
+            parsed["timeframe"] = extract_timeframe(plain) or ""
+        except Exception:
+            m_tf = re.search(r"(?<![A-Za-z0-9])(\d{1,4})\s*([HhDdWwMm])(?![A-Za-z])", plain)
+            if m_tf:
+                parsed["timeframe"] = f"{m_tf.group(1)}{m_tf.group(2).lower()}"
 
     if not parsed["action"]:
         parsed["action"] = _action_to_api(plain, "")
@@ -1129,6 +1154,62 @@ def run_manual_score_from_parsed(
         }
 
     webhook_raw = build_manual_webhook_raw(parsed, sender_id=sender_id)
+
+    # 新链路：钉钉「评一下分」也走分析师 Agent
+    try:
+        from backpack_quant_trading.agents.scheduler_hooks import (
+            agent_replace_legacy_push,
+            run_agent_signal_hook,
+        )
+        from backpack_quant_trading.core.signal_asset_router import classify_signal_asset
+
+        if agent_replace_legacy_push():
+            kind = classify_signal_asset(symbol, webhook_raw)
+            market = "us_stock" if kind == "us_stock" else "crypto"
+            hook = run_agent_signal_hook(
+                symbol,
+                market=market,
+                timeframe=timeframe,
+                action=action,
+                dry_run=True,
+            )
+            md = str(hook.get("markdown") or "")
+            if not md:
+                return {
+                    "ok": False,
+                    "error": hook.get("error") or "Agent 无输出",
+                    "agent": True,
+                }
+            reports = hook.get("reports") or []
+            score_val = None
+            rec = ""
+            if reports:
+                r0 = reports[0]
+                score_val = getattr(r0, "score", None)
+                raw0 = getattr(r0, "raw", None) or {}
+                if isinstance(raw0, dict):
+                    rec = str((raw0.get("structured") or {}).get("recommendation") or "")
+            title = f"{symbol} · Agent 分析"
+            if score_val is not None:
+                title = f"{symbol} · Agent {int(score_val)}分"
+            return {
+                "ok": True,
+                "symbol": symbol,
+                "action": action,
+                "timeframe": timeframe,
+                "score": score_val,
+                "recommendation": rec,
+                "reply_markdown": md,
+                "reply_title": title,
+                "agent": True,
+                "channel": "agent",
+            }
+    except Exception as exc:
+        if agent_replace_legacy_push():
+            logger.exception("手动评分 Agent 失败（旧链路已停用）: %s", exc)
+            return {"ok": False, "error": str(exc), "agent": True}
+        logger.warning("手动评分改走 Agent 失败，回退旧链路: %s", exc)
+
     result = run_signal_score_routed(
         symbol,
         action,

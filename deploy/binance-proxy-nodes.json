@@ -1,0 +1,12 @@
+{
+  "updated_at": "2026-07-24",
+  "note": "币安专线 fallback 节点；请把全部 egress_ip 加入币安 API Key 白名单。订阅暂无马来/新加坡节点。",
+  "nodes": [
+    {"region": "香港", "name": "香港pump1", "egress_ip": "175.29.22.3"},
+    {"region": "香港", "name": "v5-香港02|1x|v-人少推荐", "egress_ip": "125.59.26.38"},
+    {"region": "日本", "name": "日本aw7", "egress_ip": "18.179.204.105"},
+    {"region": "日本", "name": "日本aw5", "egress_ip": "54.95.14.117"},
+    {"region": "美国", "name": "美国aw1", "egress_ip": "54.183.18.53"},
+    {"region": "美国", "name": "美国aw3", "egress_ip": "13.52.187.1"}
+  ]
+}

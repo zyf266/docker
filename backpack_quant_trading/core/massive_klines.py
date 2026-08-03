@@ -39,8 +39,10 @@ def get_massive_api_key() -> str:
 
 
 def normalize_us_ticker(symbol: str) -> str:
-    """NVDA / NVDAUSDT / AAPL -> NVDA"""
+    """NVDA / NVDAUSDT / AAPL / I:NDX -> 规范化 ticker（指数保留 I: 前缀）"""
     s = (symbol or "").upper().strip()
+    if s.startswith("I:"):
+        return s
     for suffix in ("USDT", "USD", ".US", ".O", ".P"):
         if s.endswith(suffix):
             s = s[: -len(suffix)]
@@ -127,6 +129,13 @@ _DEFAULT_BATCH_PAUSE_SEC = 0.35
 _DEFAULT_RATE_LIMIT_RETRIES = 5
 
 
+def _rate_limit_retries() -> int:
+    try:
+        return max(1, min(int(os.getenv("MASSIVE_RATE_LIMIT_RETRIES", "3") or 3), 5))
+    except (TypeError, ValueError):
+        return 3
+
+
 def _batch_pause_sec() -> float:
     try:
         return max(0.0, float(os.getenv("MASSIVE_BATCH_PAUSE_SEC", str(_DEFAULT_BATCH_PAUSE_SEC))))
@@ -152,11 +161,16 @@ def _massive_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
     p = dict(params or {})
     p["apiKey"] = key
     url = f"{MASSIVE_API_BASE.rstrip('/')}{path}"
-    for attempt in range(_DEFAULT_RATE_LIMIT_RETRIES):
+    for attempt in range(_rate_limit_retries()):
         r = requests.get(url, params=p, timeout=30)
         if r.status_code == 429:
-            wait = min(2.0 ** attempt, 16.0)
-            logger.warning("Massive 限流 429，%ss 后重试 (%s/%s)", wait, attempt + 1, _DEFAULT_RATE_LIMIT_RETRIES)
+            wait = min(2.0 ** attempt, 8.0)
+            logger.warning(
+                "Massive 限流 429，%ss 后重试 (%s/%s)",
+                wait,
+                attempt + 1,
+                _rate_limit_retries(),
+            )
             time.sleep(wait)
             continue
         if r.status_code == 403:
@@ -210,7 +224,10 @@ def _fetch_agg_range(
     - sort=desc：取窗口内最近 N 根（兼容旧逻辑）
     - sort=asc：分批回填历史时使用
     """
-    path = f"/v2/aggs/ticker/{ticker}/range/{mult}/{span}/{from_s}/{to_s}"
+    import urllib.parse
+
+    enc_ticker = urllib.parse.quote(str(ticker or ""), safe="")
+    path = f"/v2/aggs/ticker/{enc_ticker}/range/{mult}/{span}/{from_s}/{to_s}"
     data = _massive_get(
         path,
         {

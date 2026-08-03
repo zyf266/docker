@@ -78,7 +78,7 @@ const Dashboard = () => {
     if (!items.length) {
       ch.setOption({
         title: {
-          text: '暂无数据，前往「美股泡沫阶段监测」生成第一份评分',
+          text: '暂无数据，前往「泡沫检测」生成第一份评分',
           left: 'center',
           top: 'middle',
           textStyle: { fontSize: 13, color: '#94a3b8', fontWeight: 'normal' },

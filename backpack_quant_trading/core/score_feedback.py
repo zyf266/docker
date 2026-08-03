@@ -390,6 +390,23 @@ def save_feedback_from_dingtalk(
     stored = upsert_feedback(fid, doc, meta)
     _append_preference_rule(sym, timeframe, user_text, gate_patch, fid)
 
+    # 同步写入 Agent 偏好记忆，便于分析师 RAG 直接命中
+    try:
+        from backpack_quant_trading.agents.memory import save_global_preference
+        from backpack_quant_trading.agents.types import AgentId
+        from backpack_quant_trading.core.signal_asset_router import classify_signal_asset
+
+        kind = classify_signal_asset(sym)
+        aid = AgentId.US_ANALYST if kind == "us_stock" else AgentId.CRYPTO_ANALYST
+        want = gate_patch.get("min_recommendation") or "caution"
+        pref_text = (
+            f"纠正偏好：对 {sym} {timeframe or ''} 信号用户反馈「{(user_text or '')[:180]}」，"
+            f"后续相似形态宜偏 {want}"
+        )
+        save_global_preference(pref_text, agent_id=aid, staff_id=sender_id or "")
+    except Exception as exc:
+        logger.debug("同步 agent_prefs 失败: %s", exc)
+
     total = count_feedbacks()
     logger.info(
         "[评分反馈] 已保存 symbol=%s tf=%s patch=%s chroma=%s total=%s",
@@ -457,25 +474,81 @@ def apply_feedback_score_floor(
 
 
 def parse_score_card_from_reply(text: str) -> Tuple[str, str, Optional[int]]:
-    """从 AI 评分卡 markdown 提取品种、周期、分数。"""
+    """从 AI 评分卡 / 分析师卡片 markdown 提取品种、周期、分数。"""
     clean = text or ""
     sym = ""
-    m = re.search(r"\*\*([A-Z]{1,5})\*\*", clean)
-    if m:
-        sym = m.group(1).upper()
-    if not sym:
-        m2 = re.search(r"信号档案[\s\S]*?品种[:：]\s*([A-Z]{1,5})", clean, re.I)
-        if m2:
-            sym = m2.group(1).upper()
+    for pat in (
+        r"\*\*品种\*\*\s*`?([A-Za-z0-9.]{1,15})`?",
+        r"信号档案[\s\S]*?品种[:：\s]*\*?\*?([A-Za-z0-9.]{1,15})",
+        r"·\s*([A-Z]{1,5})\s*·\s*\d+[hHdDmMwW]",
+        r"\*\*([A-Z]{1,5})\*\*",
+    ):
+        m = re.search(pat, clean, re.I)
+        if m:
+            sym = m.group(1).upper().replace(".P", "")
+            break
     tf = ""
-    m3 = re.search(r"`(\d+[hHdDmMwW])`", clean)
-    if m3:
-        tf = m3.group(1).lower()
+    for pat in (
+        r"\*\*周期\*\*\s*`?(\d+[hHdDmMwW])`?",
+        r"`(\d+[hHdDmMwW])`",
+        r"·\s*[A-Z]{1,5}\s*·\s*(\d+[hHdDmMwW])",
+    ):
+        m = re.search(pat, clean, re.I)
+        if m:
+            tf = m.group(1).lower()
+            break
     score = None
     m4 = re.search(r"(\d{1,3})\s*/\s*100", clean)
     if m4:
         score = int(m4.group(1))
     return sym, tf, score
+
+
+_LAST_CTX_PATH = (
+    __import__("pathlib").Path(__file__).resolve().parents[1] / "data" / "dingtalk_last_signal_context.json"
+)
+
+
+def remember_last_signal_context(
+    *,
+    symbol: str,
+    timeframe: str = "",
+    score: Optional[int] = None,
+    recommendation: str = "",
+    source: str = "",
+) -> None:
+    """钉钉互动卡片回复往往不带正文：发出分析/评分后记下最近标的，供纠正回退。"""
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return
+    try:
+        payload = {
+            "symbol": sym,
+            "timeframe": (timeframe or "").strip(),
+            "score": score,
+            "recommendation": recommendation or "",
+            "source": source or "",
+            "ts": int(time.time()),
+        }
+        _LAST_CTX_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _LAST_CTX_PATH.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except Exception as exc:
+        logger.debug("remember_last_signal_context failed: %s", exc)
+
+
+def load_last_signal_context(*, max_age_sec: int = 7200) -> Dict[str, Any]:
+    try:
+        if not _LAST_CTX_PATH.is_file():
+            return {}
+        data = json.loads(_LAST_CTX_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        ts = int(data.get("ts") or 0)
+        if ts and (time.time() - ts) > max_age_sec:
+            return {}
+        return data
+    except Exception:
+        return {}
 
 
 def handle_dingtalk_feedback(
@@ -523,6 +596,34 @@ def handle_dingtalk_feedback(
         timeframe = timeframe or rtf
         if rscore is not None and original_score is None:
             original_score = rscore
+
+    # 钉钉 interactiveCard 引用往往只有 msgId，无正文：回退最近发出的分析/评分上下文
+    if not symbol:
+        ctx = load_last_signal_context()
+        if ctx.get("symbol"):
+            symbol = str(ctx.get("symbol") or "").upper()
+            timeframe = timeframe or str(ctx.get("timeframe") or "")
+            if original_score is None and ctx.get("score") is not None:
+                try:
+                    original_score = int(ctx.get("score"))
+                except (TypeError, ValueError):
+                    pass
+            original_rec = original_rec or str(ctx.get("recommendation") or "")
+            logger.info(
+                "[评分反馈] 引用无正文，回退最近上下文 symbol=%s tf=%s source=%s",
+                symbol,
+                timeframe,
+                ctx.get("source"),
+            )
+    if not symbol:
+        from backpack_quant_trading.core.crypto_signal_scorer import list_score_history
+
+        rows = list_score_history(5)
+        if rows:
+            row0 = rows[0]
+            symbol = str(row0.get("symbol") or "").upper()
+            timeframe = timeframe or str(row0.get("timeframe") or "")
+            logger.info("[评分反馈] 回退评分历史最近一条 symbol=%s tf=%s", symbol, timeframe)
 
     hist = find_recent_score_for_signal(symbol, timeframe) if symbol else None
     if hist:

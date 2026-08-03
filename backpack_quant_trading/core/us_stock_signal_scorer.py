@@ -430,6 +430,7 @@ def build_us_stock_indicator_snapshot(
         signal_timeframe=iv,
         hl_coin=ticker,
         kline_limit=limit,
+        min_dist_pct=1.0,  # 美股：过滤贴价噪声支撑/压力
         fetch_klines_fn=lambda sym, interval, lim: fetch_klines_us(sym, interval, total_limit=lim),
     )
     if sr:

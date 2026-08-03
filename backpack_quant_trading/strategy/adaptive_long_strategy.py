@@ -73,10 +73,18 @@ class AdaptiveLongStrategy:
         min_ai_score_for_trade: int = 0,  # 0=不启用；买入 Webhook 须 AI 分>=该值才开单
         allow_repeat_open: bool = False,  # K线不限制时：False=同币种已有仓不再开；True=不同周期可加仓
         use_ai_sr_tpsl: bool = False,  # True=用 AI 支撑/压力位挂 SL+分批 TP（50%小级+50%同级）
+        margin_type: Optional[str] = None,  # Binance: ISOLATED=逐仓 / CROSSED=全仓
     ):
         self.exchange = exchange.lower()
+        mt = str(margin_type or "ISOLATED").strip().upper()
+        if mt in ("CROSS", "CROSSED", "全仓"):
+            self.margin_type = "CROSSED"
+        else:
+            self.margin_type = "ISOLATED"
         if self.exchange == "binance":
-            self.client = BinanceAPIClient(api_key=api_key, secret_key=api_secret)
+            self.client = BinanceAPIClient(
+                api_key=api_key, secret_key=api_secret, margin_type=self.margin_type
+            )
         elif self.exchange == "lighter":
             from backpack_quant_trading.core.lighter_client import LighterAPIClient
             self.client = LighterAPIClient(
@@ -178,6 +186,16 @@ class AdaptiveLongStrategy:
         logger.info(f"   保证金={self.margin_amount}×{self.leverage}x")
         logger.info(f"   等待 TradingView Webhook 信号...")
         logger.info("=" * 60)
+
+        # 重启/恢复后：若交易所已有多仓但内存未挂上 SL/TP，补同步并补挂条件单
+        if self.symbol_filter:
+            try:
+                synced = await self._sync_long_position_from_exchange(self.symbol_filter)
+                if synced and self.position == "LONG" and (not self._sl_oid or not self._tp_oid):
+                    logger.info("🩹 检测到已有多仓且缺 SL/TP，补挂交易所条件单")
+                    await self._place_exchange_tpsl()
+            except Exception as e:
+                logger.warning(f"启动时同步/补挂 SL/TP 失败: {e}")
 
         risk_task = asyncio.create_task(self._risk_loop())
         def _on_done(t: asyncio.Task):
@@ -337,25 +355,32 @@ class AdaptiveLongStrategy:
                     self._tp_oid = tp_res.get("orderId")
 
             elif self.exchange == "binance":
-                # SL: 不挂交易所条件单（STOP_MARKET 容易因内盘价偏差导致即时触发秒平仓位）
-                # 由软件御控周期（_check_risk 每5s）独立负责 SL
-                logger.info(f"🛡️ [Binance] SL 由软件御控周期守护  SL={self.sl_price:.4f}  每5s轮询触发")
+                # 与 HL 对齐：交易所原生 STOP_MARKET / TAKE_PROFIT_MARKET
+                sl_res = await self.client.place_tpsl_order(
+                    symbol=self.symbol,
+                    side="SELL",
+                    quantity=self.position_size,
+                    trigger_price=self.sl_price,
+                    tpsl="sl",
+                )
+                if sl_res.get("status") == "FAILED":
+                    logger.error(f"❌ Binance SL 挂单失败: {sl_res.get('error')}")
+                else:
+                    self._sl_oid = sl_res.get("orderId")
+                    logger.info(f"📌 Binance SL 挂单成功 oid={self._sl_oid}  触发价={self.sl_price:.4f}")
 
-                # TP: 挂 LIMIT SELL GTC 在目标价，安全可靠
                 tp_res = await self.client.place_tpsl_order(
                     symbol=self.symbol,
+                    side="SELL",
+                    quantity=self.position_size,
                     trigger_price=self.tp_price,
                     tpsl="tp",
-                    quantity=self.position_size,
                 )
-                bn_code = tp_res.get("code")
-                if bn_code is not None and int(bn_code) < 0:
-                    logger.warning(f"⚠️ Binance TP LIMIT 挂单失败（{tp_res.get('msg')}），已由软件御控周期守护（每5s轮询）")
+                if tp_res.get("status") == "FAILED":
+                    logger.error(f"❌ Binance TP 挂单失败: {tp_res.get('error')}")
                 else:
                     self._tp_oid = tp_res.get("orderId")
-                    logger.info(f"📌 Binance TP LIMIT 挂单成功 oid={self._tp_oid}  目标价={self.tp_price:.4f}")
-
-                logger.info(f"🛡️ 软件御控已就位: SL={self.sl_price:.4f}  TP={self.tp_price:.4f}  每5s轮询守护")
+                    logger.info(f"📌 Binance TP 挂单成功 oid={self._tp_oid}  触发价={self.tp_price:.4f}")
 
             elif self.exchange == "lighter":
                 # SL: 交易所原生止损触发单
@@ -649,10 +674,8 @@ class AdaptiveLongStrategy:
             logger.info(f"   保本触发:   {be_trigger:.4f}  (盈利达 {self.break_even_pct*100:.1f}% 时SL移至成本价)")
             logger.info("=" * 60)
 
-            if not placed_ai_sr and self.exchange in ("hyperliquid", "lighter"):
+            if not placed_ai_sr and self.exchange in ("hyperliquid", "lighter", "binance"):
                 await self._place_exchange_tpsl()
-            elif not placed_ai_sr and self.exchange == "binance":
-                logger.info("🛡️ [Binance] 使用软件轮询 + 百分比止盈止损")
 
         except Exception as e:
             logger.info(f"⛔ 开多未成交: 异常 {e}")
@@ -662,8 +685,11 @@ class AdaptiveLongStrategy:
         """市价平多（自动识别 Perps/XYZ HIP-3 DEX）"""
         try:
             symbol = self.symbol
-            # 重新同步链上持仓，获取真实仓位大小
-            if self.exchange in ("hyperliquid", "lighter"):
+            # 重新同步真实持仓
+            if self.exchange == "binance":
+                positions = await self.client.get_positions(symbol=symbol)
+                real_size = abs(float(positions[0].get("size", 0))) if positions else 0.0
+            elif self.exchange in ("hyperliquid", "lighter"):
                 sym_dex = await self.client.get_asset_dex(symbol)
                 positions = await self.client.get_positions(symbol=symbol, dex=sym_dex)
                 real_size = abs(float(positions[0].get("size", 0))) if positions else 0.0
@@ -815,28 +841,26 @@ class AdaptiveLongStrategy:
         if not ep:
             return
 
-        # Binance / Lighter 保留本地轮询风控（均无可靠的交易所原生条件单）
-        if self.exchange in ("binance", "lighter"):
+        # Lighter：保留本地轮询（条件单可靠性弱于 HL/币安）
+        if self.exchange == "lighter":
             price = await self._get_price(self.symbol)
             if price <= 0:
                 return
             async with self._lock:
                 if self.position != "LONG":
                     return
-                # Lighter: 每3次同步一次持仓（TP LIMIT 可能已被交易所触发）
-                if self.exchange == "lighter":
-                    self._sync_count += 1
-                    if self._sync_count >= 3:
-                        self._sync_count = 0
-                        try:
-                            positions = await self.client.get_positions(symbol=self.symbol)
-                            has_pos = any(abs(p.get("size", 0)) > 0 for p in positions)
-                            if not has_pos:
-                                logger.info("📊 [Lighter] 持仓已不存在（TP LIMIT 已触发），重置内部状态")
-                                self._reset_position_state()
-                                return
-                        except Exception as e:
-                            logger.warning(f"[Lighter] 持仓同步异常: {e}")
+                self._sync_count += 1
+                if self._sync_count >= 3:
+                    self._sync_count = 0
+                    try:
+                        positions = await self.client.get_positions(symbol=self.symbol)
+                        has_pos = any(abs(p.get("size", 0)) > 0 for p in positions)
+                        if not has_pos:
+                            logger.info("📊 [Lighter] 持仓已不存在（TP LIMIT 已触发），重置内部状态")
+                            self._reset_position_state()
+                            return
+                    except Exception as e:
+                        logger.warning(f"[Lighter] 持仓同步异常: {e}")
                 if self.sl_price and price <= self.sl_price:
                     if self.lock_profit_activated:
                         reason = "锁利止损"
@@ -857,7 +881,6 @@ class AdaptiveLongStrategy:
                     self.break_even_activated = True
                     self.sl_price = ep
                     logger.info(f"🛡️ 保本激活 盈利={((price - ep) / ep * 100):.2f}% → SL={self.sl_price:.4f}")
-                # 锁利检测：盈利达到 lock_profit_pct 后 SL 上移到 lock_profit_sl_pct
                 if (not self.lock_profit_activated and self.lock_profit_pct > 0
                         and price >= ep * (1 + self.lock_profit_pct)):
                     self.lock_profit_activated = True
@@ -867,24 +890,28 @@ class AdaptiveLongStrategy:
                     logger.info(f"🔒 锁利激活 盈利={((price - ep) / ep * 100):.2f}% → SL锁定至={self.sl_price:.4f} (+{self.lock_profit_sl_pct*100:.1f}%)")
             return
 
-        # Hyperliquid: SL/TP 已由交易所接管，只做保本检测 + 持仓同步
+        # Hyperliquid / Binance: SL/TP 由交易所条件单接管，轮询做保本/锁利重挂 + 持仓同步
         async with self._lock:
             if self.position != "LONG":
                 return
-            # 1. 每 3 次循环同步一次交易所真实持仓
             self._sync_count += 1
             if self._sync_count >= 3:
                 self._sync_count = 0
                 try:
-                    positions = await self.client.get_positions(symbol=self.symbol, dex=await self.client.get_asset_dex(self.symbol))
-                    has_pos = any(abs(p.get("size", 0)) > 0 for p in positions)
+                    if self.exchange == "binance":
+                        positions = await self.client.get_positions(symbol=self.symbol)
+                    else:
+                        positions = await self.client.get_positions(
+                            symbol=self.symbol,
+                            dex=await self.client.get_asset_dex(self.symbol),
+                        )
+                    has_pos = any(abs(float(p.get("size", 0) or 0)) > 0 for p in positions)
                     if not has_pos:
                         logger.info("📊 持仓已不存在（TP/SL 已由交易所触发），重置内部状态")
                         self._reset_position_state()
                         return
                 except Exception as e:
                     logger.warning(f"持仓同步异常: {e}")
-            # 2. 保本检测
             price = 0.0
             if not self.break_even_activated or (not self.lock_profit_activated and self.lock_profit_pct > 0):
                 price = await self._get_price(self.symbol)
@@ -893,13 +920,12 @@ class AdaptiveLongStrategy:
                 new_sl = ep
                 self.sl_price = new_sl
                 logger.info(f"🛡️ 保本激活 盈利={((price - ep) / ep * 100):.2f}% → SL上移至入场价={new_sl:.4f}")
-                # 撒旧 SL 单，重挂保本 SL
                 if self._sl_oid:
                     try:
                         await self.client.cancel_order_async(self.symbol, order_id=self._sl_oid)
-                        logger.info(f"🗑️ 旧 SL 单已撒销 oid={self._sl_oid}")
+                        logger.info(f"🗑️ 旧 SL 单已撤销 oid={self._sl_oid}")
                     except Exception as e:
-                        logger.warning(f"撒销旧 SL 单失败: {e}")
+                        logger.warning(f"撤销旧 SL 单失败: {e}")
                     self._sl_oid = None
                 try:
                     sl_res = await self.client.place_tpsl_order(
@@ -909,24 +935,25 @@ class AdaptiveLongStrategy:
                         trigger_price=new_sl,
                         tpsl="sl",
                     )
-                    self._sl_oid = sl_res.get("orderId")
-                    logger.info(f"📌 保本 SL 重新挂单成功 oid={self._sl_oid}")
+                    if sl_res.get("status") == "FAILED":
+                        logger.error(f"保本 SL 重新挂单失败: {sl_res.get('error')}")
+                    else:
+                        self._sl_oid = sl_res.get("orderId")
+                        logger.info(f"📌 保本 SL 重新挂单成功 oid={self._sl_oid}")
                 except Exception as e:
                     logger.error(f"保本 SL 重新挂单失败: {e}")
-            # 3. 锁利检测
             if (not self.lock_profit_activated and self.lock_profit_pct > 0
                     and price > 0 and price >= ep * (1 + self.lock_profit_pct)):
                 self.lock_profit_activated = True
                 new_sl = ep * (1 + self.lock_profit_sl_pct)
                 self.sl_price = round(new_sl, 6)
                 logger.info(f"🔒 锁利激活 盈利={((price - ep) / ep * 100):.2f}% → SL锁定至={self.sl_price:.4f} (+{self.lock_profit_sl_pct*100:.1f}%)")
-                # 撒旧旧 SL 单，重挂锁利 SL
                 if self._sl_oid:
                     try:
                         await self.client.cancel_order_async(self.symbol, order_id=self._sl_oid)
-                        logger.info(f"🗑️ 旧 SL 单已撒销 oid={self._sl_oid}")
+                        logger.info(f"🗑️ 旧 SL 单已撤销 oid={self._sl_oid}")
                     except Exception as e:
-                        logger.warning(f"撒销旧 SL 单失败: {e}")
+                        logger.warning(f"撤销旧 SL 单失败: {e}")
                     self._sl_oid = None
                 try:
                     sl_res = await self.client.place_tpsl_order(
@@ -936,7 +963,10 @@ class AdaptiveLongStrategy:
                         trigger_price=self.sl_price,
                         tpsl="sl",
                     )
-                    self._sl_oid = sl_res.get("orderId")
-                    logger.info(f"📌 锁利 SL 挂单成功 oid={self._sl_oid}")
+                    if sl_res.get("status") == "FAILED":
+                        logger.error(f"锁利 SL 挂单失败: {sl_res.get('error')}")
+                    else:
+                        self._sl_oid = sl_res.get("orderId")
+                        logger.info(f"📌 锁利 SL 挂单成功 oid={self._sl_oid}")
                 except Exception as e:
                     logger.error(f"锁利 SL 挂单失败: {e}")

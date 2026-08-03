@@ -18,6 +18,8 @@ import PaxgTrendStrategy from './views/PaxgTrendStrategy'
 import Nas100TrendStrategy from './views/Nas100TrendStrategy'
 import EthOnlyStrategy from './views/EthOnlyStrategy'
 import AlphaEthStrategy from './views/AlphaEthStrategy'
+import Sse510210Strategy from './views/Sse510210Strategy'
+import MnqDipStrategy from './views/MnqDipStrategy'
 import OkxConsole from './views/OkxConsole'
 import UsMomentumIntcStrategy from './views/UsMomentumIntcStrategy'
 import UsMomentumNvdaStrategy from './views/UsMomentumNvdaStrategy'
@@ -84,6 +86,8 @@ function App() {
           <Route path="strategies/eth-only" element={<EthOnlyStrategy />} />
           <Route path="strategies/paxg-trend" element={<PaxgTrendStrategy />} />
           <Route path="strategies/nas100-trend" element={<Nas100TrendStrategy />} />
+          <Route path="strategies/sse-510210" element={<Sse510210Strategy />} />
+          <Route path="strategies/mnq-dip" element={<MnqDipStrategy />} />
           <Route path="strategies/a-share-300308" element={<AShareMomentumStrategy code="300308" />} />
           <Route path="strategies/a-share-603986" element={<AShareMomentumStrategy code="603986" />} />
           <Route path="strategies/a-share-688146" element={<AShareMomentumStrategy code="688146" />} />

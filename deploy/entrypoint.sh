@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+export TZ="${TZ:-Asia/Shanghai}"
+
 wait_for_mysql() {
   python - <<'PY'
 import os, sys, time

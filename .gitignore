@@ -9,5 +9,7 @@ backpack_quant_trading/.env
 backpack_quant_trading/.env.secrets
 .env
 **/.env.secrets
+# 实例 RSA 私钥（公钥可提交；私钥永不可入库）
+backpack_quant_trading/data/instance_rsa/private.pem
 # Actions 本地/工作区打包产物，勿提交
 backpack-quant.tgz

@@ -14,7 +14,7 @@ import {
   ChevronRight,
   Menu,
   X,
-  BookOpen,
+  Brain,
 } from 'lucide-react'
 import ChatBot from '../components/ChatBot'
 import AisPageBackground from '../components/AisPageBackground'
@@ -34,10 +34,12 @@ const navItems = [
   // 暂时隐藏：AI 实验室（仅隐藏入口，不影响路由）
   { type: 'item', to: '/currency-monitor', icon: Bell, label: '币种监视' },
   { type: 'item', to: '/crypto-signal-hub', icon: TrendingUp, label: '加密信号AI评分' },
+  { type: 'item', to: '/agent-memory', icon: Brain, label: 'Agent 记忆' },
   { type: 'item', to: '/stock-news-alert', icon: Newspaper, label: '自选多源快讯' },
   // 暂时隐藏：Polymarket概率（仅隐藏入口，不影响路由）
-  { type: 'item', to: '/us-weekly-report', icon: BarChart2, label: '美股泡沫阶段监测' },
-  { type: 'item', to: '/study-center', icon: BookOpen, label: '学习中心' },
+  { type: 'item', to: '/us-weekly-report', icon: BarChart2, label: '泡沫检测' },
+  // 暂时隐藏：学习中心（仅隐藏入口，不影响路由）
+  // { type: 'item', to: '/study-center', icon: BookOpen, label: '学习中心' },
 ]
 
 const pageTitles = {
@@ -47,13 +49,14 @@ const pageTitles = {
   '/grid-trading': '网格交易',
   '/currency-monitor': '币种监视',
   '/crypto-signal-hub': '加密信号AI评分',
+  '/agent-memory': 'Agent 记忆',
   '/stock-news-alert': '自选多源快讯',
   '/polymarket-alert': 'Polymarket 概率提醒',
   '/stock-ai': 'A股 AI 选股',
   '/ai-stock': 'AI选股',
   '/strategies': 'AI量化实盘',
   '/okx-console': 'OKX 操作台',
-  '/us-weekly-report': '美股泡沫阶段监测',
+  '/us-weekly-report': '泡沫检测',
   '/study-center': '学习中心',
   '/ai-agent-quiz': '学习中心',
 }

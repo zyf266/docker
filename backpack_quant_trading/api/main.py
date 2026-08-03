@@ -11,6 +11,12 @@ from backpack_quant_trading.core.env_loader import load_project_env
 
 load_project_env()
 
+# 尽早固定日志为北京时间（覆盖 Formatter.formatTime）
+from backpack_quant_trading.utils.logger import setup_logger  # noqa: E402
+from backpack_quant_trading.config.settings import config as _app_config  # noqa: E402
+
+setup_logger(log_dir=_app_config.log_dir, level=__import__("logging").INFO)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -68,12 +74,27 @@ app.include_router(stock_ai_router, prefix="/api/stock-ai", tags=["A股AI选股"
 app.include_router(strategy_router, prefix="/api/strategy", tags=["量化策略"])
 app.include_router(okx_agent_router, prefix="/api/okx-agent", tags=["OKX AI 交易"])
 app.include_router(okx_console_router, prefix="/api/okx-console", tags=["OKX 控制台"])
-app.include_router(us_weekly_report_router, prefix="/api/us-weekly-report", tags=["美股周报"])
+app.include_router(us_weekly_report_router, prefix="/api/us-weekly-report", tags=["泡沫周报"])
 app.include_router(stock_news_alert_router, prefix="/api/stock-news-alert", tags=["自选快讯"])
 app.include_router(polymarket_alert_router, prefix="/api/polymarket-alert", tags=["Polymarket概率"])
 app.include_router(ai_stock_hub_router, prefix="/api/ai-stock-hub", tags=["AI选股卡片"])
 app.include_router(crypto_signal_hub_router, prefix="/api/crypto-signal-hub", tags=["加密信号评分"])
 app.include_router(quiz_router, prefix="/api/quiz", tags=["AI Agent 考试"])
+
+# 可选：旧镜像可能缺这些文件，不能拖垮整站
+try:
+    from backpack_quant_trading.api.routers.steward import router as steward_router
+    app.include_router(steward_router, prefix="/api/steward", tags=["小管家"])
+except Exception as _exc:
+    import logging as _logging
+    _logging.getLogger(__name__).warning("steward router 未加载: %s", _exc)
+
+try:
+    from backpack_quant_trading.api.routers.agent_memory import router as agent_memory_router
+    app.include_router(agent_memory_router, prefix="/api/agent-memory", tags=["Agent记忆"])
+except Exception as _exc:
+    import logging as _logging
+    _logging.getLogger(__name__).warning("agent_memory router 未加载: %s", _exc)
 
 
 @app.get("/api/health")
@@ -183,12 +204,47 @@ async def start_kline_scheduler():
     # 磁盘状态恢复：每个 worker 都需要（内存内状态）
     try_restore_from_disk()
     try_restore_polymarket()
+    try:
+        from backpack_quant_trading.core.binance_monitor import (
+            restore_currency_monitor_from_db_if_needed,
+        )
+
+        restore_currency_monitor_from_db_if_needed()
+    except Exception as exc:
+        _sched_logger.warning("[币种监视] 启动恢复失败: %s", exc)
+
+    # 轻量自愈（启动一次）
+    try:
+        from backpack_quant_trading.agents.self_heal import check_and_heal_monitors
+
+        heal = check_and_heal_monitors()
+        _sched_logger.info("[自愈] startup: %s", heal)
+    except Exception as exc:
+        _sched_logger.warning("[自愈] startup 失败: %s", exc)
+
+    # 实盘策略 ERROR → 钉钉运维群
+    try:
+        from backpack_quant_trading.core.live_trade_dingtalk_alert import (
+            install_live_trade_error_handlers,
+        )
+
+        install_live_trade_error_handlers()
+    except Exception as exc:
+        _sched_logger.warning("[实盘报错钉钉] 安装失败: %s", exc)
 
     if not _try_acquire_scheduler_lock():
         _sched_logger.info("[调度] 跳过后台定时任务（由其他 worker 负责）")
         return
 
     _sched_logger.info("[调度] 本进程持锁，启动后台定时任务")
+    # 恢复 DB 中 running 的实盘策略实例（RSA 解密密钥）
+    try:
+        from backpack_quant_trading.api.routers.trading import resume_running_live_instances
+        stats = await _asyncio.to_thread(resume_running_live_instances)
+        _sched_logger.info("[实例恢复] %s", stats)
+    except Exception as exc:
+        _sched_logger.error("[实例恢复] 失败: %s", exc)
+
     _asyncio.create_task(_kline_sync_loop())
     _asyncio.create_task(_weekly_bubble_analyze_loop())
     _asyncio.create_task(_bootstrap_research_prices())
@@ -196,10 +252,83 @@ async def start_kline_scheduler():
     _asyncio.create_task(_hourly_uptrend_scan_loop())
     _asyncio.create_task(_bootstrap_a_share_mtm())
     _asyncio.create_task(_daily_a_share_mtm_loop())
+    _asyncio.create_task(_daily_agent_patrol_loop())
+    _asyncio.create_task(_auto_review_loop())
+
+
+async def _secs_until_next_hour(hour: int) -> float:
+    now = _dt.now()
+    target = now.replace(hour=int(hour) % 24, minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += _td(days=1)
+    return max(1.0, (target - now).total_seconds())
+
+
+async def _daily_agent_patrol_loop():
+    """每天 AGENT_PATROL_HOUR（默认 9）北京时间跑日巡检并钉钉推送。"""
+    import os as _os
+
+    while True:
+        try:
+            hour = int(_os.getenv("AGENT_PATROL_HOUR", "9") or 9)
+        except Exception:
+            hour = 9
+        wait = await _secs_until_next_hour(hour)
+        _sched_logger.info("[Agent巡检] 下次约 %.1fh 后（%02d:00）", wait / 3600, hour)
+        await _asyncio.sleep(wait)
+        try:
+            from backpack_quant_trading.agents.patrol_agent import run_daily_patrol
+
+            res = await _asyncio.to_thread(run_daily_patrol, push=True)
+            _sched_logger.info(
+                "[Agent巡检] ok=%s pushed=%s skipped=%s",
+                res.get("ok"),
+                res.get("pushed"),
+                res.get("skipped"),
+            )
+        except Exception as exc:
+            _sched_logger.error("[Agent巡检] 失败: %s", exc)
+
+
+async def _auto_review_loop():
+    """每天 20:00 自动复盘到期报告并钉钉推送。"""
+    import os as _os
+
+    while True:
+        wait = await _secs_until_next_hour(20)
+        _sched_logger.info("[自动复盘] 下次约 %.1fh 后（20:00）", wait / 3600)
+        await _asyncio.sleep(wait)
+        enabled = _os.getenv("AGENT_AUTO_REVIEW_ENABLED", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
+        if not enabled:
+            _sched_logger.info("[自动复盘] 已关闭 AGENT_AUTO_REVIEW_ENABLED=0")
+            continue
+        try:
+            from backpack_quant_trading.agents.review_agent import auto_review_due_reports
+            from backpack_quant_trading.agents.dingtalk_push import push_dingtalk_markdown
+
+            res = await _asyncio.to_thread(auto_review_due_reports)
+            md = res.get("markdown") or ""
+            n = int(res.get("reviewed") or 0)
+            _sched_logger.info("[自动复盘] reviewed=%s", n)
+            if n > 0 and md:
+                ok, msg = await _asyncio.to_thread(
+                    lambda: push_dingtalk_markdown(
+                        "Agent 自动复盘", md, use_ops_webhook=True
+                    )
+                )
+                _sched_logger.info("[自动复盘] 钉钉 pushed=%s %s", ok, msg)
+        except Exception as exc:
+            _sched_logger.error("[自动复盘] 失败: %s", exc)
 
 
 async def _weekly_bubble_analyze_loop():
-    """每周六 10:00（中国时间）自动调用 DeepSeek 生成美股泡沫阶段分析。"""
+    """每周六 10:00（中国时间）自动生成美股 + A股泡沫阶段周报。"""
+    import os as _os
     from backpack_quant_trading.api.routers.us_weekly_report import run_weekly_analyze_task
     # 服务进程用本机时间作为「中国时间」近似（你的服务器若已是 Asia/Shanghai 即可）
     while True:
@@ -214,12 +343,41 @@ async def _weekly_bubble_analyze_loop():
             f"[泡沫监测] 下次自动分析：{target.strftime('%Y-%m-%d %H:%M:%S')}（{wait_secs/3600:.1f}h 后）"
         )
         await _asyncio.sleep(wait_secs)
-        try:
-            res = await _asyncio.to_thread(run_weekly_analyze_task)
-            ok = res.get("ok") if isinstance(res, dict) else False
-            _sched_logger.info(f"[泡沫监测] 周六自动分析完成: ok={ok}")
-        except Exception as exc:
-            _sched_logger.error(f"[泡沫监测] 周六自动分析失败: {exc}")
+        ding_on = _os.getenv("AGENT_WEEKLY_DINGTALK", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
+        for mkt in ("us", "a_share"):
+            try:
+                res = await _asyncio.to_thread(run_weekly_analyze_task, mkt)
+                ok = res.get("ok") if isinstance(res, dict) else False
+                _sched_logger.info(f"[泡沫监测] 周六自动分析完成 market={mkt}: ok={ok}")
+                if ok and ding_on:
+                    label = "美股" if mkt == "us" else "A股"
+                    body = (
+                        (res.get("markdown") or res.get("summary") or "")
+                        if isinstance(res, dict)
+                        else ""
+                    )
+                    if not body and isinstance(res, dict):
+                        report = res.get("report") or {}
+                        if isinstance(report, dict):
+                            body = report.get("summary") or report.get("one_liner") or ""
+                    body = (body or f"{label}泡沫周报已生成，请打开网页查看。")[:3500]
+                    from backpack_quant_trading.agents.dingtalk_push import push_dingtalk_markdown
+
+                    pok, pmsg = await _asyncio.to_thread(
+                        push_dingtalk_markdown,
+                        f"{label}泡沫周报",
+                        f"## 提醒 · {label}/泡沫周报\n\n{body}",
+                    )
+                    _sched_logger.info(
+                        "[泡沫监测] 钉钉推送 market=%s ok=%s %s", mkt, pok, pmsg
+                    )
+            except Exception as exc:
+                _sched_logger.error(f"[泡沫监测] 周六自动分析失败 market={mkt}: {exc}")
 
 
 async def _hourly_uptrend_scan_loop():
@@ -493,6 +651,12 @@ for base in (_pkg_dir, _cwd_dir, _cwd_dir / "backpack_quant_trading"):
         @app.get("/ai-stock/{full_path:path}")
         def _ai_stock_nested(full_path: str):
             return FileResponse(frontend_dist / "index.html")
+        @app.get("/crypto-signal-hub")
+        def _crypto_signal_hub():
+            return FileResponse(frontend_dist / "index.html")
+        @app.get("/agent-memory")
+        def _agent_memory():
+            return FileResponse(frontend_dist / "index.html")
         @app.get("/study-center")
         def _study_center():
             return FileResponse(frontend_dist / "index.html")
@@ -501,5 +665,17 @@ for base in (_pkg_dir, _cwd_dir, _cwd_dir / "backpack_quant_trading"):
             return FileResponse(frontend_dist / "index.html")
         @app.get("/ai-agent-quiz")
         def _ai_agent_quiz():
+            return FileResponse(frontend_dist / "index.html")
+        @app.get("/strategies")
+        def _strategies():
+            return FileResponse(frontend_dist / "index.html")
+        @app.get("/strategies/{full_path:path}")
+        def _strategies_nested(full_path: str):
+            return FileResponse(frontend_dist / "index.html")
+        @app.get("/stock-news-alert")
+        def _stock_news_alert():
+            return FileResponse(frontend_dist / "index.html")
+        @app.get("/polymarket-alert")
+        def _polymarket_alert():
             return FileResponse(frontend_dist / "index.html")
         break

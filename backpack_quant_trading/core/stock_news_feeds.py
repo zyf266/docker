@@ -645,10 +645,19 @@ def _yahoo_rows_to_unified(news: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not title:
             continue
         publisher = _strip_html(str(it.get("publisher") or ""))
-        tickers = it.get("relatedTickers") or []
-        ticker_s = ""
-        if isinstance(tickers, list) and tickers:
-            ticker_s = " ".join(str(t).strip() for t in tickers[:6] if str(t).strip())
+        tickers_raw = it.get("relatedTickers") or []
+        title_u = title.upper()
+        # 只保留标题里真正出现的代码/名称，避免 Search 查询词污染整页结果
+        tickers: List[str] = []
+        if isinstance(tickers_raw, list):
+            for t in tickers_raw:
+                s = str(t).strip()
+                if not s:
+                    continue
+                base = s.split(":")[-1].split(".")[0]
+                if base.upper() in title_u or s.upper() in title_u:
+                    tickers.append(s)
+        ticker_s = " ".join(tickers[:6]) if tickers else ""
         text = title
         if publisher:
             text = f"[{publisher}] {title}"
@@ -672,7 +681,7 @@ def _yahoo_rows_to_unified(news: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "text": text,
             "important": 0,
             "url": link,
-            "related_tickers": tickers if isinstance(tickers, list) else [],
+            "related_tickers": tickers,
         }
         if pub_ts is not None:
             row["published_ts"] = pub_ts

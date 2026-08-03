@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { BarChart3, Activity, TrendingUp, Wallet, Percent, Search, Filter, Plus, LayoutGrid, List, ChevronDown } from 'lucide-react'
 import { StatCard } from '../components/StatCard'
@@ -10,6 +10,8 @@ import {
   getAlphaEthOverview,
   getPaxgTrendOverview,
   getNas100TrendOverview,
+  getSse510210Overview,
+  getMnqDipOverview,
   getIntcOverview,
   getNvdaOverview,
   getMuOverview,
@@ -17,14 +19,18 @@ import {
   getMatrixYearlyReturns,
 } from '../api/strategy'
 
-const A_SHARE_KEYS = ['300308', '603986', '688146', '002837']
+const A_SHARE_KEYS = ['300308', '603986', '688146', '002837', 'sse-510210']
 const DEFAULT_USD_CNY = 7.25
+const ORDER_STORAGE_KEY = 'strategy-matrix-card-order'
+const STATUS_STORAGE_KEY = 'strategy-matrix-card-status'
+const STATUS_OPTIONS = ['运行中', '已平仓', '测试中']
 
 const strategies = [
   {
+    key: 'nvda',
     to: '/strategies/us-momentum-nvda',
     icon: '🟢',
-    title: '美股动量轮动策略·NVDA',
+    title: '美股趋势追踪策略·NVDA',
     code: 'ML-USM',
     description: '聚焦 NVDA 等 AI 龙头，结合趋势强度、回撤过滤与风险预算，进行中短期动量轮动配置，捕捉 AI 主升浪与 Blackwell 出货周期。',
     status: '运行中',
@@ -35,9 +41,10 @@ const strategies = [
     isRiskWarning: false,
   },
   {
+    key: 'intc',
     to: '/strategies/us-momentum-intc',
     icon: '💠',
-    title: '美股动量轮动策略·INTC',
+    title: '美股趋势追踪策略·INTC',
     code: 'ML-USM',
     description: '聚焦 INTC 等半导体核心标的，结合趋势强度、回撤过滤与风险预算，进行中短期动量轮动配置，捕捉半导体板块主升浪行情。',
     status: '运行中',
@@ -48,9 +55,10 @@ const strategies = [
     isRiskWarning: true,
   },
   {
+    key: 'mu',
     to: '/strategies/us-momentum-mu',
     icon: '💾',
-    title: '美股动量轮动策略·MU',
+    title: '美股趋势追踪策略·MU',
     code: 'ML-USM',
     description: '聚焦美光科技（MU）等存储龙头，动量轮动全仓复利，捕捉 AI 存储超级周期与 HBM 放量行情。',
     status: '运行中',
@@ -61,9 +69,10 @@ const strategies = [
     isRiskWarning: true,
   },
   {
+    key: '300308',
     to: '/strategies/a-share-300308',
     icon: '🏮',
-    title: 'A股动量轮动策略·中际旭创',
+    title: 'A股趋势追踪策略·中际旭创',
     code: 'ML-AMR',
     description: '聚焦中际旭创（300308）AI 光模块龙头，动量轮动全仓复利，捕捉算力基建主升浪。',
     status: '运行中',
@@ -74,9 +83,10 @@ const strategies = [
     isRiskWarning: true,
   },
   {
+    key: '603986',
     to: '/strategies/a-share-603986',
     icon: '🏮',
-    title: 'A股动量轮动策略·兆易创新',
+    title: 'A股趋势追踪策略·兆易创新',
     code: 'ML-AMR',
     description: '聚焦兆易创新（603986）存储龙头，动量轮动全仓复利，捕捉存储超级周期与业绩爆发。',
     status: '运行中',
@@ -87,9 +97,10 @@ const strategies = [
     isRiskWarning: true,
   },
   {
+    key: '688146',
     to: '/strategies/a-share-688146',
     icon: '🏮',
-    title: 'A股动量轮动策略·中船特气',
+    title: 'A股趋势追踪策略·中船特气',
     code: 'ML-AMR',
     description: '聚焦中船特气（688146）半导体材料龙头，动量轮动全仓复利，捕捉涨价与产能扩张周期。',
     status: '运行中',
@@ -100,9 +111,10 @@ const strategies = [
     isRiskWarning: true,
   },
   {
+    key: '002837',
     to: '/strategies/a-share-002837',
     icon: '🏮',
-    title: 'A股动量轮动策略·英维克',
+    title: 'A股趋势追踪策略·英维克',
     code: 'ML-AMR',
     description: '聚焦英维克（002837）精密温控龙头，动量轮动全仓复利，捕捉 AI 液冷与储能温控景气周期。',
     status: '运行中',
@@ -113,19 +125,35 @@ const strategies = [
     isRiskWarning: true,
   },
   {
+    key: 'sse-510210',
+    to: '/strategies/sse-510210',
+    icon: '🇨🇳',
+    title: '上证指数ETH抄底策略',
+    code: 'ML-SSE',
+    description: '寻找下跌行情的极致释放点介入进场，承接市场恐慌盘，通过量化系统做出理想状态下理性交易，在市场达成共识时平稳离场保证收益的稳定性。这个策略利用人性自身的缺点以及价值的回归完成金融标的物的重新定价。',
+    status: '运行中',
+    statusColor: 'bg-green-500 text-white',
+    progress: 80,
+    progressColor: '#3b82f6',
+    riskIndex: '低风险',
+    isRiskWarning: false,
+  },
+  {
+    key: 'alpha-eth',
     to: '/strategies/alpha-eth',
     icon: 'Ξ',
-    title: '阿尔法策略·ETH',
+    title: '【沐龙】长盈叁号·趋势追踪策略',
     code: 'ML-ALP',
-    description: '以太坊阿尔法策略，本金 100 万、约 50% 仓位，基于 2 小时周期趋势信号纪律性进出，捕捉 ETH 中短期趋势 Alpha。',
+    description: '以太坊（ETH）趋势追踪策略，中低风险。',
     status: '运行中',
     statusColor: 'bg-green-500 text-white',
     progress: 85,
     progressColor: '#3b82f6',
-    riskIndex: '中风险',
-    isRiskWarning: true,
+    riskIndex: '低风险',
+    isRiskWarning: false,
   },
   {
+    key: 'eth',
     to: '/strategies/eth-only',
     icon: '₿',
     title: '加密趋势追踪策略 · ETH',
@@ -139,6 +167,7 @@ const strategies = [
     isRiskWarning: false,
   },
   {
+    key: 'hype',
     to: '/strategies/eth-trend',
     icon: '🔥',
     title: '加密趋势追踪策略 · HYPE',
@@ -152,6 +181,7 @@ const strategies = [
     isRiskWarning: true,
   },
   {
+    key: 'paxg',
     to: '/strategies/paxg-trend',
     icon: '🥇',
     title: '黄金波动率周期捕捉策略',
@@ -165,6 +195,7 @@ const strategies = [
     isRiskWarning: false,
   },
   {
+    key: 'nas100',
     to: '/strategies/nas100-trend',
     icon: '📈',
     title: '纳指波动率增强策略',
@@ -177,17 +208,102 @@ const strategies = [
     riskIndex: '低风险',
     isRiskWarning: false,
   },
+  {
+    key: 'mnq-dip',
+    to: '/strategies/mnq-dip',
+    icon: '📉',
+    title: '纳指抄底策略',
+    code: 'ML-MNQ',
+    description: '寻找下跌行情的极致释放点介入进场，承接市场恐慌盘，通过量化系统做出理想状态下理性交易，在市场达成共识时平稳离场保证收益的稳定性。这个策略利用人性自身的缺点以及价值的回归完成金融标的物的重新定价。',
+    status: '运行中',
+    statusColor: 'bg-green-500 text-white',
+    progress: 75,
+    progressColor: '#10b981',
+    riskIndex: '中风险',
+    isRiskWarning: true,
+  },
 ]
 
-/** 单策略：由总收益与自身回测区间复利年化（%）；区间不足 9 个月返回 null */
-function computeAnnualizedPct(ov) {
-  if (!ov || ov.total_return_pct == null || !ov.start_date || !ov.end_date) return null
-  const ret = Number(ov.total_return_pct)
-  if (!Number.isFinite(ret) || Math.abs(ret) < 1e-6) return null
-  const days = Math.max(1, (new Date(ov.end_date) - new Date(ov.start_date)) / 86400000)
-  const years = days / 365
-  if (years < 0.75) return null
-  return ((1 + ret / 100) ** (1 / years) - 1) * 100
+const DEFAULT_ORDER = strategies.map((s) => s.key)
+const STRATEGY_BY_KEY = Object.fromEntries(strategies.map((s) => [s.key, s]))
+const FIXED_DRAWDOWN = {
+  nvda: '--', intc: '--', mu: '--',
+  '300308': '--', '603986': '--', '688146': '--', '002837': '--',
+  'sse-510210': '--', 'alpha-eth': '-0.9%', eth: '-3.48%', hype: '-6.47%', paxg: '-1.44%', nas100: '-4%', 'mnq-dip': '--',
+}
+const FIXED_PROFIT_FACTOR = {
+  nvda: '--', intc: '--', mu: '--',
+  '300308': '--', '603986': '--', '688146': '--', '002837': '--',
+  'sse-510210': '--', 'alpha-eth': '2.75', eth: '2.58', hype: '2.84', paxg: '2.25', nas100: '0.71', 'mnq-dip': '--',
+}
+const USE_LIVE_DRAWDOWN = new Set([
+  'intc', 'nvda', 'mu', '300308', '603986', '688146', '002837', 'sse-510210', 'mnq-dip',
+])
+
+function loadCardOrder() {
+  try {
+    const raw = localStorage.getItem(ORDER_STORAGE_KEY)
+    const saved = raw ? JSON.parse(raw) : null
+    if (!Array.isArray(saved) || !saved.length) return [...DEFAULT_ORDER]
+    const known = new Set(DEFAULT_ORDER)
+    const ordered = saved.filter((k) => known.has(k))
+    DEFAULT_ORDER.forEach((k) => {
+      if (!ordered.includes(k)) ordered.push(k)
+    })
+    return ordered
+  } catch {
+    return [...DEFAULT_ORDER]
+  }
+}
+
+function saveCardOrder(order) {
+  try {
+    localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(order))
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function loadCardStatuses() {
+  try {
+    const raw = localStorage.getItem(STATUS_STORAGE_KEY)
+    const saved = raw ? JSON.parse(raw) : null
+    return saved && typeof saved === 'object' ? saved : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveCardStatuses(map) {
+  try {
+    localStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(map))
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function statusColorFor(status) {
+  const s = String(status || '')
+  if (s.includes('运行')) return 'bg-green-500 text-white'
+  if (s.includes('测试')) return 'bg-blue-500 text-white'
+  if (s.includes('已平仓')) return 'bg-gray-400 text-white'
+  return 'bg-gray-100 text-gray-700'
+}
+
+/** 卡片左上角：展示当年收益（非年化）。 */
+function resolveCardYearReturn(key, ov, yearlyReturns) {
+  const cy = String(new Date().getFullYear())
+  const yearBlock = yearlyReturns?.years?.[cy]
+  const row = Array.isArray(yearBlock?.by_strategy)
+    ? yearBlock.by_strategy.find((x) => x.key === key)
+    : null
+  if (row && row.return_pct != null && Number.isFinite(Number(row.return_pct))) {
+    return { pct: Number(row.return_pct), label: '当年收益' }
+  }
+  if (ov?.total_return_pct != null && Number.isFinite(Number(ov.total_return_pct))) {
+    return { pct: Number(ov.total_return_pct), label: '当年收益' }
+  }
+  return null
 }
 
 const formatYearPct = (v) => {
@@ -200,6 +316,11 @@ export default function StrategyMatrixAlt() {
   const path = useLocation().pathname
   const [overviews, setOverviews] = useState({})
   const [yearlyReturns, setYearlyReturns] = useState(null)
+  const [cardOrder, setCardOrder] = useState(loadCardOrder)
+  const [statusMap, setStatusMap] = useState(loadCardStatuses)
+  const [draggingKey, setDraggingKey] = useState(null)
+  const [dragOverKey, setDragOverKey] = useState(null)
+  const suppressClickRef = useRef(false)
 
   useEffect(() => {
     const reqs = [
@@ -208,6 +329,8 @@ export default function StrategyMatrixAlt() {
       { key: 'hype', fn: getEthTrendOverview },
       { key: 'paxg', fn: getPaxgTrendOverview },
       { key: 'nas100', fn: getNas100TrendOverview },
+      { key: 'sse-510210', fn: getSse510210Overview },
+      { key: 'mnq-dip', fn: getMnqDipOverview },
       { key: 'intc', fn: getIntcOverview },
       { key: 'nvda', fn: getNvdaOverview },
       { key: 'mu', fn: getMuOverview },
@@ -240,8 +363,9 @@ export default function StrategyMatrixAlt() {
     return Number(profit)
   }
 
-  // 动态计算统计数据
-  const runningCount = strategies.filter((s) => s.status === '运行中').length
+  // 动态计算统计数据（运行状态可页面修改，计入本地覆盖）
+  const resolveStatus = (s) => statusMap[s.key] || s.status
+  const runningCount = strategies.filter((s) => resolveStatus(s) === '运行中').length
   const overviewEntries = Object.entries(overviews)
   const avgWinRate = overviewEntries.length
     ? (overviewEntries.reduce((s, [, o]) => s + (o.win_rate_pct || 0), 0) / overviewEntries.length).toFixed(2)
@@ -295,38 +419,63 @@ export default function StrategyMatrixAlt() {
     { title: '2027年化', value: '--' },
   ]
 
-  // 与 strategies 数组顺序一致
-  const strategyKeys = ['nvda', 'intc', 'mu', '300308', '603986', '688146', '002837', 'alpha-eth', 'eth', 'hype', 'paxg', 'nas100']
-  const useLiveDrawdown = new Set(['intc', 'nvda', 'mu', '300308', '603986', '688146', '002837', 'alpha-eth'])
-  const enrichedStrategies = strategies.map((s, i) => {
-    const key = strategyKeys[i]
-    const ov = overviews[key]
-    const fixedDrawdown = ['--', '--', '--', '--', '--', '--', '--', '--', '-3.48%', '-6.47%', '-1.44%', '-4%']
-    const fixedProfitFactor = ['--', '--', '--', '--', '--', '--', '--', '2.75', '2.58', '2.84', '2.25', '0.71']
-    const liveDrawdown = ov?.max_drawdown_pct != null
-      ? `-${Number(ov.max_drawdown_pct).toFixed(2)}%`
-      : null
-    const drawdown = useLiveDrawdown.has(key) && liveDrawdown ? liveDrawdown : fixedDrawdown[i]
-    const profitFactor =
-      key === 'intc' ? '10.39' : key === 'nvda' ? '9.8' : (ov ? formatProfitFactor(ov.profit_factor) : fixedProfitFactor[i])
-    if (!ov) return { ...s, annualReturn: '--', annualReturnLabel: '平均年化', drawdown, profitFactor }
-    let annualReturn = '--'
-    let annualReturnLabel = '平均年化'
-    const ann = computeAnnualizedPct(ov)
-    if (ann != null) {
-      annualReturn = `${ann > 0 ? '+' : ''}${ann.toFixed(2)}%`
-    } else if (ov.total_return_pct != null) {
-      annualReturnLabel = '区间收益'
-      annualReturn = `${ov.total_return_pct > 0 ? '+' : ''}${ov.total_return_pct.toFixed(2)}%`
-    }
-    return {
-      ...s,
-      annualReturn,
-      annualReturnLabel,
-      drawdown,
-      profitFactor,
-    }
-  })
+  const enrichedStrategies = useMemo(() => {
+    return cardOrder
+      .map((key) => STRATEGY_BY_KEY[key])
+      .filter(Boolean)
+      .map((s) => {
+        const key = s.key
+        const status = statusMap[key] || s.status
+        const statusColor = statusColorFor(status)
+        const ov = overviews[key]
+        const liveDrawdown = ov?.max_drawdown_pct != null
+          ? `-${Number(ov.max_drawdown_pct).toFixed(2)}%`
+          : null
+        const drawdown = USE_LIVE_DRAWDOWN.has(key) && liveDrawdown
+          ? liveDrawdown
+          : (FIXED_DRAWDOWN[key] ?? '--')
+        const profitFactor =
+          key === 'intc'
+            ? '10.39'
+            : key === 'nvda'
+              ? '9.8'
+              : (ov ? formatProfitFactor(ov.profit_factor) : (FIXED_PROFIT_FACTOR[key] ?? '--'))
+        if (!ov) {
+          return { ...s, status, statusColor, annualReturn: '--', annualReturnLabel: '当年收益', drawdown, profitFactor }
+        }
+        const resolved = resolveCardYearReturn(key, ov, yearlyReturns)
+        let annualReturn = '--'
+        let annualReturnLabel = '当年收益'
+        if (resolved) {
+          annualReturnLabel = resolved.label
+          const p = resolved.pct
+          annualReturn = `${p > 0 ? '+' : ''}${p.toFixed(2)}%`
+        }
+        return { ...s, status, statusColor, annualReturn, annualReturnLabel, drawdown, profitFactor }
+      })
+  }, [cardOrder, overviews, statusMap, yearlyReturns])
+
+  const updateCardStatus = (key, nextStatus) => {
+    setStatusMap((prev) => {
+      const next = { ...prev, [key]: nextStatus }
+      saveCardStatuses(next)
+      return next
+    })
+  }
+
+  const reorderCards = (fromKey, toKey) => {
+    if (!fromKey || !toKey || fromKey === toKey) return
+    setCardOrder((prev) => {
+      const next = [...prev]
+      const from = next.indexOf(fromKey)
+      const to = next.indexOf(toKey)
+      if (from < 0 || to < 0) return prev
+      next.splice(from, 1)
+      next.splice(to, 0, fromKey)
+      saveCardOrder(next)
+      return next
+    })
+  }
 
   return (
     <div className="strategy-matrix-alt min-h-full w-full">
@@ -375,6 +524,7 @@ export default function StrategyMatrixAlt() {
               <span>全部状态</span>
               <ChevronDown className="h-4 w-4 shrink-0" />
             </button>
+            <span className="hidden text-xs text-[#9ca3af] sm:inline">拖拽调序 · 点击状态可切换</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex rounded-lg bg-[#f3f4f6] p-1">
@@ -404,9 +554,9 @@ export default function StrategyMatrixAlt() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {enrichedStrategies.map((s, index) => (
+          {enrichedStrategies.map((s) => (
             <StrategyCardMatrix
-              key={`${s.code}-${index}`}
+              key={s.key}
               to={s.to}
               icon={s.icon}
               title={s.title}
@@ -414,6 +564,9 @@ export default function StrategyMatrixAlt() {
               description={s.description}
               status={s.status}
               statusColor={s.statusColor}
+              statusEditable
+              statusOptions={STATUS_OPTIONS}
+              onStatusChange={(next) => updateCardStatus(s.key, next)}
               progress={s.progress}
               progressColor={s.progressColor}
               annualReturn={s.annualReturn}
@@ -423,6 +576,41 @@ export default function StrategyMatrixAlt() {
               riskIndex={s.riskIndex}
               isRiskWarning={s.isRiskWarning}
               isActive={path === s.to}
+              draggable
+              isDragging={draggingKey === s.key}
+              isDragOver={dragOverKey === s.key && draggingKey !== s.key}
+              onDragStart={(e) => {
+                suppressClickRef.current = false
+                setDraggingKey(s.key)
+                e.dataTransfer.effectAllowed = 'move'
+                e.dataTransfer.setData('text/plain', s.key)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (dragOverKey !== s.key) setDragOverKey(s.key)
+              }}
+              onDragLeave={() => {
+                if (dragOverKey === s.key) setDragOverKey(null)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                const fromKey = e.dataTransfer.getData('text/plain') || draggingKey
+                reorderCards(fromKey, s.key)
+                suppressClickRef.current = true
+                setDraggingKey(null)
+                setDragOverKey(null)
+              }}
+              onDragEnd={() => {
+                setDraggingKey(null)
+                setDragOverKey(null)
+              }}
+              onNavigateClick={(e) => {
+                if (suppressClickRef.current) {
+                  e.preventDefault()
+                  suppressClickRef.current = false
+                }
+              }}
             />
           ))}
         </div>

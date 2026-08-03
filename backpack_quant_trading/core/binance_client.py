@@ -14,6 +14,7 @@ import logging
 import asyncio
 import aiohttp
 from datetime import datetime
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from typing import Dict, Any, Optional, List
 from urllib.parse import urlencode
 
@@ -76,25 +77,48 @@ class BinanceAPIClient:
     API Key / Secret 优先从参数传入，否则读取配置文件。
     """
 
-    def __init__(self, api_key: str = None, secret_key: str = None):
+    def __init__(self, api_key: str = None, secret_key: str = None, margin_type: str = None):
         self.base_url = BINANCE_FAPI_BASE
         self.api_key = api_key or config.binance.API_KEY
         self.secret_key = secret_key or config.binance.SECRET_KEY
         self.session: Optional[aiohttp.ClientSession] = None
         self.recv_window = 5000  # 请求有效窗口(ms)
         # 代理支持（国内访问币安需要）
-        # 优先级: 环境变量 HTTPS_PROXY / HTTP_PROXY → Windows 系统代理 → 无代理
-        self.proxy = (
-            os.environ.get("HTTPS_PROXY")
-            or os.environ.get("https_proxy")
-            or os.environ.get("HTTP_PROXY")
-            or os.environ.get("http_proxy")
-            or urllib.request.getproxies().get("https")
-            or urllib.request.getproxies().get("http")
-            or None
+        # 优先级: BINANCE_USE_PROXY=0 强制直连 → BINANCE_HTTPS_PROXY → HTTPS_PROXY / 系统代理
+        # API Key 若开了 IP 白名单，须放行实际出口 IP（走代理时是代理出口，不是服务器公网 IP）
+        force_direct = os.environ.get("BINANCE_USE_PROXY", "1").strip().lower() in (
+            "0", "false", "no", "off",
         )
+        if force_direct:
+            self.proxy = None
+        else:
+            self.proxy = (
+                os.environ.get("BINANCE_HTTPS_PROXY")
+                or os.environ.get("HTTPS_PROXY")
+                or os.environ.get("https_proxy")
+                or os.environ.get("HTTP_PROXY")
+                or os.environ.get("http_proxy")
+                or urllib.request.getproxies().get("https")
+                or urllib.request.getproxies().get("http")
+                or None
+            )
         if self.proxy:
             logger.info(f"[Binance] 使用代理: {self.proxy}")
+        elif force_direct:
+            logger.info("[Binance] BINANCE_USE_PROXY=0，强制直连（不走 HTTPS_PROXY）")
+        # symbol -> {tickSize, stepSize, pricePrecision, quantityPrecision}
+        self._symbol_filters: Dict[str, Dict[str, Any]] = {}
+        # 保证金模式：实例级可覆盖，默认读 BINANCE_MARGIN_TYPE / ISOLATED
+        raw_mt = (
+            margin_type
+            or getattr(getattr(config, "binance", None), "MARGIN_TYPE", None)
+            or "ISOLATED"
+        )
+        mt = str(raw_mt).strip().upper()
+        if mt in ("CROSS", "CROSSED", "全仓"):
+            self.margin_type = "CROSSED"
+        else:
+            self.margin_type = "ISOLATED"
 
     # ─────────────────────────── session 管理 ───────────────────────────
 
@@ -357,18 +381,40 @@ class BinanceAPIClient:
         return data
 
     async def set_margin_type(self, symbol: str, margin_type: str = "ISOLATED") -> Dict:
-        """设置保证金模式: ISOLATED / CROSSED。"""
+        """设置保证金模式: ISOLATED(逐仓) / CROSSED(全仓)。
+
+        -4046: 已是目标模式，视为成功。
+        有持仓时无法切换，会记警告但不抛异常（由调用方决定是否继续下单）。
+        """
         bn_sym = _to_binance_symbol(symbol)
+        mt = (margin_type or "ISOLATED").upper().strip()
+        if mt not in ("ISOLATED", "CROSSED"):
+            mt = "ISOLATED"
         try:
             data = await self._post("/fapi/v1/marginType", {
                 "symbol": bn_sym,
-                "marginType": margin_type.upper(),
+                "marginType": mt,
             })
+            if isinstance(data, dict):
+                code = data.get("code")
+                try:
+                    c = int(code) if code is not None else 0
+                except (TypeError, ValueError):
+                    c = 0
+                # -4046 No need to change margin type.
+                if c == -4046:
+                    logger.info(f"[Binance] {bn_sym} 已是 {mt}（逐仓/全仓无需切换）")
+                    return {"ok": True, "marginType": mt, "already": True}
+                if c < 0:
+                    logger.warning(
+                        f"[Binance] 设置保证金模式失败 {bn_sym}->{mt}: {data.get('msg') or data}"
+                    )
+                    return {"ok": False, "error": data.get("msg") or str(data), "raw": data}
+            logger.info(f"[Binance] 设置保证金模式 {bn_sym} -> {mt}: {data}")
+            return {"ok": True, "marginType": mt, "raw": data}
         except Exception as e:
-            # 已经是目标模式时币安会返回错误码 -4046，忽略
-            logger.debug(f"[Binance] 设置保证金模式忽略: {e}")
-            return {}
-        return data
+            logger.warning(f"[Binance] 设置保证金模式异常 {bn_sym}->{mt}: {e}")
+            return {"ok": False, "error": str(e)}
 
     # ─────────────────────────── 下单 ───────────────────────────────────
 
@@ -430,25 +476,44 @@ class BinanceAPIClient:
         """
         bn_sym = _to_binance_symbol(symbol)
 
+        # 下单前强制保证金模式（实例级 self.margin_type，默认逐仓）
+        await self.set_margin_type(symbol, getattr(self, "margin_type", None) or "ISOLATED")
+
         # 设置杠杆
         if max_leverage:
             await self.set_leverage(symbol, max_leverage)
 
+        filters = await self._get_symbol_filters(bn_sym)
+        qty_str = self._round_to_step(
+            float(quantity),
+            str(filters.get("stepSize") or "0.001"),
+            round_down=True,
+        )
         params: Dict = {
             "symbol": bn_sym,
             "side": side.upper(),
             "type": order_type.upper(),
-            "quantity": quantity,
+            "quantity": qty_str,
             "positionSide": position_side.upper(),
         }
         if reduce_only:
             params["reduceOnly"] = "true"
         if order_type.upper() == "LIMIT" and price:
-            params["price"] = price
+            params["price"] = self._round_to_step(
+                float(price),
+                str(filters.get("tickSize") or "0.01"),
+            )
             params["timeInForce"] = "GTC"
 
         data = await self._post("/fapi/v1/order", params)
-        logger.info(f"[Binance] 下单 {side} {quantity} {bn_sym}: {data}")
+        logger.info(f"[Binance] 下单 {side} {qty_str} {bn_sym}: {data}")
+        if isinstance(data, dict):
+            code = data.get("code")
+            try:
+                if code is not None and int(code) < 0:
+                    return {"status": "FAILED", "error": data.get("msg") or str(data), "raw": data}
+            except (TypeError, ValueError):
+                pass
         return data
 
     async def close_position(self, symbol: str, position_side: str = "BOTH") -> Dict:
@@ -472,6 +537,66 @@ class BinanceAPIClient:
 
     # ─────────────────────────── 订单管理 ───────────────────────────────
 
+    @staticmethod
+    def _fmt_price(px: float) -> str:
+        s = f"{float(px):.8f}".rstrip("0").rstrip(".")
+        return s if s else "0"
+
+    @staticmethod
+    def _fmt_qty(q: float) -> str:
+        s = f"{float(q):.8f}".rstrip("0").rstrip(".")
+        return s if s else "0"
+
+    @staticmethod
+    def _round_to_step(value: float, step: str, *, round_down: bool = False) -> str:
+        """按 tickSize/stepSize 对齐，避免 Precision is over the maximum。"""
+        try:
+            d = Decimal(str(value))
+            s = Decimal(str(step))
+        except Exception:
+            return BinanceAPIClient._fmt_price(value)
+        if s <= 0:
+            return BinanceAPIClient._fmt_price(value)
+        rounding = ROUND_DOWN if round_down else ROUND_HALF_UP
+        n = (d / s).to_integral_value(rounding=rounding)
+        out = (n * s).normalize()
+        text = format(out, "f")
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text if text else "0"
+
+    async def _get_symbol_filters(self, bn_sym: str) -> Dict[str, Any]:
+        """缓存读取 PRICE_FILTER.tickSize / LOT_SIZE.stepSize。"""
+        key = (bn_sym or "").upper()
+        cached = self._symbol_filters.get(key)
+        if cached:
+            return cached
+        info: Dict[str, Any] = {
+            "tickSize": "0.01",
+            "stepSize": "0.001",
+            "pricePrecision": 2,
+            "quantityPrecision": 3,
+        }
+        try:
+            data = await self._get("/fapi/v1/exchangeInfo", {"symbol": key})
+            symbols = data.get("symbols") if isinstance(data, dict) else None
+            row = None
+            if isinstance(symbols, list) and symbols:
+                row = next((s for s in symbols if s.get("symbol") == key), symbols[0])
+            if isinstance(row, dict):
+                info["pricePrecision"] = int(row.get("pricePrecision") or 2)
+                info["quantityPrecision"] = int(row.get("quantityPrecision") or 3)
+                for f in row.get("filters") or []:
+                    ft = f.get("filterType")
+                    if ft == "PRICE_FILTER" and f.get("tickSize"):
+                        info["tickSize"] = str(f["tickSize"])
+                    elif ft == "LOT_SIZE" and f.get("stepSize"):
+                        info["stepSize"] = str(f["stepSize"])
+        except Exception as e:
+            logger.warning(f"[Binance] 获取 {key} filters 失败，使用默认精度: {e}")
+        self._symbol_filters[key] = info
+        return info
+
     async def place_tpsl_order(
         self,
         symbol: str,
@@ -482,35 +607,75 @@ class BinanceAPIClient:
         position_side: str = "BOTH",
         **kwargs,
     ) -> Dict:
-        """挂币安原生止损/止盈单。
+        """挂币安原生止损/止盈条件单（与 HL 对齐）。
 
-        币安策略：
-          - SL: 不挂交易所原生条件单（STOP_MARKET 易误触发），由软件御控周期负责
-          - TP: 挂 LIMIT SELL GTC 在目标价，安全可靠
+        自 2025-12 起，USD-M 条件单必须走 Algo Order API（/fapi/v1/algoOrder），
+        再用 /fapi/v1/order 会返回 -4120。
+
+        - SL → STOP_MARKET / TP → TAKE_PROFIT_MARKET
+        - workingType 默认 CONTRACT_PRICE，可用 kwargs.working_type 覆盖为 MARK_PRICE
+        - 始终 closePosition=true 全平（Algo 条件单勿用 reduceOnly）
+        返回统一：{"status":"OK"|"FAILED", "orderId": str|None, "error": ...}
+        （orderId 实际为 algoId，便于策略侧统一存撤）
         """
         bn_sym = _to_binance_symbol(symbol)
-        is_sl = tpsl.lower() == "sl"
+        is_sl = str(tpsl or "").lower() == "sl"
+        order_type = "STOP_MARKET" if is_sl else "TAKE_PROFIT_MARKET"
+        working_type = (kwargs.get("working_type") or "CONTRACT_PRICE").upper()
 
-        if is_sl:
-            # SL 不挂交易所单，完全交由软件御控周期处理
-            # （STOP_MARKET 在无 workingType 时容易因内耶价偏差导致即时触发）
-            logger.info(f"[Binance] SL 由软件御控周期守护（每5s轮询），不挂交易所条件单")
-            return {"sl_mode": "software_monitor", "trigger_price": trigger_price}
-
-        # TP: 挂 LIMIT SELL GTC 在目标价
-        limit_params: Dict = {
-            "symbol":      bn_sym,
-            "side":        side.upper(),
-            "type":        "LIMIT",
-            "price":       round(trigger_price, 2),
-            "timeInForce": "GTC",
-            "reduceOnly":  "true",
+        filters = await self._get_symbol_filters(bn_sym)
+        # 做多 SL 向下取整更保守；TP 用四舍五入到 tick
+        trigger_str = self._round_to_step(
+            float(trigger_price),
+            str(filters.get("tickSize") or "0.01"),
+            round_down=is_sl,
+        )
+        # Algo 条件单：优先 closePosition（全平），勿传 reduceOnly（Algo API 不支持/不可靠，
+        # 否则可能在无仓时留下“幽灵”条件单，或无法正确只减仓）
+        params: Dict = {
+            "algoType": "CONDITIONAL",
+            "symbol": bn_sym,
+            "side": str(side or "SELL").upper(),
+            "type": order_type,
+            "triggerPrice": trigger_str,
+            "workingType": working_type,
+            "positionSide": str(position_side or "BOTH").upper(),
+            "closePosition": "true",
         }
-        if quantity:
-            limit_params["quantity"] = round(quantity, 3)
-        data = await self._post("/fapi/v1/order", limit_params)
-        logger.info(f"[Binance] TP LIMIT 挂单 {bn_sym} @{trigger_price:.2f} qty={quantity}: {data}")
-        return data
+
+        try:
+            data = await self._post("/fapi/v1/algoOrder", params)
+            if isinstance(data, dict):
+                code = data.get("code")
+                # 成功响应也可能带 code="200"（字符串）；仅负数为失败
+                if code is not None:
+                    try:
+                        if int(code) < 0:
+                            err = data.get("msg") or str(data)
+                            logger.error(f"[Binance] {tpsl.upper()} 条件单失败: {err}")
+                            return {"status": "FAILED", "error": err, "raw": data}
+                    except (TypeError, ValueError):
+                        pass
+                oid = data.get("algoId")
+                if oid is None:
+                    oid = data.get("orderId")
+                if oid is None and data.get("msg") and "success" not in str(data.get("msg")).lower():
+                    err = data.get("msg") or str(data)
+                    logger.error(f"[Binance] {tpsl.upper()} 条件单无 algoId: {err}")
+                    return {"status": "FAILED", "error": err, "raw": data}
+                logger.info(
+                    f"[Binance] {tpsl.upper()} {order_type} 挂单成功(algo) "
+                    f"{bn_sym} @{trigger_str} algoId={oid} side={params['side']}"
+                )
+                return {
+                    "status": "OK",
+                    "orderId": str(oid) if oid is not None else None,
+                    "raw": data,
+                }
+            return {"status": "FAILED", "error": f"unexpected response: {data}"}
+        except Exception as e:
+            logger.error(f"[Binance] place_tpsl_order({tpsl}) 异常: {e}")
+            return {"status": "FAILED", "error": str(e)}
 
     async def cancel_order_async(
         self,
@@ -527,7 +692,11 @@ class BinanceAPIClient:
         order_id: Optional[str] = None,
         client_id: Optional[str] = None,
     ) -> Dict:
-        """撤销指定订单。"""
+        """撤销指定订单。
+
+        先尝试普通单 /fapi/v1/order；失败再按 algoId 走 /fapi/v1/algoOrder
+        （止盈止损条件单自 2025-12 起为 algoId）。
+        """
         bn_sym = _to_binance_symbol(symbol)
         params: Dict = {"symbol": bn_sym}
         if order_id:
@@ -535,17 +704,39 @@ class BinanceAPIClient:
         if client_id:
             params["origClientOrderId"] = client_id
         data = await self._delete("/fapi/v1/order", params)
+        # 普通撤单失败时，按条件单 algoId 再撤一次
+        if isinstance(data, dict) and order_id:
+            code = data.get("code")
+            try:
+                bad = code is not None and int(code) < 0
+            except (TypeError, ValueError):
+                bad = False
+            if bad:
+                algo_data = await self._delete(
+                    "/fapi/v1/algoOrder",
+                    {"algoId": order_id},
+                )
+                logger.info(
+                    f"[Binance] 普通撤单失败后改撤 algoId={order_id}: {algo_data}"
+                )
+                return algo_data
         return data
 
     async def cancel_all_orders(self, symbol: Optional[str] = None) -> Dict:
-        """撤销指定交易对的所有挂单。"""
+        """撤销指定交易对的所有挂单（含 Algo 条件单）。"""
         if symbol:
             bn_sym = _to_binance_symbol(symbol)
             data = await self._delete("/fapi/v1/allOpenOrders", {"symbol": bn_sym})
-        else:
-            # 没有 symbol 时无法批量撤单（Binance 不支持），只能逐一撤
-            data = {"msg": "symbol required for cancel_all_orders"}
-            logger.warning("[Binance] cancel_all_orders 需要传入 symbol")
+            try:
+                algo = await self._delete(
+                    "/fapi/v1/algoOpenOrders", {"symbol": bn_sym}
+                )
+                logger.info(f"[Binance] 已撤全部 algo 挂单 {bn_sym}: {algo}")
+            except Exception as e:
+                logger.warning(f"[Binance] 撤销 algo 挂单失败 {bn_sym}: {e}")
+            return data
+        data = {"msg": "symbol required for cancel_all_orders"}
+        logger.warning("[Binance] cancel_all_orders 需要传入 symbol")
         return data
 
     async def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:

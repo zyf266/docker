@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from datetime import datetime
 from typing import Optional
 import enum
+import json
 import threading
 from decimal import Decimal as PyDecimal
 
@@ -239,14 +240,17 @@ class User(Base):
 
 class UserInstance(Base):
     """用户实例归属表：实盘/网格/币种监视按用户隔离，刷新后恢复。
-    注意：config_json 仅存 platform/strategy/symbol 等元数据，绝不存储 API Key、私钥等敏感信息。"""
+
+    config_json 可含交易参数与 RSA 加密密文（private_key_enc / api_secret_enc 等）；
+    禁止存明文 private_key / api_secret。
+    """
     __tablename__ = 'user_instances'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, nullable=False, index=True)
     instance_type = Column(String(30), nullable=False)  # 'live' | 'grid' | 'currency_monitor'
     instance_id = Column(String(100), nullable=False, index=True)
-    config_json = Column(Text, nullable=True)  # 仅存 platform/strategy/symbol 等，不含私钥
+    config_json = Column(Text, nullable=True)  # 元数据 + 可选 *_enc 密文
     created_at = Column(DateTime, default=datetime.now)
 
     __table_args__ = (Index('idx_user_instance', 'user_id', 'instance_type', 'instance_id'),)
@@ -288,6 +292,8 @@ class DatabaseManager:
             pool_size=config.database.POOL_SIZE,
             max_overflow=config.database.MAX_OVERFLOW,
             pool_pre_ping=True,
+            pool_timeout=20,
+            pool_recycle=1800,
             echo=False
         )
         self.session_factory = sessionmaker(bind=self.engine)
@@ -554,23 +560,49 @@ class DatabaseManager:
             session.close()
 
     def save_user_instance(self, user_id: int, instance_type: str, instance_id: str, config_json: Optional[str] = None):
-        """保存用户实例归属（实盘/网格/币种监视）"""
-        session = self.get_session()
-        try:
-            existing = session.query(UserInstance).filter_by(
-                user_id=user_id, instance_type=instance_type, instance_id=instance_id
-            ).first()
-            if not existing:
-                ui = UserInstance(user_id=user_id, instance_type=instance_type, instance_id=instance_id, config_json=config_json)
-                session.add(ui)
-            else:
-                existing.config_json = config_json
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
+        """保存用户实例归属（实盘/网格/币种监视）。遇 MySQL 锁等待超时自动重试。"""
+        import time
+        from sqlalchemy.exc import OperationalError
+
+        last_err: Optional[Exception] = None
+        for attempt in range(1, 4):
+            session = self.get_session()
+            try:
+                existing = session.query(UserInstance).filter_by(
+                    user_id=user_id, instance_type=instance_type, instance_id=instance_id
+                ).first()
+                if not existing:
+                    ui = UserInstance(
+                        user_id=user_id,
+                        instance_type=instance_type,
+                        instance_id=instance_id,
+                        config_json=config_json,
+                    )
+                    session.add(ui)
+                else:
+                    existing.config_json = config_json
+                session.commit()
+                return
+            except OperationalError as e:
+                session.rollback()
+                last_err = e
+                # 1205 Lock wait timeout / 1213 Deadlock
+                err = str(e.orig) if getattr(e, "orig", None) else str(e)
+                if ("1205" in err or "1213" in err) and attempt < 3:
+                    time.sleep(0.4 * attempt)
+                    continue
+                raise
+            except Exception as e:
+                session.rollback()
+                raise e
+            finally:
+                session.close()
+                try:
+                    self.Session.remove()
+                except Exception:
+                    pass
+        if last_err:
+            raise last_err
 
     def get_user_instance_ids(self, user_id: int, instance_type: str) -> list:
         """获取某用户某类型的所有 instance_id"""
@@ -587,6 +619,25 @@ class DatabaseManager:
         try:
             rows = session.query(UserInstance).filter_by(user_id=user_id, instance_type=instance_type).all()
             return [(r.instance_id, r.config_json) for r in rows]
+        finally:
+            session.close()
+
+    def list_live_instances_by_status(self, status: str = "running") -> list:
+        """返回 [(user_id, instance_id, config_dict), ...]，按 config_json.status 过滤。"""
+        session = self.get_session()
+        try:
+            rows = session.query(UserInstance).filter_by(instance_type="live").all()
+            out = []
+            for r in rows:
+                try:
+                    obj = json.loads(r.config_json) if r.config_json else {}
+                except Exception:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                if (obj.get("status") or "").strip() == status:
+                    out.append((r.user_id, r.instance_id, obj))
+            return out
         finally:
             session.close()
 

@@ -1,6 +1,7 @@
 """加密货币分析师 Agent。"""
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, Tuple
 
 from backpack_quant_trading.agents.analysts.base import run_analyst_pipeline
@@ -16,36 +17,64 @@ def _normalize_coin(symbol: str) -> str:
     return s or symbol
 
 
+def _agent_fast_enabled() -> bool:
+    # 默认开：钉钉问答跳过三层/MTF 多余 HL 请求
+    return os.getenv("AGENT_CRYPTO_FAST", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _us_overlay_enabled() -> bool:
+    return os.getenv("AGENT_CRYPTO_US_OVERLAY", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def _snapshot(symbol: str, req: AnalyzeRequest) -> Tuple[Dict[str, Any], str]:
     try:
         from backpack_quant_trading.core.crypto_signal_scorer import build_indicator_snapshot
         from backpack_quant_trading.agents.us_equity_overlay import fetch_us_equity_overlay_snapshot
 
         coin = _normalize_coin(symbol)
-        snap, err = build_indicator_snapshot(coin, interval=req.timeframe or None)
+        iv = (req.timeframe or "").strip()
+        if iv:
+            try:
+                from backpack_quant_trading.core.crypto_signal_scorer import _tf_map_webhook
+
+                iv = _tf_map_webhook(iv) or iv.lower()
+            except Exception:
+                iv = iv.lower()
+        snap, err = build_indicator_snapshot(
+            coin, interval=iv or None, agent_fast=_agent_fast_enabled()
+        )
+        us_overlay = fetch_us_equity_overlay_snapshot() if _us_overlay_enabled() else {}
         if not snap:
-            # 即使加密 K 线失败，仍附带美股快照供模型降级判断
-            us_overlay = fetch_us_equity_overlay_snapshot()
             return {
                 "symbol": coin,
                 "last_close": None,
                 "metrics": {},
                 "recent_bars": [],
                 "us_equity_overlay": us_overlay,
-                "interval": req.timeframe or "4h",
+                "interval": iv or "4h",
             }, err or "无加密快照"
 
         metrics = dict(snap.get("metrics") or {})
         bars = snap.get("recent_bars") or []
         last = bars[-1].get("close") if bars else metrics.get("close")
-        us_overlay = fetch_us_equity_overlay_snapshot()
         return {
             "symbol": snap.get("symbol") or coin,
             "last_close": last,
             "metrics": metrics,
             "recent_bars": bars,
-            "interval": snap.get("interval") or req.timeframe or "4h",
+            "interval": snap.get("interval") or iv or "4h",
             "us_equity_overlay": us_overlay,
+            "agent_fast": _agent_fast_enabled(),
         }, ""
     except Exception as exc:
         return {}, str(exc)

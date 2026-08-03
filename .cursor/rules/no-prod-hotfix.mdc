@@ -1,0 +1,15 @@
+---
+description: 正式服禁止热更新，只允许 GitHub Actions CI/CD
+alwaysApply: true
+---
+
+# 正式服发布（禁止热更）
+
+对生产机 `47.110.57.118` / `/opt/backpack-quant`：
+
+- **禁止** `docker cp`、局部 `scp`、执行 `deploy/hotfix-*.sh`、`restore-prod-hotfixes.sh` 做热更。
+- **唯一允许**：GitHub Actions → **Deploy to Prod ECS**（`deploy-prod.yml`）。
+- 热更会造成半套版本（如 `margin_type` 报错、前端文案回退、`No module named lighter`）。
+- 用户若要求「热更正式服」，应拒绝并改为：本地改代码 → 提交/推送 → 跑正式机 CI/CD；紧急才可用 `ALLOW_PROD_HOTFIX=1`，事后必须全量 CI 对齐。
+
+详见 `docs/deploy-policy-no-hotfix.md`。

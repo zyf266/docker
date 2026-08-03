@@ -30,7 +30,7 @@ export default function AShareMomentumStrategy({ code }) {
   const slug = code
   return (
     <StrategyDetail
-      title={`A股动量轮动策略·${cfg.name}`}
+      title={`A股趋势追踪策略·${cfg.name}`}
       subtitle={cfg.subtitle}
       currencyLabel="CNY"
       initialCapital={cfg.initialCapital}

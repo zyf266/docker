@@ -2,9 +2,9 @@ import React from 'react'
 import StrategyDetail from './StrategyDetail'
 import { getAlphaEthOverview, getAlphaEthTrades, getAlphaEthKlines } from '../api/strategy'
 
-const title = '阿尔法策略·ETH'
+const title = '【沐龙】长盈叁号·趋势追踪策略'
 const subtitle =
-  '以太坊（ETH）阿尔法策略，本金 100 万 USDT、约 50% 仓位运行。基于 2 小时周期趋势信号进出场，纪律性执行多头趋势段，追求风险调整后的超额收益。'
+  '以太坊（ETH）趋势追踪策略，中低风险，本金 100 万 USDT、约 50% 仓位运行。'
 
 export default function AlphaEthStrategy() {
   return (
