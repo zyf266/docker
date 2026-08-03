@@ -231,6 +231,25 @@ class AdaptiveLongStrategy:
         self._stop = True
         self.is_enabled = False
 
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            "instance_id": self.instance_id,
+            "exchange": self.exchange,
+            "symbol_filter": self.symbol_filter,
+            "timeframe_filter": self.timeframe_filter,
+            "margin_amount": self.margin_amount,
+            "leverage": self.leverage,
+            "margin_type": getattr(self, "margin_type", None),
+            "position": self.position,
+            "symbol": self.symbol,
+            "position_size": self.position_size,
+            "entry_price": self.entry_price,
+            "sl_price": self.sl_price,
+            "tp_price": self.tp_price,
+            "last_signal": self.last_signal,
+            "running": bool(getattr(self, "is_enabled", False) and not getattr(self, "_stop", True)),
+        }
+
     # ─── 兼容层: 价格 / 余额 ─────────────────────────────
     async def _get_price(self, symbol: str) -> float:
         """获取币种当前价格（兼容 HL、Binance、Lighter）"""
