@@ -167,10 +167,8 @@ const NetInflowSymbolChart = ({ symbol, snapshot }) => {
         const values = (series.values || []).map((v) =>
           Number.isFinite(Number(v)) ? Number(Number(v).toFixed(4)) : 0
         )
-        const times = (series.times || []).map((t) => {
-          const m = String(t).match(/(\d{2}:\d{2})$/)
-          return m ? m[1] : t
-        })
+        // 后端已按北京时间格式化为 "MM-DD HH:mm"；勿再截成只剩时刻，否则昨晚 23:55 会看起来像“比更新时间还晚”
+        const times = series.times || []
         const net24 = series.net_24h ?? snapshot?.net_24h
         const ymin = values.length ? Math.min(0, ...values) : -1
         const ymax = values.length ? Math.max(0, ...values) : 1
@@ -183,17 +181,23 @@ const NetInflowSymbolChart = ({ symbol, snapshot }) => {
             text: `24小时资金净流入(${base})`,
             subtext:
               net24 != null
-                ? `滚动24h ${Number(net24) >= 0 ? '+' : ''}${Number(net24).toFixed(2)} ${base}`
-                : '',
+                ? `滚动24h ${Number(net24) >= 0 ? '+' : ''}${Number(net24).toFixed(2)} ${base} · 北京时间`
+                : '北京时间',
             left: 8,
             top: 4,
             textStyle: { color: '#e5e5e5', fontSize: 12, fontWeight: 500 },
             subtextStyle: { color: '#f0b90b', fontSize: 11 },
           },
-          grid: { left: 52, right: 12, top: 48, bottom: 24 },
+          grid: { left: 56, right: 12, top: 48, bottom: 28 },
           tooltip: {
             trigger: 'axis',
-            valueFormatter: (v) => `${Number(v).toFixed(2)} ${base}`,
+            formatter: (params) => {
+              const p = Array.isArray(params) ? params[0] : params
+              if (!p) return ''
+              const t = p.axisValueLabel ?? p.name ?? ''
+              const v = Number(p.value)
+              return `${t}（北京时间）<br/>净流入 ${v.toFixed(2)} ${base}`
+            },
           },
           xAxis: {
             type: 'category',
@@ -202,7 +206,16 @@ const NetInflowSymbolChart = ({ symbol, snapshot }) => {
             axisLabel: {
               color: '#888',
               fontSize: 9,
-              interval: Math.max(0, Math.floor(times.length / 4) - 1),
+              hideOverlap: true,
+              formatter: (v) => {
+                const s = String(v)
+                // 轴上仍挤一点：跨日显示月-日，否则只显示时刻
+                const m = s.match(/^(\d{2}-\d{2})\s+(\d{2}:\d{2})$/)
+                if (!m) return s
+                const hh = Number(m[2].slice(0, 2))
+                if (hh === 0 || hh === 8 || hh === 16) return `${m[1]} ${m[2]}`
+                return m[2]
+              },
             },
             axisLine: { lineStyle: { color: '#333' } },
           },
