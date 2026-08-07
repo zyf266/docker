@@ -51,7 +51,7 @@ CONFIG = {
         "做空策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=615446fec028e384703e8fb4b40cb19d92a5d8f330b7f3a411dc9e8e143d0a89",
         "山寨做多策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=78f43fd7bf178e69b642b20be1b76addf64879db3427736f78643385645fef49",
         "实盘交易": "https://oapi.dingtalk.com/robot/send?access_token=5c0c5fc145b217a7a10ec0d6356ae24d9dd31b620ccb4be0251ff729e5cd0adb",
-        "A股策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=9507265055de756e8b38b2c9175a7f696cb899fd2532f440b01715d131cf6d03",
+        "A股策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=a9c58612628adb78eb2fc2a741a2145d7ff487e9338433735dd53be57f124045",
     },
     # 特定策略单独钉钉群：ETH做空策略
     "dingtalk_webhook_eth_short": "https://oapi.dingtalk.com/robot/send?access_token=615446fec028e384703e8fb4b40cb19d92a5d8f330b7f3a411dc9e8e143d0a89",
