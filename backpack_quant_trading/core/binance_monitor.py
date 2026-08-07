@@ -300,24 +300,32 @@ def fetch_binance_klines(
     limit: int = 500,
     *,
     market: str = "futures",
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
 ) -> Optional[List[Dict]]:
     """
     从币安获取K线数据（永续合约或现货）。
     symbol: 如 ETHUSDT, BTCUSDT, 1000SHIBUSDT
     interval: 如 2h, 4h, 1d, 1w
     market: futures | spot
-    返回: [{"open_time": ts, "open": float, "high": float, "low": float, "close": float, ...}, ...]
+    返回: [{"open_time": ts, "open": float, ..., "quote_volume", "taker_buy_quote_volume"}, ...]
     """
     try:
         base = _binance_api_base(market)
         url = f"{base}{_klines_path(market)}"
-        params = {"symbol": symbol.upper(), "interval": interval, "limit": limit}
+        params: Dict[str, Any] = {"symbol": symbol.upper(), "interval": interval, "limit": limit}
+        if start_time is not None:
+            params["startTime"] = int(start_time)
+        if end_time is not None:
+            params["endTime"] = int(end_time)
         data = _http_get_json_sync(url, params=params, timeout_sec=15)
         if not isinstance(data, list):
             logger.error(f"获取币安K线返回异常（非数组） {market} {symbol} {interval}: {data}")
             return None
         result = []
         for bar in data:
+            quote_vol = float(bar[7]) if len(bar) > 7 else 0.0
+            taker_buy_quote = float(bar[10]) if len(bar) > 10 else 0.0
             result.append({
                 "open_time": bar[0],
                 "open": float(bar[1]),
@@ -326,6 +334,8 @@ def fetch_binance_klines(
                 "close": float(bar[4]),
                 "volume": float(bar[5]),
                 "close_time": bar[6],
+                "quote_volume": quote_vol,
+                "taker_buy_quote_volume": taker_buy_quote,
             })
         return result
     except Exception as e:
@@ -787,6 +797,55 @@ def fetch_binance_spot_symbols_usdt() -> List[str]:
         if _SPOT_SYMBOLS_CACHE:
             return _SPOT_SYMBOLS_CACHE
         return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT"]
+
+
+_SPOT_ALL_SYMBOLS_CACHE_FILE = Path(__file__).resolve().parent.parent / "data" / "symbols_spot_all_cache.json"
+_SPOT_ALL_SYMBOLS_CACHE: Optional[List[str]] = None
+_SPOT_ALL_SYMBOLS_CACHE_TIME: float = 0
+
+
+def fetch_binance_spot_symbols_all() -> List[str]:
+    """获取币安全部现货 TRADING 交易对（不限计价货币）。"""
+    global _SPOT_ALL_SYMBOLS_CACHE, _SPOT_ALL_SYMBOLS_CACHE_TIME
+    now = time.time()
+    if _SPOT_ALL_SYMBOLS_CACHE is not None and (now - _SPOT_ALL_SYMBOLS_CACHE_TIME) < SYMBOLS_CACHE_TTL_SEC:
+        return _SPOT_ALL_SYMBOLS_CACHE
+    if _SPOT_ALL_SYMBOLS_CACHE_FILE.exists():
+        try:
+            data = json.loads(_SPOT_ALL_SYMBOLS_CACHE_FILE.read_text(encoding="utf-8"))
+            symbols = data.get("symbols")
+            updated_at = float(data.get("updated_at", 0))
+            if isinstance(symbols, list) and symbols and (now - updated_at) < SYMBOLS_CACHE_TTL_SEC:
+                _SPOT_ALL_SYMBOLS_CACHE = symbols
+                _SPOT_ALL_SYMBOLS_CACHE_TIME = updated_at
+                return symbols
+        except Exception:
+            pass
+    try:
+        url = f"{BINANCE_SPOT_API_BASE}/api/v3/exchangeInfo"
+        data = _http_get_json_sync(url, params={}, timeout_sec=20)
+        symbols = []
+        for s in (data or {}).get("symbols", []):
+            if s.get("status") == "TRADING" and s.get("isSpotTradingAllowed", True):
+                symbols.append(s["symbol"])
+        result = sorted(symbols)
+        _SPOT_ALL_SYMBOLS_CACHE = result
+        _SPOT_ALL_SYMBOLS_CACHE_TIME = now
+        try:
+            _SPOT_ALL_SYMBOLS_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _SPOT_ALL_SYMBOLS_CACHE_FILE.write_text(
+                json.dumps({"symbols": result, "updated_at": now}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+        logger.info(f"现货全量交易对已缓存，共 {len(result)} 个")
+        return result
+    except Exception as e:
+        logger.error(f"获取币安全量现货交易对失败: {e}")
+        if _SPOT_ALL_SYMBOLS_CACHE:
+            return _SPOT_ALL_SYMBOLS_CACHE
+        return fetch_binance_spot_symbols_usdt()
 
 
 def macd(close_prices: List[float], fast: int = 12, slow: int = 26, signal: int = 9) -> Tuple[List[float], List[float]]:

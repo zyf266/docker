@@ -765,6 +765,36 @@ class DatabaseManager:
         finally:
             session.close()
 
+    # ===== 现货 24h 资金净流入监控 =====
+    def get_spot_net_inflow_config(self) -> Optional[tuple]:
+        session = self.get_session()
+        try:
+            row = session.query(UserInstance).filter_by(
+                instance_type='spot_net_inflow', instance_id='singleton'
+            ).first()
+            return (row.instance_id, row.config_json) if row and row.config_json else None
+        finally:
+            session.close()
+
+    def save_spot_net_inflow_config(self, config_json: str):
+        self.delete_spot_net_inflow_config()
+        uid = self.get_first_user_id()
+        if uid is not None:
+            self.save_user_instance(uid, 'spot_net_inflow', 'singleton', config_json)
+
+    def delete_spot_net_inflow_config(self):
+        session = self.get_session()
+        try:
+            session.query(UserInstance).filter_by(
+                instance_type='spot_net_inflow', instance_id='singleton'
+            ).delete()
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
     # ===== 链上活跃度监控配置 =====
     def get_chain_activity_config(self) -> Optional[tuple]:
         session = self.get_session()

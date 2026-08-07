@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
+import * as echarts from 'echarts'
 import {
   getSymbols,
   getSpotSymbols,
@@ -21,6 +22,10 @@ import {
   probeChainActivity,
   checkChainActivityNow,
   testChainActivityDingtalk,
+  getSpotNetInflowStatus,
+  startSpotNetInflow,
+  stopSpotNetInflow,
+  getSpotNetInflowSeries,
 } from '../api/currencyMonitor'
 import {
   getOptions as getMacdOptions,
@@ -180,6 +185,18 @@ const CurrencyMonitor = () => {
     ob_notional_threshold: 200000,
   })
 
+  const [spotAllSymbolList, setSpotAllSymbolList] = useState([])
+  const [netInflowLoading, setNetInflowLoading] = useState(false)
+  const [netInflowForm, setNetInflowForm] = useState({ symbols: [] })
+  const [netInflowStatus, setNetInflowStatus] = useState({
+    running: false,
+    symbols: [],
+    snapshots: {},
+  })
+  const [netInflowChartSymbol, setNetInflowChartSymbol] = useState('')
+  const netInflowChartRef = useRef(null)
+  const netInflowChartInst = useRef(null)
+
   const [chainLoading, setChainLoading] = useState(false)
   const [chainOptions, setChainOptions] = useState(DEFAULT_CHAIN_OPTIONS)
   const [chainStatus, setChainStatus] = useState({
@@ -320,6 +337,21 @@ const CurrencyMonitor = () => {
     } catch (_) {}
   }
 
+  const refreshNetInflowStatus = async () => {
+    try {
+      const res = await getSpotNetInflowStatus()
+      setNetInflowStatus({
+        running: !!res.running,
+        symbols: res.symbols || [],
+        snapshots: res.snapshots || {},
+      })
+      setNetInflowChartSymbol((prev) => {
+        if (prev && (res.symbols || []).includes(prev)) return prev
+        return (res.symbols && res.symbols[0]) || ''
+      })
+    } catch (_) {}
+  }
+
   const refreshChainStatus = async () => {
     try {
       const res = await getChainActivityStatus()
@@ -354,7 +386,7 @@ const CurrencyMonitor = () => {
   }
 
   useEffect(() => {
-    let t1, t2, t3, t4, t5
+    let t1, t2, t3, t4, t5, t6
     const load = async () => {
       try {
         const res = await getSymbols()
@@ -363,6 +395,10 @@ const CurrencyMonitor = () => {
       try {
         const spotRes = await getSpotSymbols()
         setSpotSymbolList(spotRes.symbols || [])
+      } catch (_) {}
+      try {
+        const allSpot = await getSpotSymbols({ all_pairs: true })
+        setSpotAllSymbolList(allSpot.symbols || [])
       } catch (_) {}
       try {
         const chainRes = await getChainActivityChains()
@@ -376,6 +412,7 @@ const CurrencyMonitor = () => {
       await refreshStatus()
       await refreshMinuteStatus()
       await refreshSpotMinuteStatus()
+      await refreshNetInflowStatus()
       await refreshChainStatus()
       await refreshMacdStatus()
       t1 = setInterval(refreshStatus, 5000)
@@ -383,6 +420,7 @@ const CurrencyMonitor = () => {
       t3 = setInterval(refreshSpotMinuteStatus, 5000)
       t4 = setInterval(refreshChainStatus, 5000)
       t5 = setInterval(refreshMacdStatus, 5000)
+      t6 = setInterval(refreshNetInflowStatus, 15000)
     }
     load()
     return () => {
@@ -391,8 +429,69 @@ const CurrencyMonitor = () => {
       if (t3) clearInterval(t3)
       if (t4) clearInterval(t4)
       if (t5) clearInterval(t5)
+      if (t6) clearInterval(t6)
     }
   }, [])
+
+  useEffect(() => {
+    if (!netInflowChartSymbol || !netInflowStatus.running) return undefined
+    let cancelled = false
+    const render = async () => {
+      try {
+        const series = await getSpotNetInflowSeries({ symbol: netInflowChartSymbol })
+        if (cancelled) return
+        const el = netInflowChartRef.current
+        if (!el) return
+        if (!netInflowChartInst.current) {
+          netInflowChartInst.current = echarts.init(el)
+        }
+        const chart = netInflowChartInst.current
+        chart.setOption({
+          backgroundColor: '#141414',
+          title: {
+            text: `24 小时资金净流入(${netInflowChartSymbol})`,
+            left: 8,
+            top: 6,
+            textStyle: { color: '#e5e5e5', fontSize: 13, fontWeight: 500 },
+          },
+          grid: { left: 48, right: 16, top: 40, bottom: 28 },
+          tooltip: { trigger: 'axis' },
+          xAxis: {
+            type: 'category',
+            data: series.times || [],
+            axisLabel: { color: '#888', fontSize: 10 },
+            axisLine: { lineStyle: { color: '#333' } },
+          },
+          yAxis: {
+            type: 'value',
+            scale: true,
+            axisLabel: { color: '#888', fontSize: 10 },
+            splitLine: { lineStyle: { color: '#2a2a2a' } },
+          },
+          series: [
+            {
+              type: 'line',
+              data: series.values || [],
+              showSymbol: false,
+              lineStyle: { color: '#f0b90b', width: 1.5 },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: 'rgba(240,185,11,0.35)' },
+                  { offset: 1, color: 'rgba(240,185,11,0.02)' },
+                ]),
+              },
+            },
+          ],
+        })
+      } catch (_) {}
+    }
+    render()
+    const timer = setInterval(render, 30000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [netInflowChartSymbol, netInflowStatus.running, netInflowStatus.snapshots])
 
   const handleStart = async () => {
     if (!selectedSymbols.length || !selectedTimeframes.length) {
@@ -520,6 +619,34 @@ const CurrencyMonitor = () => {
       await stopSpotMinuteAlert()
       alert('已停止现货预警')
       await refreshSpotMinuteStatus()
+    } catch (e) {
+      alert(e?.response?.data?.detail || '停止失败')
+    }
+  }
+
+  const handleNetInflowStart = async () => {
+    if (!netInflowForm.symbols.length) {
+      alert('请选择要监控净流入的现货币种')
+      return
+    }
+    setNetInflowLoading(true)
+    try {
+      await startSpotNetInflow({ symbols: netInflowForm.symbols })
+      alert('已启动现货24h资金净流入监控')
+      setNetInflowForm({ symbols: [] })
+      await refreshNetInflowStatus()
+    } catch (e) {
+      alert(e?.response?.data?.detail || '启动失败')
+    } finally {
+      setNetInflowLoading(false)
+    }
+  }
+
+  const handleNetInflowStop = async () => {
+    try {
+      await stopSpotNetInflow()
+      alert('已停止净流入监控')
+      await refreshNetInflowStatus()
     } catch (e) {
       alert(e?.response?.data?.detail || '停止失败')
     }
@@ -961,6 +1088,83 @@ const CurrencyMonitor = () => {
             </button>
           </div>
           {spotProbeMsg && <p className="mon-hint-blue-card">{spotProbeMsg}</p>}
+        </div>
+      </div>
+
+      {/* Card 2b2: 现货 24h 资金净流入 */}
+      <div className="mon-card mon-card-blue">
+        <div className="mon-card-header mon-card-header-blue">
+          <div className="mon-card-title">
+            <span className="mon-icon">📉</span>
+            <span>现货24h资金净流入</span>
+            {netInflowStatus.running && (
+              <span className="mon-badge-blue-card">⚡ 运行中</span>
+            )}
+          </div>
+        </div>
+        <div className="mon-card-body">
+          <p className="mon-hint">
+            现货 5 分钟主动买卖差额近似净流入；启动后每 5 分钟计算。触发条件：①滚动24h &gt; 昨天最大值绝对值×1.5；②连续2日为正且递增；③连续3日为正且递增。钉钉推送到币种监视同群。
+          </p>
+          <div className="mon-grid-2">
+            <div className="mon-field-group">
+              <label className="mon-label">监控币种（全部现货）</label>
+              <MultiSelectDropdown
+                options={spotAllSymbolList.length ? spotAllSymbolList : spotSymbolList}
+                value={netInflowForm.symbols}
+                onChange={(vals) => setNetInflowForm({ symbols: vals })}
+                placeholder="搜索并选择现货币种..."
+              />
+              {netInflowForm.symbols.length > 0 && (
+                <p className="mon-hint-blue-card">已选择 {netInflowForm.symbols.length} 个币种</p>
+              )}
+              {netInflowStatus.running && (
+                <div className="mon-status-box" style={{ marginTop: 12 }}>
+                  <span>⚠</span>
+                  <div>
+                    <p className="mon-status-title">当前监控</p>
+                    <p className="mon-status-detail">{netInflowStatus.symbols.join(', ')}</p>
+                    {netInflowChartSymbol && netInflowStatus.snapshots?.[netInflowChartSymbol] && (
+                      <p className="mon-status-detail">
+                        {netInflowChartSymbol} 滚动24h=
+                        {Number(netInflowStatus.snapshots[netInflowChartSymbol].net_24h || 0).toFixed(2)}
+                        {' | '}更新 {netInflowStatus.snapshots[netInflowChartSymbol].updated_at || '—'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="mon-btn-row" style={{ marginTop: 12 }}>
+                <button className="mon-btn-blue" disabled={netInflowLoading} onClick={handleNetInflowStart}>
+                  {netInflowLoading ? '启动中...' : '启动净流入监控'}
+                </button>
+                <button className="mon-btn-outline-red" disabled={!netInflowStatus.running} onClick={handleNetInflowStop}>
+                  ◻ 停止
+                </button>
+              </div>
+            </div>
+            <div className="mon-field-group">
+              <label className="mon-label">图表币种</label>
+              <select
+                className="mon-input"
+                value={netInflowChartSymbol}
+                onChange={(e) => setNetInflowChartSymbol(e.target.value)}
+                disabled={!netInflowStatus.symbols?.length}
+              >
+                {(netInflowStatus.symbols || []).map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <div
+                ref={netInflowChartRef}
+                className="mon-net-inflow-chart"
+                style={{ width: '100%', height: 260, marginTop: 10, borderRadius: 8 }}
+              />
+              {!netInflowStatus.running && (
+                <p className="mon-hint">启动监控后此处显示 24h 资金净流入曲线</p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

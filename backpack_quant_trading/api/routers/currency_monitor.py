@@ -9,6 +9,7 @@ from backpack_quant_trading.database.models import DatabaseManager
 from backpack_quant_trading.core.binance_monitor import (
     fetch_binance_symbols_usdt,
     fetch_binance_spot_symbols_usdt,
+    fetch_binance_spot_symbols_all,
     BinanceMonitorService,
     get_monitor_instance,
     set_monitor_instance,
@@ -21,6 +22,12 @@ from backpack_quant_trading.core.binance_monitor import (
     set_spot_minute_alert_instance,
     probe_spot_minute_alert,
     send_spot_minute_test_dingtalk,
+)
+from backpack_quant_trading.core.spot_net_inflow_monitor import (
+    SpotNetInflowMonitorService,
+    get_spot_net_inflow_instance,
+    set_spot_net_inflow_instance,
+    restore_spot_net_inflow_from_db_if_needed,
 )
 from backpack_quant_trading.core.chain_activity_monitor import (
     ChainActivityMonitorService,
@@ -98,13 +105,68 @@ def list_symbols():
 
 
 @router.get("/spot-symbols")
-def list_spot_symbols():
-    """币安现货 USDT 交易对"""
+def list_spot_symbols(all_pairs: bool = Query(False, description="True=全部现货交易对")):
+    """币安现货交易对；默认 USDT，all_pairs=1 返回全部 TRADING 现货"""
     try:
-        symbols = fetch_binance_spot_symbols_usdt()
-        return {"symbols": symbols, "market": "spot"}
+        symbols = fetch_binance_spot_symbols_all() if all_pairs else fetch_binance_spot_symbols_usdt()
+        return {"symbols": symbols, "market": "spot", "all_pairs": bool(all_pairs)}
     except Exception as e:
         return {"symbols": [], "market": "spot", "error": str(e)}
+
+
+class SpotNetInflowStartRequest(BaseModel):
+    symbols: List[str] = []
+
+
+@router.get("/spot-net-inflow/status")
+def spot_net_inflow_status(user: dict = Depends(require_user)):
+    inst = get_spot_net_inflow_instance()
+    if not inst or not inst.running:
+        inst = restore_spot_net_inflow_from_db_if_needed()
+    if not inst:
+        return {"running": False, "symbols": [], "snapshots": {}}
+    return inst.get_status()
+
+
+@router.post("/spot-net-inflow/start")
+def spot_net_inflow_start(req: SpotNetInflowStartRequest, user: dict = Depends(require_user)):
+    if not req.symbols:
+        raise HTTPException(status_code=400, detail="请选择现货币种")
+    old = get_spot_net_inflow_instance()
+    if old and old.running:
+        old.stop()
+    # 合并已运行币种
+    merged = list(req.symbols)
+    if old:
+        merged = list(dict.fromkeys([*(old.symbols or []), *req.symbols]))
+    service = SpotNetInflowMonitorService(symbols=merged)
+    set_spot_net_inflow_instance(service)
+    service.start()
+    DatabaseManager().save_spot_net_inflow_config(json.dumps({"symbols": service.symbols}))
+    return {"message": "已启动", **service.get_status()}
+
+
+@router.post("/spot-net-inflow/stop")
+def spot_net_inflow_stop(user: dict = Depends(require_user)):
+    inst = get_spot_net_inflow_instance()
+    if inst and inst.running:
+        inst.stop()
+    set_spot_net_inflow_instance(None)
+    DatabaseManager().delete_spot_net_inflow_config()
+    return {"message": "ok", "running": False}
+
+
+@router.get("/spot-net-inflow/series")
+def spot_net_inflow_series(
+    symbol: str = Query(..., min_length=2),
+    user: dict = Depends(require_user),
+):
+    inst = get_spot_net_inflow_instance()
+    if not inst or not inst.running:
+        inst = restore_spot_net_inflow_from_db_if_needed()
+    if not inst:
+        return {"symbol": symbol.upper(), "times": [], "values": [], "net_24h": 0}
+    return inst.get_series(symbol)
 
 
 class MonitorStartRequest(BaseModel):

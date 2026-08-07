@@ -213,6 +213,15 @@ async def start_kline_scheduler():
     except Exception as exc:
         _sched_logger.warning("[币种监视] 启动恢复失败: %s", exc)
 
+    try:
+        from backpack_quant_trading.core.spot_net_inflow_monitor import (
+            restore_spot_net_inflow_from_db_if_needed,
+        )
+
+        restore_spot_net_inflow_from_db_if_needed()
+    except Exception as exc:
+        _sched_logger.warning("[现货净流入] 启动恢复失败: %s", exc)
+
     # 轻量自愈（启动一次）
     try:
         from backpack_quant_trading.agents.self_heal import check_and_heal_monitors

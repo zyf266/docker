@@ -5,7 +5,7 @@ const longRequest = (config) =>
   axios({ baseURL: '/api', timeout: 180000, withCredentials: true, ...config }).then((r) => r.data)
 
 export const getSymbols = () => request.get('/currency-monitor/symbols')
-export const getSpotSymbols = () => request.get('/currency-monitor/spot-symbols')
+export const getSpotSymbols = (params) => request.get('/currency-monitor/spot-symbols', { params })
 export const getStatus = () => request.get('/currency-monitor/status')
 export const startMonitor = (data) => request.post('/currency-monitor/start', data)
 export const stopMonitor = () => request.post('/currency-monitor/stop')
@@ -24,6 +24,13 @@ export const probeSpotMinuteAlert = (params) =>
   request.get('/currency-monitor/spot-minute-alert/probe', { params })
 export const testSpotMinuteDingtalk = (params) =>
   request.post('/currency-monitor/spot-minute-alert/test-dingtalk', null, { params })
+
+// 现货 24h 资金净流入
+export const getSpotNetInflowStatus = () => request.get('/currency-monitor/spot-net-inflow/status')
+export const startSpotNetInflow = (data) => request.post('/currency-monitor/spot-net-inflow/start', data)
+export const stopSpotNetInflow = () => request.post('/currency-monitor/spot-net-inflow/stop')
+export const getSpotNetInflowSeries = (params) =>
+  request.get('/currency-monitor/spot-net-inflow/series', { params })
 
 // 链上活跃度监控
 export const getChainActivityChains = () => request.get('/currency-monitor/chain-activity/chains')

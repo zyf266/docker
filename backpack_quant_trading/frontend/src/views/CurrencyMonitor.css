@@ -219,6 +219,12 @@
 
 .mon-hint-blue-card { color: #2563eb; font-size: 13px; margin-top: 6px; }
 
+.mon-net-inflow-chart {
+  background: #141414;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
 .mon-btn-blue {
   padding: 9px 18px;
   border-radius: 8px;
