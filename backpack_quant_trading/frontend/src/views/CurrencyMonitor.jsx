@@ -50,9 +50,40 @@ const MultiSelectDropdown = ({ options, value, onChange, placeholder }) => {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const filtered = options.filter((o) =>
-    o.toLowerCase().includes(search.toLowerCase())
-  )
+  const QUOTE_SUFFIXES = [
+    'USDT', 'FDUSD', 'TUSD', 'USDC', 'BUSD', 'BTC', 'ETH', 'BNB',
+    'TRY', 'EUR', 'JPY', 'BRL', 'DAI', 'USD1', 'AEUR',
+  ]
+  const baseAsset = (sym) => {
+    const u = String(sym).toUpperCase()
+    for (const quote of QUOTE_SUFFIXES) {
+      if (u.endsWith(quote) && u.length > quote.length) return u.slice(0, -quote.length)
+    }
+    return u
+  }
+
+  const q = search.toLowerCase().trim()
+  const qU = q.toUpperCase()
+  const filtered = options
+    .filter((o) => !q || o.toLowerCase().includes(q))
+    .slice()
+    .sort((a, b) => {
+      if (!q) return 0
+      const score = (sym) => {
+        const u = String(sym).toUpperCase()
+        const base = baseAsset(u)
+        // 搜 btc → BTCUSDT / BTCFDUSD 等 base 精确匹配最优先
+        if (base === qU && u.endsWith('USDT')) return 0
+        if (base === qU) return 1
+        if (u === `${qU}USDT`) return 0
+        if (u.startsWith(qU) && u.endsWith('USDT')) return 2
+        if (u.startsWith(qU)) return 3
+        if (u.endsWith('USDT')) return 4
+        return 5
+      }
+      const d = score(a) - score(b)
+      return d !== 0 ? d : String(a).localeCompare(String(b))
+    })
 
   const toggle = (item) => {
     onChange(
@@ -107,6 +138,94 @@ const MultiSelectDropdown = ({ options, value, onChange, placeholder }) => {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** 单个币种的 24h 净流入曲线（一币一图） */
+const NetInflowSymbolChart = ({ symbol, snapshot }) => {
+  const elRef = useRef(null)
+  const chartRef = useRef(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const render = async () => {
+      try {
+        const series = await getSpotNetInflowSeries({ symbol })
+        if (cancelled) return
+        const el = elRef.current
+        if (!el) return
+        if (!chartRef.current) {
+          chartRef.current = echarts.init(el)
+        }
+        const chart = chartRef.current
+        const net24 = series.net_24h ?? snapshot?.net_24h
+        chart.setOption({
+          backgroundColor: '#141414',
+          title: {
+            text: `${symbol}  滚动24h=${net24 != null ? Number(net24).toFixed(2) : '—'}`,
+            left: 8,
+            top: 6,
+            textStyle: { color: '#e5e5e5', fontSize: 12, fontWeight: 500 },
+          },
+          grid: { left: 48, right: 12, top: 36, bottom: 24 },
+          tooltip: { trigger: 'axis' },
+          xAxis: {
+            type: 'category',
+            data: series.times || [],
+            axisLabel: { color: '#888', fontSize: 9 },
+            axisLine: { lineStyle: { color: '#333' } },
+          },
+          yAxis: {
+            type: 'value',
+            scale: true,
+            axisLabel: { color: '#888', fontSize: 9 },
+            splitLine: { lineStyle: { color: '#2a2a2a' } },
+          },
+          series: [
+            {
+              type: 'line',
+              data: series.values || [],
+              showSymbol: false,
+              lineStyle: { color: '#f0b90b', width: 1.5 },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: 'rgba(240,185,11,0.35)' },
+                  { offset: 1, color: 'rgba(240,185,11,0.02)' },
+                ]),
+              },
+            },
+          ],
+        })
+      } catch (_) {}
+    }
+    render()
+    const timer = setInterval(render, 30000)
+    const onResize = () => chartRef.current?.resize()
+    window.addEventListener('resize', onResize)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      window.removeEventListener('resize', onResize)
+      if (chartRef.current) {
+        chartRef.current.dispose()
+        chartRef.current = null
+      }
+    }
+  }, [symbol, snapshot?.updated_at, snapshot?.net_24h])
+
+  return (
+    <div className="mon-net-inflow-item">
+      <div className="mon-net-inflow-item-head">
+        <span className="mon-net-inflow-sym">{symbol}</span>
+        {snapshot?.updated_at && (
+          <span className="mon-net-inflow-meta">更新 {snapshot.updated_at}</span>
+        )}
+        {snapshot?.last_error && (
+          <span className="mon-net-inflow-err">{snapshot.last_error}</span>
+        )}
+      </div>
+      <div ref={elRef} className="mon-net-inflow-chart" />
     </div>
   )
 }
@@ -193,9 +312,6 @@ const CurrencyMonitor = () => {
     symbols: [],
     snapshots: {},
   })
-  const [netInflowChartSymbol, setNetInflowChartSymbol] = useState('')
-  const netInflowChartRef = useRef(null)
-  const netInflowChartInst = useRef(null)
 
   const [chainLoading, setChainLoading] = useState(false)
   const [chainOptions, setChainOptions] = useState(DEFAULT_CHAIN_OPTIONS)
@@ -345,10 +461,6 @@ const CurrencyMonitor = () => {
         symbols: res.symbols || [],
         snapshots: res.snapshots || {},
       })
-      setNetInflowChartSymbol((prev) => {
-        if (prev && (res.symbols || []).includes(prev)) return prev
-        return (res.symbols && res.symbols[0]) || ''
-      })
     } catch (_) {}
   }
 
@@ -432,66 +544,6 @@ const CurrencyMonitor = () => {
       if (t6) clearInterval(t6)
     }
   }, [])
-
-  useEffect(() => {
-    if (!netInflowChartSymbol || !netInflowStatus.running) return undefined
-    let cancelled = false
-    const render = async () => {
-      try {
-        const series = await getSpotNetInflowSeries({ symbol: netInflowChartSymbol })
-        if (cancelled) return
-        const el = netInflowChartRef.current
-        if (!el) return
-        if (!netInflowChartInst.current) {
-          netInflowChartInst.current = echarts.init(el)
-        }
-        const chart = netInflowChartInst.current
-        chart.setOption({
-          backgroundColor: '#141414',
-          title: {
-            text: `24 小时资金净流入(${netInflowChartSymbol})`,
-            left: 8,
-            top: 6,
-            textStyle: { color: '#e5e5e5', fontSize: 13, fontWeight: 500 },
-          },
-          grid: { left: 48, right: 16, top: 40, bottom: 28 },
-          tooltip: { trigger: 'axis' },
-          xAxis: {
-            type: 'category',
-            data: series.times || [],
-            axisLabel: { color: '#888', fontSize: 10 },
-            axisLine: { lineStyle: { color: '#333' } },
-          },
-          yAxis: {
-            type: 'value',
-            scale: true,
-            axisLabel: { color: '#888', fontSize: 10 },
-            splitLine: { lineStyle: { color: '#2a2a2a' } },
-          },
-          series: [
-            {
-              type: 'line',
-              data: series.values || [],
-              showSymbol: false,
-              lineStyle: { color: '#f0b90b', width: 1.5 },
-              areaStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                  { offset: 0, color: 'rgba(240,185,11,0.35)' },
-                  { offset: 1, color: 'rgba(240,185,11,0.02)' },
-                ]),
-              },
-            },
-          ],
-        })
-      } catch (_) {}
-    }
-    render()
-    const timer = setInterval(render, 30000)
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [netInflowChartSymbol, netInflowStatus.running, netInflowStatus.snapshots])
 
   const handleStart = async () => {
     if (!selectedSymbols.length || !selectedTimeframes.length) {
@@ -1104,67 +1156,43 @@ const CurrencyMonitor = () => {
         </div>
         <div className="mon-card-body">
           <p className="mon-hint">
-            现货 5 分钟主动买卖差额近似净流入；启动后每 5 分钟计算。触发条件：①滚动24h &gt; 昨天最大值绝对值×1.5；②连续2日为正且递增；③连续3日为正且递增。钉钉推送到币种监视同群。
+            现货 5 分钟主动买卖差额近似净流入；启动后每 5 分钟计算。每启动一个币种，下方各显示一条 24h 净流入曲线。触发条件：①滚动24h &gt; 昨天最大值绝对值×1.5；②连续2日为正且递增；③连续3日为正且递增。钉钉推送到币种监视同群。
           </p>
-          <div className="mon-grid-2">
-            <div className="mon-field-group">
-              <label className="mon-label">监控币种（全部现货）</label>
-              <MultiSelectDropdown
-                options={spotAllSymbolList.length ? spotAllSymbolList : spotSymbolList}
-                value={netInflowForm.symbols}
-                onChange={(vals) => setNetInflowForm({ symbols: vals })}
-                placeholder="搜索并选择现货币种..."
-              />
-              {netInflowForm.symbols.length > 0 && (
-                <p className="mon-hint-blue-card">已选择 {netInflowForm.symbols.length} 个币种</p>
-              )}
-              {netInflowStatus.running && (
-                <div className="mon-status-box" style={{ marginTop: 12 }}>
-                  <span>⚠</span>
-                  <div>
-                    <p className="mon-status-title">当前监控</p>
-                    <p className="mon-status-detail">{netInflowStatus.symbols.join(', ')}</p>
-                    {netInflowChartSymbol && netInflowStatus.snapshots?.[netInflowChartSymbol] && (
-                      <p className="mon-status-detail">
-                        {netInflowChartSymbol} 滚动24h=
-                        {Number(netInflowStatus.snapshots[netInflowChartSymbol].net_24h || 0).toFixed(2)}
-                        {' | '}更新 {netInflowStatus.snapshots[netInflowChartSymbol].updated_at || '—'}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-              <div className="mon-btn-row" style={{ marginTop: 12 }}>
-                <button className="mon-btn-blue" disabled={netInflowLoading} onClick={handleNetInflowStart}>
-                  {netInflowLoading ? '启动中...' : '启动净流入监控'}
-                </button>
-                <button className="mon-btn-outline-red" disabled={!netInflowStatus.running} onClick={handleNetInflowStop}>
-                  ◻ 停止
-                </button>
-              </div>
-            </div>
-            <div className="mon-field-group">
-              <label className="mon-label">图表币种</label>
-              <select
-                className="mon-input"
-                value={netInflowChartSymbol}
-                onChange={(e) => setNetInflowChartSymbol(e.target.value)}
-                disabled={!netInflowStatus.symbols?.length}
-              >
-                {(netInflowStatus.symbols || []).map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <div
-                ref={netInflowChartRef}
-                className="mon-net-inflow-chart"
-                style={{ width: '100%', height: 260, marginTop: 10, borderRadius: 8 }}
-              />
-              {!netInflowStatus.running && (
-                <p className="mon-hint">启动监控后此处显示 24h 资金净流入曲线</p>
-              )}
+          <div className="mon-field-group">
+            <label className="mon-label">监控币种（全部现货）</label>
+            <MultiSelectDropdown
+              options={spotAllSymbolList.length ? spotAllSymbolList : spotSymbolList}
+              value={netInflowForm.symbols}
+              onChange={(vals) => setNetInflowForm({ symbols: vals })}
+              placeholder="搜索并选择现货币种..."
+            />
+            {netInflowForm.symbols.length > 0 && (
+              <p className="mon-hint-blue-card">已选择 {netInflowForm.symbols.length} 个币种（可追加启动，与已监控合并）</p>
+            )}
+            <div className="mon-btn-row" style={{ marginTop: 12 }}>
+              <button className="mon-btn-blue" disabled={netInflowLoading} onClick={handleNetInflowStart}>
+                {netInflowLoading ? '启动中...' : '启动净流入监控'}
+              </button>
+              <button className="mon-btn-outline-red" disabled={!netInflowStatus.running} onClick={handleNetInflowStop}>
+                ◻ 全部停止
+              </button>
             </div>
           </div>
+          {netInflowStatus.running && netInflowStatus.symbols?.length > 0 ? (
+            <div className="mon-net-inflow-grid">
+              {netInflowStatus.symbols.map((sym) => (
+                <NetInflowSymbolChart
+                  key={sym}
+                  symbol={sym}
+                  snapshot={netInflowStatus.snapshots?.[sym]}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="mon-hint" style={{ marginTop: 12 }}>
+              启动监控后，每个币种旁会显示各自的 24h 资金净流入曲线
+            </p>
+          )}
         </div>
       </div>
 

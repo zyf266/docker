@@ -219,9 +219,50 @@
 
 .mon-hint-blue-card { color: #2563eb; font-size: 13px; margin-top: 6px; }
 
+.mon-net-inflow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.mon-net-inflow-item {
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.mon-net-inflow-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px 0;
+}
+
+.mon-net-inflow-sym {
+  font-weight: 600;
+  color: #1e3a8a;
+  font-size: 14px;
+}
+
+.mon-net-inflow-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.mon-net-inflow-err {
+  font-size: 12px;
+  color: #dc2626;
+}
+
 .mon-net-inflow-chart {
+  height: 220px;
+  margin: 8px;
+  width: calc(100% - 16px);
+  border-radius: 8px;
   background: #141414;
-  border: 1px solid #e5e7eb;
   overflow: hidden;
 }
 
