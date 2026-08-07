@@ -1,6 +1,7 @@
 """现货 24h 资金净流入监控（币种监视页）。
 
-口径：5m K 线 net = 2 * taker_buy_quote_volume - quote_volume
+口径对齐币安「24小时资金净流入(BASE)」：
+  5m K 线 net = 2 * taker_buy_base_volume - volume（标的币数量，非 USDT）
 滚动 24h = 最近 288 根之和；自然日按北京时间切日并求和。
 """
 from __future__ import annotations
@@ -26,11 +27,25 @@ BARS_24H = 24 * 60 // 5  # 288
 POLL_SEC = 300
 ALERT_MULT = 1.5
 
+_QUOTE_SUFFIXES = (
+    "USDT", "FDUSD", "TUSD", "USDC", "BUSD", "BTC", "ETH", "BNB",
+    "TRY", "EUR", "JPY", "BRL", "DAI", "USD1", "AEUR",
+)
+
+
+def base_asset_of_symbol(symbol: str) -> str:
+    u = str(symbol or "").upper()
+    for q in _QUOTE_SUFFIXES:
+        if u.endswith(q) and len(u) > len(q):
+            return u[: -len(q)]
+    return u
+
 
 def _bar_net(bar: Dict[str, Any]) -> float:
-    q = float(bar.get("quote_volume") or 0)
-    tb = float(bar.get("taker_buy_quote_volume") or 0)
-    return 2.0 * tb - q
+    """币安同款：净流入 = 主动买入量 - 主动卖出量（base 数量）。"""
+    vol = float(bar.get("volume") or 0)
+    tb = float(bar.get("taker_buy_base_volume") or 0)
+    return 2.0 * tb - vol
 
 
 def _bj_day_key(ts_ms: int) -> str:
@@ -44,6 +59,7 @@ def _now_bj() -> datetime:
 @dataclass
 class SymbolSnapshot:
     symbol: str
+    base_asset: str = ""
     net_24h: float = 0.0
     yesterday_max: float = 0.0
     threshold_1_5x: float = 0.0
@@ -57,7 +73,8 @@ class SymbolSnapshot:
 
 def compute_snapshot_from_klines(symbol: str, klines: List[Dict[str, Any]]) -> SymbolSnapshot:
     """纯计算：供服务与单测使用。"""
-    snap = SymbolSnapshot(symbol=symbol.upper())
+    sym = symbol.upper()
+    snap = SymbolSnapshot(symbol=sym, base_asset=base_asset_of_symbol(sym))
     if not klines:
         snap.last_error = "无K线"
         return snap
@@ -79,7 +96,7 @@ def compute_snapshot_from_klines(symbol: str, klines: List[Dict[str, Any]]) -> S
     window = [(t, n) for t, n in points if t >= window_start]
     snap.net_24h = sum(n for _, n in window)
 
-    # 累计曲线（对齐页面观感）
+    # 累计曲线（对齐币安页面观感）
     cum = 0.0
     for t, n in window:
         cum += n
@@ -94,7 +111,6 @@ def compute_snapshot_from_klines(symbol: str, klines: List[Dict[str, Any]]) -> S
         daily[k] = daily.get(k, 0.0) + n
     snap.daily_nets = {k: round(v, 4) for k, v in sorted(daily.items())}
 
-    today = _now_bj().strftime("%Y-%m-%d")
     yesterday = (_now_bj() - timedelta(days=1)).strftime("%Y-%m-%d")
     y_points = [n for t, n in points if _bj_day_key(t) == yesterday]
     if y_points:
@@ -159,6 +175,7 @@ class SpotNetInflowMonitorService:
             snaps = {
                 s: {
                     "symbol": sn.symbol,
+                    "base_asset": sn.base_asset or base_asset_of_symbol(s),
                     "net_24h": round(sn.net_24h, 4),
                     "yesterday_max": round(sn.yesterday_max, 4),
                     "threshold_1_5x": round(sn.threshold_1_5x, 4),
@@ -173,6 +190,7 @@ class SpotNetInflowMonitorService:
             "running": self._running,
             "symbols": list(self.symbols),
             "poll_sec": POLL_SEC,
+            "unit": "base",
             "snapshots": snaps,
         }
 
@@ -181,9 +199,18 @@ class SpotNetInflowMonitorService:
         with self._lock:
             sn = self._snapshots.get(sym)
             if not sn:
-                return {"symbol": sym, "times": [], "values": [], "net_24h": 0}
+                return {
+                    "symbol": sym,
+                    "base_asset": base_asset_of_symbol(sym),
+                    "unit": "base",
+                    "times": [],
+                    "values": [],
+                    "net_24h": 0,
+                }
             return {
                 "symbol": sym,
+                "base_asset": sn.base_asset or base_asset_of_symbol(sym),
+                "unit": "base",
                 "times": list(sn.chart_times),
                 "values": list(sn.chart_cumulative),
                 "net_24h": round(sn.net_24h, 4),
@@ -265,10 +292,11 @@ class SpotNetInflowMonitorService:
         with self._lock:
             self._snapshots[symbol] = snap
         for msg in hits:
+            base = snap.base_asset or base_asset_of_symbol(symbol)
             title = f"{symbol} 现货24h资金净流入"
             body = (
                 f"{msg}\n"
-                f"当前滚动24h净流入: {snap.net_24h:.2f}\n"
+                f"当前滚动24h净流入: {snap.net_24h:.4f} {base}\n"
                 f"更新: {snap.updated_at}"
             )
             ok = send_dingtalk_alert(symbol, "5m净流入", f"{title}\n{body}")

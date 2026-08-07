@@ -142,7 +142,7 @@ const MultiSelectDropdown = ({ options, value, onChange, placeholder }) => {
   )
 }
 
-/** 单个币种的 24h 净流入曲线（一币一图） */
+/** 单个币种的 24h 净流入曲线（对齐币安：base 数量累计 + 0 轴） */
 const NetInflowSymbolChart = ({ symbol, snapshot }) => {
   const elRef = useRef(null)
   const chartRef = useRef(null)
@@ -159,40 +159,84 @@ const NetInflowSymbolChart = ({ symbol, snapshot }) => {
           chartRef.current = echarts.init(el)
         }
         const chart = chartRef.current
+        const base =
+          series.base_asset ||
+          snapshot?.base_asset ||
+          String(symbol).replace(/(USDT|FDUSD|USDC|BUSD|BTC|ETH|BNB)$/i, '') ||
+          symbol
+        const values = (series.values || []).map((v) =>
+          Number.isFinite(Number(v)) ? Number(Number(v).toFixed(4)) : 0
+        )
+        const times = (series.times || []).map((t) => {
+          const m = String(t).match(/(\d{2}:\d{2})$/)
+          return m ? m[1] : t
+        })
         const net24 = series.net_24h ?? snapshot?.net_24h
+        const ymin = values.length ? Math.min(0, ...values) : -1
+        const ymax = values.length ? Math.max(0, ...values) : 1
+        const span = Math.max(ymax - ymin, 1)
+        const pad = span * 0.1
+
         chart.setOption({
           backgroundColor: '#141414',
           title: {
-            text: `${symbol}  滚动24h=${net24 != null ? Number(net24).toFixed(2) : '—'}`,
+            text: `24小时资金净流入(${base})`,
+            subtext:
+              net24 != null
+                ? `滚动24h ${Number(net24) >= 0 ? '+' : ''}${Number(net24).toFixed(2)} ${base}`
+                : '',
             left: 8,
-            top: 6,
+            top: 4,
             textStyle: { color: '#e5e5e5', fontSize: 12, fontWeight: 500 },
+            subtextStyle: { color: '#f0b90b', fontSize: 11 },
           },
-          grid: { left: 48, right: 12, top: 36, bottom: 24 },
-          tooltip: { trigger: 'axis' },
+          grid: { left: 52, right: 12, top: 48, bottom: 24 },
+          tooltip: {
+            trigger: 'axis',
+            valueFormatter: (v) => `${Number(v).toFixed(2)} ${base}`,
+          },
           xAxis: {
             type: 'category',
-            data: series.times || [],
-            axisLabel: { color: '#888', fontSize: 9 },
+            data: times,
+            boundaryGap: false,
+            axisLabel: {
+              color: '#888',
+              fontSize: 9,
+              interval: Math.max(0, Math.floor(times.length / 4) - 1),
+            },
             axisLine: { lineStyle: { color: '#333' } },
           },
           yAxis: {
             type: 'value',
-            scale: true,
-            axisLabel: { color: '#888', fontSize: 9 },
+            min: ymin - pad,
+            max: ymax + pad,
+            axisLabel: {
+              color: '#888',
+              fontSize: 9,
+              formatter: (v) => Number(v).toFixed(0),
+            },
             splitLine: { lineStyle: { color: '#2a2a2a' } },
           },
           series: [
             {
+              name: '净流入',
               type: 'line',
-              data: series.values || [],
+              data: values,
               showSymbol: false,
               lineStyle: { color: '#f0b90b', width: 1.5 },
               areaStyle: {
+                origin: 0,
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                   { offset: 0, color: 'rgba(240,185,11,0.35)' },
                   { offset: 1, color: 'rgba(240,185,11,0.02)' },
                 ]),
+              },
+              markLine: {
+                silent: true,
+                symbol: 'none',
+                label: { show: false },
+                lineStyle: { color: '#666', width: 1, type: 'solid' },
+                data: [{ yAxis: 0 }],
               },
             },
           ],
@@ -212,7 +256,7 @@ const NetInflowSymbolChart = ({ symbol, snapshot }) => {
         chartRef.current = null
       }
     }
-  }, [symbol, snapshot?.updated_at, snapshot?.net_24h])
+  }, [symbol, snapshot?.updated_at, snapshot?.net_24h, snapshot?.base_asset])
 
   return (
     <div className="mon-net-inflow-item">
@@ -1156,7 +1200,7 @@ const CurrencyMonitor = () => {
         </div>
         <div className="mon-card-body">
           <p className="mon-hint">
-            现货 5 分钟主动买卖差额近似净流入；启动后每 5 分钟计算。每启动一个币种，下方各显示一条 24h 净流入曲线。触发条件：①滚动24h &gt; 昨天最大值绝对值×1.5；②连续2日为正且递增；③连续3日为正且递增。钉钉推送到币种监视同群。
+            口径对齐币安：净流入 = 主动买量 − 主动卖量（标的币数量，BTCUSDT 单位为 BTC）。启动后每 5 分钟计算；每币种一条 24h 累计曲线。触发条件：①滚动24h &gt; 昨天最大值绝对值×1.5；②连续2日为正且递增；③连续3日为正且递增。钉钉推送到币种监视同群。
           </p>
           <div className="mon-field-group">
             <label className="mon-label">监控币种（全部现货）</label>

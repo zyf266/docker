@@ -325,6 +325,7 @@ def fetch_binance_klines(
         result = []
         for bar in data:
             quote_vol = float(bar[7]) if len(bar) > 7 else 0.0
+            taker_buy_base = float(bar[9]) if len(bar) > 9 else 0.0
             taker_buy_quote = float(bar[10]) if len(bar) > 10 else 0.0
             result.append({
                 "open_time": bar[0],
@@ -335,6 +336,7 @@ def fetch_binance_klines(
                 "volume": float(bar[5]),
                 "close_time": bar[6],
                 "quote_volume": quote_vol,
+                "taker_buy_base_volume": taker_buy_base,
                 "taker_buy_quote_volume": taker_buy_quote,
             })
         return result

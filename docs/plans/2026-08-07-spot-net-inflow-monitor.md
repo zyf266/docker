@@ -6,7 +6,7 @@
 
 ## 口径
 
-- 现货 5m K 线：`net = 2 * takerBuyQuoteVolume - quoteVolume`
+- 现货 5m K 线（对齐币安）：`net = 2 * takerBuyBaseVolume - volume`（**标的币数量**，BTCUSDT 则为 BTC）
 - 滚动 24h 净流入 = 最近 288 根 5m 的 net 之和
 - 自然日 = 北京时间；日净流入 = 当日所有 5m net 之和
 - 告警满足即推（不去重）
