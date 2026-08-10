@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import * as echarts from 'echarts'
 import {
   getBubbleHistory,
@@ -234,9 +235,14 @@ const StockReportSections = ({ markdown }) => {
   )
 }
 
-const UsWeeklyReport = () => {
+const UsWeeklyReport = ({ guestOnly = false }) => {
+  const [searchParams] = useSearchParams()
+  const forceStock =
+    guestOnly ||
+    searchParams.get('tab') === 'stock' ||
+    searchParams.get('mode') === 'stock'
   // weekly=市场周报(美股泡沫周报)；stock=个股分析(美股+A股)
-  const [viewMode, setViewMode] = useState('weekly') // weekly | stock
+  const [viewMode, setViewMode] = useState(forceStock ? 'stock' : 'weekly') // weekly | stock
   const [strategy, setStrategy] = useState('A')
   const [strategies, setStrategies] = useState([
     { id: 'A', name: '策略A · 供应链个股深度', enabled: true, report_type: 'stock_supply_chain' },
@@ -250,6 +256,10 @@ const UsWeeklyReport = () => {
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState('')
   const chartRef = useRef(null)
+
+  useEffect(() => {
+    if (forceStock && viewMode !== 'stock') setViewMode('stock')
+  }, [forceStock, viewMode])
 
   const market = analysis?.market || (viewMode === 'stock' ? 'a_share' : 'us')
   const marketLabel = market === 'a_share' ? 'A股' : '美股'
@@ -461,7 +471,7 @@ const UsWeeklyReport = () => {
 
   return (
     <AisPageShell
-      title="泡沫检测"
+      title={guestOnly ? '个股分析' : '泡沫检测'}
       subtitle={
         viewMode === 'stock'
           ? '个股分析支持美股与 A 股：策略A 供应链 L1-L7；策略B 百分评分卡。输入代码/名称生成 Markdown 报告。'
@@ -471,22 +481,24 @@ const UsWeeklyReport = () => {
       <div className="uwr-stack">
       <div className="uwr-toolbar">
         <div className="uwr-toolbar-left">
-          <div className="uwr-market-toggle" role="tablist" aria-label="模式切换">
-            <button
-              type="button"
-              className={`uwr-market-btn ${viewMode === 'weekly' ? 'active' : ''}`}
-              onClick={() => setViewMode('weekly')}
-            >
-              市场周报
-            </button>
-            <button
-              type="button"
-              className={`uwr-market-btn ${viewMode === 'stock' ? 'active' : ''}`}
-              onClick={() => setViewMode('stock')}
-            >
-              个股分析
-            </button>
-          </div>
+          {!guestOnly && (
+            <div className="uwr-market-toggle" role="tablist" aria-label="模式切换">
+              <button
+                type="button"
+                className={`uwr-market-btn ${viewMode === 'weekly' ? 'active' : ''}`}
+                onClick={() => setViewMode('weekly')}
+              >
+                市场周报
+              </button>
+              <button
+                type="button"
+                className={`uwr-market-btn ${viewMode === 'stock' ? 'active' : ''}`}
+                onClick={() => setViewMode('stock')}
+              >
+                个股分析
+              </button>
+            </div>
+          )}
           {viewMode === 'stock' && (
             <div className="uwr-a-share-controls">
               <label className="uwr-field">

@@ -1,0 +1,22 @@
+.guest-stock-layout .sidebar {
+  display: none !important;
+}
+
+.guest-stock-layout .sidebar-overlay {
+  display: none !important;
+}
+
+.guest-stock-content {
+  margin-left: 0 !important;
+  width: 100%;
+}
+
+.guest-stock-header .hamburger-btn {
+  display: none !important;
+}
+
+.guest-login-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}

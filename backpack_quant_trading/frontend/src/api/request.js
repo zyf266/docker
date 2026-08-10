@@ -21,6 +21,11 @@ request.interceptors.response.use(
   (res) => res.data,
   (err) => {
     if (err.response?.status === 401) {
+      const path = window.location.pathname || ''
+      // 游客个股分析页不要踢去登录
+      if (path.startsWith('/stock-analysis') || path.startsWith('/login')) {
+        return Promise.reject(err)
+      }
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'

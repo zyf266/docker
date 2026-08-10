@@ -32,6 +32,7 @@ import CryptoSignalHub from './views/CryptoSignalHub'
 import AgentMemory from './views/AgentMemory'
 import StudyCenter from './views/StudyCenter'
 import StudyChapterExam from './views/StudyChapterExam'
+import GuestStockLayout from './layouts/GuestStockLayout'
 
 const RequireAuth = ({ children }) => {
   const token = localStorage.getItem('token')
@@ -49,6 +50,14 @@ const GuestOnly = ({ children }) => {
   return children
 }
 
+/** 游客个股分析入口：已登录则进完整泡沫检测页 */
+const StockAnalysisEntry = () => {
+  if (localStorage.getItem('token')) {
+    return <Navigate to="/us-weekly-report?tab=stock" replace />
+  }
+  return <GuestStockLayout />
+}
+
 function App() {
   return (
     <>
@@ -61,6 +70,10 @@ function App() {
             </GuestOnly>
           }
         />
+
+        <Route path="/stock-analysis" element={<StockAnalysisEntry />}>
+          <Route index element={<UsWeeklyReport guestOnly />} />
+        </Route>
 
         <Route
           path="/"

@@ -71,6 +71,14 @@ async def require_user(user: Optional[dict] = Depends(get_current_user)) -> dict
     return user
 
 
+def require_login_unless(condition: bool, user: Optional[dict]) -> None:
+    """condition 为 True 时允许游客；否则必须登录。"""
+    if condition:
+        return
+    if not user:
+        raise HTTPException(status_code=401, detail="请先登录")
+
+
 def steward_token_ok(token: str) -> bool:
     t = (token or "").strip()
     if not t:

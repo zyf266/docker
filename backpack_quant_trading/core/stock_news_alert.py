@@ -38,7 +38,7 @@ from backpack_quant_trading.core.stock_news_keyword_i18n import (
     watch_names_to_yahoo_queries,
 )
 
-DINGTALK_KEYWORD_REMINDER = "提醒"
+DINGTALK_KEYWORD_REMINDER = (os.getenv("DINGTALK_KEYWORD") or "提醒").strip() or "提醒"
 _POLL_LOG_MAX = 60
 
 logger = logging.getLogger("stock_news_alert")

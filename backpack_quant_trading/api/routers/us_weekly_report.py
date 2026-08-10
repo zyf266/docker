@@ -30,7 +30,7 @@ import requests
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from backpack_quant_trading.api.deps import require_user
+from backpack_quant_trading.api.deps import require_user, get_current_user, require_login_unless
 from backpack_quant_trading.config.settings import config as _app_config
 
 logger = logging.getLogger(__name__)
@@ -968,21 +968,86 @@ def _build_user_prompt(
     )
 
 
+def _extract_balanced_object(text: str, start: int) -> Optional[str]:
+    """从 text[start]=='{' 起截取括号平衡的 JSON 对象子串。"""
+    if start < 0 or start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def _extract_json_block(markdown: str) -> Dict[str, Any]:
+    """从模型输出中提取结构化 JSON（优先含 report 字段的完整对象）。"""
     if not markdown:
         return {}
-    # 优先匹配 ```json ... ```
-    m = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", markdown)
-    if not m:
-        # 退化：最后一个 {...} 块
-        m = re.search(r"(\{[\s\S]*\})\s*$", markdown.strip())
-    if not m:
-        return {}
-    try:
-        return json.loads(m.group(1))
-    except Exception:
-        return {}
+    candidates: List[str] = []
+    # 1) 所有 ```json ... ``` 围栏
+    for m in re.finditer(r"```(?:json)?\s*(\{)", markdown, flags=re.IGNORECASE):
+        blob = _extract_balanced_object(markdown, m.start(1))
+        if blob:
+            candidates.append(blob)
+    # 2) 全文从每个 '{' 尝试（取较长者优先）
+    if not candidates:
+        for i, ch in enumerate(markdown):
+            if ch == "{":
+                blob = _extract_balanced_object(markdown, i)
+                if blob and len(blob) > 80:
+                    candidates.append(blob)
 
+    parsed: List[Dict[str, Any]] = []
+    for blob in candidates:
+        try:
+            obj = json.loads(blob)
+        except Exception:
+            # 常见截断：尝试补全尾部括号（尽力而为）
+            try:
+                fixed = blob.rstrip()
+                if not fixed.endswith("}"):
+                    # 粗略补全
+                    open_n = fixed.count("{") - fixed.count("}")
+                    if open_n > 0:
+                        fixed = fixed + ("}" * open_n)
+                obj = json.loads(fixed)
+            except Exception:
+                continue
+        if isinstance(obj, dict):
+            parsed.append(obj)
+
+    if not parsed:
+        return {}
+    # 优先带 report.top5_events / report.synthesis 的
+    def _score(o: Dict[str, Any]) -> tuple:
+        rep = o.get("report") if isinstance(o.get("report"), dict) else {}
+        return (
+            1 if rep.get("top5_events") else 0,
+            1 if rep.get("synthesis") else 0,
+            1 if rep.get("score_short") else 0,
+            1 if "bubble_total_score" in o else 0,
+            len(json.dumps(o, ensure_ascii=False)),
+        )
+
+    parsed.sort(key=_score, reverse=True)
+    return parsed[0]
 
 def _call_deepseek(
     snapshot: Dict[str, Any],
@@ -1027,14 +1092,15 @@ def _call_deepseek(
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.25 if is_stock else 0.2,
-        "max_tokens": 8192 if is_stock else 4096,
+        # 周报 JSON 卡片很大；4096 易截断 → 只有旧版 Markdown、无结构化卡片
+        "max_tokens": 8192 if is_stock else int(os.getenv("DEEPSEEK_WEEKLY_MAX_TOKENS", "8192")),
     }
     try:
         r = requests.post(
             "https://api.deepseek.com/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=300 if is_stock else 180,
+            timeout=300 if is_stock else 240,
             proxies=_resolve_proxies(),
         )
     except Exception as e:
@@ -1059,7 +1125,49 @@ def _call_deepseek(
             "structured": {},
             "report_type": rtype,
         }
+
     structured = _extract_json_block(markdown)
+    report = structured.get("report") if isinstance(structured.get("report"), dict) else {}
+    has_cards = bool(report.get("top5_events") or report.get("synthesis") or report.get("score_short"))
+    if not has_cards:
+        retry_user = (
+            "上一次输出缺少可用的 report 结构化 JSON（前端无法渲染三层次判断/5件事/评分卡片）。\n"
+            "请**只**输出一个完整 ```json ... ``` 代码块，必须含 report.top5_events（恰好5条）、"
+            "report.synthesis（4条）、report.score_short/mid/long、report.scenarios（3条）、"
+            "report.actions、report.watch_points、bubble_total_score 等。不要写长篇 Markdown。\n\n"
+            f"参考上下文（可压缩使用）：\n{user_prompt[-6000:]}"
+        )
+        payload2 = {
+            "model": payload["model"],
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": retry_user},
+            ],
+            "temperature": 0.1,
+            "max_tokens": int(os.getenv("DEEPSEEK_WEEKLY_MAX_TOKENS", "8192")),
+        }
+        try:
+            r2 = requests.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                headers=headers,
+                json=payload2,
+                timeout=240,
+                proxies=_resolve_proxies(),
+            )
+            data2 = r2.json()
+            if r2.status_code == 200 and data2.get("choices"):
+                md2 = data2["choices"][0]["message"]["content"] or ""
+                st2 = _extract_json_block(md2)
+                rep2 = st2.get("report") if isinstance(st2.get("report"), dict) else {}
+                if rep2.get("top5_events") or rep2.get("synthesis") or rep2.get("score_short"):
+                    markdown = md2
+                    structured = st2
+                    logger.info("[美股周报] DeepSeek 重试后已拿到结构化 report")
+                else:
+                    logger.warning("[美股周报] DeepSeek 重试仍无卡片字段 md_len=%s", len(md2))
+        except Exception as e:
+            logger.warning("[美股周报] DeepSeek 结构化重试失败: %s", e)
+
     return {
         "ok": True,
         "markdown": markdown,
@@ -1366,13 +1474,15 @@ def _do_analyze(
 
 @router.get("/strategies")
 def list_strategies(
-    user: dict = Depends(require_user),
+    user: Optional[dict] = Depends(get_current_user),
     market: str = Query("a_share", description="us | a_share"),
     mode: Optional[str] = Query(None, description="weekly | stock"),
 ) -> Dict[str, Any]:
     """策略模板：个股分析返回 A/B；市场周报返回对应周报模板。"""
     m = normalize_market(market)
     mode_l = (mode or "").strip().lower()
+    # 游客仅可拉个股策略列表（mode=stock）
+    require_login_unless(mode_l == "stock", user)
     if mode_l == "stock" or m == "a_share":
         return {"market": m, "mode": "stock", "items": list_a_share_strategies()}
     return {
@@ -1383,8 +1493,16 @@ def list_strategies(
 
 
 @router.post("/analyze")
-def analyze_now(req: AnalyzeRequest, user: dict = Depends(require_user)) -> Dict[str, Any]:
-    """手动触发一次分析（调用 DeepSeek）。"""
+def analyze_now(
+    req: AnalyzeRequest,
+    user: Optional[dict] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """手动触发一次分析（调用 DeepSeek）。游客仅允许个股分析。"""
+    mode_l = (req.mode or "").strip().lower()
+    sym_raw = (req.symbol or "").strip()
+    strategy = (req.strategy or "").strip()
+    want_stock = mode_l == "stock" or (bool(sym_raw) and is_stock_strategy(strategy or "A"))
+    require_login_unless(want_stock, user)
     holdings = [h.model_dump() if hasattr(h, "model_dump") else h.dict() for h in (req.holdings or [])]
     return _do_analyze(
         holdings,
@@ -1400,15 +1518,17 @@ def analyze_now(req: AnalyzeRequest, user: dict = Depends(require_user)) -> Dict
 
 @router.get("/history")
 def list_history(
-    user: dict = Depends(require_user),
+    user: Optional[dict] = Depends(get_current_user),
     limit: int = Query(80, ge=1, le=200),
     market: str = Query("us", description="us | a_share"),
     strategy: Optional[str] = Query(None, description="A股策略模板 id，如 A"),
     symbol: Optional[str] = Query(None, description="过滤个股代码或名称"),
 ) -> Dict[str, Any]:
     m = normalize_market(market)
-    items = _history_load(m)
     sid_req = (strategy or "").strip()
+    allow_guest = bool(sid_req and is_stock_strategy(sid_req))
+    require_login_unless(allow_guest, user)
+    items = _history_load(m)
     if sid_req and is_stock_strategy(sid_req):
         sid = normalize_strategy(sid_req, m)
         items = [
@@ -1505,12 +1625,15 @@ def list_history(
 
 @router.get("/latest")
 def latest_analysis(
-    user: dict = Depends(require_user),
+    user: Optional[dict] = Depends(get_current_user),
     market: str = Query("us", description="us | a_share"),
     strategy: Optional[str] = Query(None, description="策略模板 id（个股 A/B）"),
     symbol: Optional[str] = Query(None, description="个股代码或名称"),
 ) -> Dict[str, Any]:
     m = normalize_market(market)
+    sid_req = (strategy or "").strip()
+    allow_guest = bool(sid_req and is_stock_strategy(sid_req))
+    require_login_unless(allow_guest, user)
     items = _history_load(m)
     if strategy and is_stock_strategy(strategy):
         sid = normalize_strategy(strategy, m)
@@ -1548,14 +1671,18 @@ def latest_analysis(
 
 @router.get("/report")
 def get_report_by_id(
-    user: dict = Depends(require_user),
+    user: Optional[dict] = Depends(get_current_user),
     id: str = Query(..., description="generated_at_utc 作为报告 ID"),
     market: str = Query("us", description="us | a_share"),
 ) -> Dict[str, Any]:
-    """按 ID 取某一份完整周报。"""
+    """按 ID 取某一份完整周报。游客仅可读取个股报告。"""
     items = _history_load(market)
     for x in items:
         if (x.get("generated_at_utc") or "") == id:
+            is_stock = is_stock_focus_report(x.get("report_type")) or (
+                bool(x.get("symbol")) and is_stock_strategy(x.get("strategy") or "")
+            )
+            require_login_unless(is_stock, user)
             return x
     return {"empty": True, "error": "report not found"}
 

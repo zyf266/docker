@@ -967,10 +967,19 @@ def send_dingtalk_alert(symbol: str, timeframe: str, message: str = "") -> bool:
         data = {"msgtype": "text", "text": {"content": content}}
 
         resp = requests.post(url, json=data, timeout=5)
-        if resp.status_code == 200:
+        if resp.status_code != 200:
+            logger.error(f"钉钉预警发送失败: HTTP {resp.status_code} {resp.text}")
+            return False
+        try:
+            body = resp.json()
+        except Exception:
             logger.info(f"钉钉预警已发送: {symbol} {timeframe}")
             return True
-        logger.error(f"钉钉预警发送失败: {resp.text}")
+        if isinstance(body, dict) and int(body.get("errcode", -1) or -1) == 0:
+            logger.info(f"钉钉预警已发送: {symbol} {timeframe}")
+            return True
+        # 常见：310000 关键词不匹配 —— 以前只看 HTTP 200 会误报「已发送」
+        logger.error(f"钉钉预警发送失败: {body}")
         return False
     except Exception as e:
         logger.error(f"钉钉预警异常: {e}")

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { login, register } from '../api/auth'
 import AisPageBackground from '../components/AisPageBackground'
 import '../styles/AisTheme.css'
@@ -151,6 +151,11 @@ const Login = () => {
                   >
                     {loading ? '处理中...' : '登录'}
                   </button>
+                </div>
+                <div className="form-item" style={{ textAlign: 'center', marginTop: 8 }}>
+                  <Link to="/stock-analysis" className="link-inline">
+                    无需登录 · 体验个股分析
+                  </Link>
                 </div>
               </>
             )}
