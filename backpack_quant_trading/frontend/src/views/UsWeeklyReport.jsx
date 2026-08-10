@@ -14,6 +14,9 @@ import './UsWeeklyReport.css'
 const fmtScore = (v, max) =>
   v == null ? '—' : `${typeof v === 'number' ? v.toFixed(0) : v} / ${max ?? '—'}`
 
+/** 模型偶发把数组字段写成对象；`(x||[]).map` 会对真值对象崩溃 */
+const asList = (v) => (Array.isArray(v) ? v : [])
+
 // 根据「市场状态」匹配情绪色
 const marketStateStyle = (s = '') => {
   if (!s) return { color: '#fff', glow: 'rgba(255,255,255,0.4)' }
@@ -446,7 +449,12 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
 
   const report = analysis?.report || null
   const hasStructuredReport = Boolean(
-    report && (report.top5_events || report.synthesis || report.actions || report.score_short)
+    report && (
+      asList(report.top5_events).length ||
+      asList(report.synthesis).length ||
+      asList(report.actions).length ||
+      asList(report.score_short).length
+    )
   )
   const coreSummaryText =
     typeof report?.core_summary === 'string'
@@ -732,11 +740,11 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
       )}
 
       {/* 综合判断 */}
-      {report?.synthesis && (
+      {asList(report?.synthesis).length > 0 && (
         <div className="uwr-card">
           <div className="uwr-card-h">三层次综合判断</div>
           <div className="uwr-pill-grid">
-            {report.synthesis.map((s, i) => (
+            {asList(report.synthesis).map((s, i) => (
               <StatPill key={i} label={s.label} value={s.value} tone={i === 3 ? 'danger' : i === 0 ? 'rose' : i === 1 ? 'amber' : 'violet'} />
             ))}
           </div>
@@ -744,11 +752,11 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
       )}
 
       {/* 5 件事 */}
-      {report?.top5_events && (
+      {asList(report?.top5_events).length > 0 && (
         <div className="uwr-card">
           <div className="uwr-card-h">本周真正重要的 5 件事</div>
           <div className="uwr-events">
-            {report.top5_events.map((e) => (
+            {asList(report.top5_events).map((e) => (
               <div className="uwr-event" key={e.id}>
                 <div className="uwr-event-h">
                   <span className="uwr-event-id">#{e.id}</span>
@@ -768,14 +776,14 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
       )}
 
       {/* 评分模型 三段 */}
-      {(report?.score_short || report?.score_mid || report?.score_long) && (
+      {(asList(report?.score_short).length > 0 || asList(report?.score_mid).length > 0 || asList(report?.score_long).length > 0) && (
         <div className="uwr-card">
           <div className="uwr-card-h">泡沫评分模型 · 三时间维度（0-5 分制）</div>
           <div className="uwr-score-3-block">
             {[
-              { key: 'short', title: '短期泡沫压力 · 1-4 周', rows: report?.score_short, total: report?.score_short_total, max: report?.score_short_max, conclusion: report?.score_short_conclusion, color: '#fb7185' },
-              { key: 'mid', title: '中期泡沫积累 · 3-6 月', rows: report?.score_mid, total: report?.score_mid_total, max: report?.score_mid_max, conclusion: report?.score_mid_conclusion, color: '#f59e0b' },
-              { key: 'long', title: '长期结构性泡沫 · 1-3 年', rows: report?.score_long, total: report?.score_long_total, max: report?.score_long_max, conclusion: report?.score_long_conclusion, color: '#a855f7' },
+              { key: 'short', title: '短期泡沫压力 · 1-4 周', rows: asList(report?.score_short), total: report?.score_short_total, max: report?.score_short_max, conclusion: report?.score_short_conclusion, color: '#fb7185' },
+              { key: 'mid', title: '中期泡沫积累 · 3-6 月', rows: asList(report?.score_mid), total: report?.score_mid_total, max: report?.score_mid_max, conclusion: report?.score_mid_conclusion, color: '#f59e0b' },
+              { key: 'long', title: '长期结构性泡沫 · 1-3 年', rows: asList(report?.score_long), total: report?.score_long_total, max: report?.score_long_max, conclusion: report?.score_long_conclusion, color: '#a855f7' },
             ].map((seg) => (
               <div key={seg.key} className="uwr-score-block">
                 <div className="uwr-score-block-h" style={{ borderTopColor: seg.color }}>
@@ -794,7 +802,7 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(seg.rows || []).map((r, i) => (
+                      {seg.rows.map((r, i) => (
                         <tr key={i}>
                           <td><b>{r.dim}</b></td>
                           <td>
@@ -816,7 +824,7 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
       )}
 
       {/* 持仓 */}
-      {report?.positions?.length > 0 && (
+      {asList(report?.positions).length > 0 && (
         <div className="uwr-card">
           <div className="uwr-card-h">我的持仓周度处理</div>
           <div className="uwr-table-wrap">
@@ -833,7 +841,7 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
                 </tr>
               </thead>
               <tbody>
-                {report.positions.map((p, i) => (
+                {asList(report.positions).map((p, i) => (
                   <tr key={i}>
                     <td><b className="uwr-mono-em">{p.code}</b></td>
                     <td>{p.status}</td>
@@ -851,11 +859,11 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
       )}
 
       {/* 三种情景 */}
-      {report?.scenarios?.length > 0 && (
+      {asList(report?.scenarios).length > 0 && (
         <div className="uwr-card">
           <div className="uwr-card-h">下周三种情景计划</div>
           <div className="uwr-scenarios">
-            {report.scenarios.map((s, i) => {
+            {asList(report.scenarios).map((s, i) => {
               const tone = i === 0 ? 'green' : i === 1 ? 'amber' : 'red'
               return (
                 <div className={`uwr-scen uwr-scen-${tone}`} key={i}>
@@ -876,11 +884,11 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
       )}
 
       {/* 8 条行动 */}
-      {report?.actions?.length > 0 && (
+      {asList(report?.actions).length > 0 && (
         <div className="uwr-card">
           <div className="uwr-card-h">下周交易行动清单（最多 8 条）</div>
           <div className="uwr-actions-list">
-            {report.actions.map((a) => (
+            {asList(report.actions).map((a) => (
               <div className="uwr-act" key={a.idx}>
                 <div className="uwr-act-num">{a.idx}</div>
                 <div className="uwr-act-body">
@@ -900,7 +908,7 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
       )}
 
       {/* 转折点 */}
-      {report?.watch_points?.length > 0 && (
+      {asList(report?.watch_points).length > 0 && (
         <div className="uwr-card">
           <div className="uwr-card-h">下周必须盯的转折点</div>
           <div className="uwr-table-wrap">
@@ -914,7 +922,7 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
                 </tr>
               </thead>
               <tbody>
-                {report.watch_points.map((w) => (
+                {asList(report.watch_points).map((w) => (
                   <tr key={w.idx}>
                     <td>{w.idx}</td>
                     <td><b>{w.point}</b></td>

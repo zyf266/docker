@@ -691,6 +691,22 @@ def build_ui_report(structured: dict | None, fallback_summary: str = "") -> dict
                 pass
         return total if ok else None
 
+    # 模型偶发把应是数组的字段写成对象/字符串 → 前端 .map 白屏
+    for k in (
+        "top5_events",
+        "score_short",
+        "score_mid",
+        "score_long",
+        "synthesis",
+        "positions",
+        "scenarios",
+        "actions",
+        "watch_points",
+    ):
+        v = report.get(k)
+        if v is not None and not isinstance(v, list):
+            report[k] = []
+
     for prefix, default_max in (("short", 20), ("mid", 25), ("long", 25)):
         rows = report.get(f"score_{prefix}")
         if report.get(f"score_{prefix}_total") is None:
