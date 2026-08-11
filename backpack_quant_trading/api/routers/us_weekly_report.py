@@ -67,6 +67,7 @@ from backpack_quant_trading.core.bubble_weekly_prompts import (
     list_a_share_strategies,
     normalize_market,
     normalize_strategy,
+    report_has_ui_content,
 )
 
 
@@ -1128,13 +1129,19 @@ def _call_deepseek(
 
     structured = _extract_json_block(markdown)
     report = structured.get("report") if isinstance(structured.get("report"), dict) else {}
-    has_cards = bool(report.get("top5_events") or report.get("synthesis") or report.get("score_short"))
+    # 先按前端字段归一再判断，避免「有 top5 但全是 description 错字段」误当成成功
+    preview = build_ui_report(structured, fallback_summary="")
+    has_cards = report_has_ui_content(preview)
     if not has_cards:
         retry_user = (
             "上一次输出缺少可用的 report 结构化 JSON（前端无法渲染三层次判断/5件事/评分卡片）。\n"
-            "请**只**输出一个完整 ```json ... ``` 代码块，必须含 report.top5_events（恰好5条）、"
-            "report.synthesis（4条）、report.score_short/mid/long、report.scenarios（3条）、"
-            "report.actions、report.watch_points、bubble_total_score 等。不要写长篇 Markdown。\n\n"
+            "请**只**输出一个完整 ```json ... ``` 代码块，字段名必须与 schema 完全一致：\n"
+            "- report.top5_events[] 用 fact/source_date/why_matters/direction/plan_change（禁止用 description/impact 代替）\n"
+            "- report.synthesis[] 用 label/value（禁止用 point/type/basis 代替）\n"
+            "- report.scenarios[] 用 probability/trigger/do/dont\n"
+            "- report.actions[] 用 idx/action/target/reason/trigger/stop/period\n"
+            "- report.score_short/mid/long 为评分明细数组（dim/score/max/basis）\n"
+            "不要写长篇 Markdown。\n\n"
             f"参考上下文（可压缩使用）：\n{user_prompt[-6000:]}"
         )
         payload2 = {
@@ -1158,8 +1165,7 @@ def _call_deepseek(
             if r2.status_code == 200 and data2.get("choices"):
                 md2 = data2["choices"][0]["message"]["content"] or ""
                 st2 = _extract_json_block(md2)
-                rep2 = st2.get("report") if isinstance(st2.get("report"), dict) else {}
-                if rep2.get("top5_events") or rep2.get("synthesis") or rep2.get("score_short"):
+                if report_has_ui_content(build_ui_report(st2, fallback_summary="")):
                     markdown = md2
                     structured = st2
                     logger.info("[美股周报] DeepSeek 重试后已拿到结构化 report")
@@ -1623,6 +1629,31 @@ def list_history(
     }
 
 
+def _hydrate_history_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """读取历史时把错字段 schema 归一成前端可用 report（不改盘）。"""
+    if not isinstance(item, dict) or item.get("empty"):
+        return item
+    if is_stock_focus_report(item.get("report_type")):
+        return item
+    structured = item.get("structured") if isinstance(item.get("structured"), dict) else {}
+    # 旧记录可能只有 report、没有 structured：用 report 当作 st.report
+    if not structured and isinstance(item.get("report"), dict):
+        structured = {"report": item["report"]}
+    elif isinstance(item.get("report"), dict) and "report" not in structured:
+        structured = {**structured, "report": item["report"]}
+    if not structured:
+        return item
+    out = dict(item)
+    fb = (item.get("one_liner") or "").strip()
+    report_obj = build_ui_report(structured, fallback_summary=fb)
+    out["report"] = report_obj
+    if (not fb) or ("状态=—" in fb and "阶段=—" in fb):
+        cs = report_obj.get("core_summary") or ""
+        if cs and "状态=—" not in str(cs):
+            out["one_liner"] = cs
+    return out
+
+
 @router.get("/latest")
 def latest_analysis(
     user: Optional[dict] = Depends(get_current_user),
@@ -1666,7 +1697,7 @@ def latest_analysis(
         ]
     if not items:
         return {"empty": True, "market": m}
-    return items[-1]
+    return _hydrate_history_item(items[-1])
 
 
 @router.get("/report")
@@ -1683,7 +1714,7 @@ def get_report_by_id(
                 bool(x.get("symbol")) and is_stock_strategy(x.get("strategy") or "")
             )
             require_login_unless(is_stock, user)
-            return x
+            return _hydrate_history_item(x)
     return {"empty": True, "error": "report not found"}
 
 

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 
 BUBBLE_STAGES = [
@@ -642,12 +643,67 @@ def build_stock_supply_chain_user_prompt(
     return build_stock_strategy_user_prompt(code, name, snapshot, extra, strategy="A")
 
 
+def _pick(d: dict, *keys, default: str = "") -> str:
+    for k in keys:
+        v = d.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return default
+
+
+def _parse_prob(name: str, raw) -> float | None:
+    if isinstance(raw, (int, float)):
+        p = float(raw)
+        return p / 100.0 if p > 1 else p
+    m = re.search(r"(\d+(?:\.\d+)?)\s*%", str(name or ""))
+    if m:
+        return float(m.group(1)) / 100.0
+    return None
+
+
+def report_has_ui_content(report: dict | None) -> bool:
+    """前端卡片是否已有实质内容（非空壳/错字段）。"""
+    if not isinstance(report, dict):
+        return False
+    events = report.get("top5_events")
+    if not isinstance(events, list) or not events:
+        return False
+    fact_ok = any(
+        isinstance(e, dict) and (_pick(e, "fact", "description", "detail"))
+        for e in events
+    )
+    syn = report.get("synthesis")
+    syn_ok = isinstance(syn, list) and any(
+        isinstance(s, dict) and (_pick(s, "value", "point", "text", "content"))
+        for s in syn
+    )
+    scores_ok = any(
+        isinstance(report.get(k), list) and report.get(k)
+        for k in ("score_short", "score_mid", "score_long")
+    )
+    scen = report.get("scenarios")
+    scen_ok = isinstance(scen, list) and any(
+        isinstance(s, dict) and (_pick(s, "trigger", "description", "do"))
+        for s in scen
+    )
+    return bool(fact_ok and (syn_ok or scores_ok or scen_ok))
+
+
 def build_ui_report(structured: dict | None, fallback_summary: str = "") -> dict:
-    """从 DeepSeek structured JSON 组装前端卡片用的 report。"""
+    """从 DeepSeek structured JSON 组装前端卡片用的 report。
+
+    模型常输出「近似 schema」（description/point/rationale 等），此处统一映射到
+    前端 UsWeeklyReport 使用的字段名。
+    """
     st = dict(structured or {})
     report = st.get("report")
     if not isinstance(report, dict):
         report = {}
+    else:
+        report = dict(report)
 
     # 模型偶发把卡片字段拍扁到顶层
     flat_keys = (
@@ -707,6 +763,148 @@ def build_ui_report(structured: dict | None, fallback_summary: str = "") -> dict
         if v is not None and not isinstance(v, list):
             report[k] = []
 
+    # ── top5_events：description/impact 等 → fact/why_matters ──
+    events_in = report.get("top5_events") or []
+    events_out = []
+    for i, e in enumerate(events_in):
+        if isinstance(e, str):
+            events_out.append(
+                {
+                    "id": i + 1,
+                    "title": e[:80],
+                    "fact": e,
+                    "source_date": "无法验证",
+                    "why_matters": "",
+                    "direction": "",
+                    "plan_change": "",
+                }
+            )
+            continue
+        if not isinstance(e, dict):
+            continue
+        eid = e.get("id")
+        try:
+            eid = int(str(eid).lstrip("eE")) if eid is not None else i + 1
+        except Exception:
+            eid = i + 1
+        events_out.append(
+            {
+                "id": eid,
+                "title": _pick(e, "title", "name", "headline", default=f"事件{i + 1}"),
+                "fact": _pick(e, "fact", "description", "detail", "content"),
+                "source_date": _pick(e, "source_date", "data_quality", "source", "date", default="无法验证"),
+                "why_matters": _pick(e, "why_matters", "impact", "importance_note", "why"),
+                "direction": _pick(e, "direction", "bias", "category", "layer"),
+                "plan_change": _pick(e, "plan_change", "action", "trading_plan", "plan"),
+            }
+        )
+    if events_out:
+        report["top5_events"] = events_out
+
+    # ── synthesis：point/basis → label/value ──
+    syn_labels = (
+        "短期建议（1-4周）",
+        "中期建议（3-6个月）",
+        "长期类比年份",
+        "最关键反证条件",
+    )
+    syn_in = report.get("synthesis") or []
+    syn_out = []
+    for i, s in enumerate(syn_in):
+        if isinstance(s, str):
+            syn_out.append({"label": syn_labels[i] if i < 4 else f"判断{i + 1}", "value": s})
+            continue
+        if not isinstance(s, dict):
+            continue
+        label = _pick(s, "label", "name", "title")
+        # type 常是「事实/推论」元标签，不能当卡片标题
+        if (not label) or label in ("事实", "推论", "观点", "判断", "fact", "inference"):
+            label = syn_labels[i] if i < 4 else f"判断{i + 1}"
+        value = _pick(s, "value", "point", "text", "content", "summary")
+        basis = _pick(s, "basis", "reason", "detail")
+        if basis and basis not in value:
+            value = f"{value}（依据：{basis}）" if value else basis
+        syn_out.append({"label": label, "value": value or "—"})
+    if syn_out:
+        report["synthesis"] = syn_out
+
+    # ── scenarios ──
+    scen_out = []
+    for i, s in enumerate(report.get("scenarios") or []):
+        if not isinstance(s, dict):
+            continue
+        name = _pick(s, "name", "title", "scenario", default=f"情景{i + 1}")
+        scen_out.append(
+            {
+                "name": name,
+                "probability": _parse_prob(name, s.get("probability")),
+                "trigger": _pick(s, "trigger", "description", "condition"),
+                "do": _pick(s, "do", "action", "should", "target"),
+                "dont": _pick(s, "dont", "avoid", "should_not", "confidence"),
+            }
+        )
+    if scen_out:
+        report["scenarios"] = scen_out
+
+    # ── actions ──
+    act_out = []
+    for i, a in enumerate(report.get("actions") or []):
+        if not isinstance(a, dict):
+            continue
+        act_out.append(
+            {
+                "idx": a.get("idx") if a.get("idx") is not None else i + 1,
+                "action": _pick(a, "action", "side", "op"),
+                "target": _pick(a, "target", "ticker", "symbol", "code"),
+                "reason": _pick(a, "reason", "rationale", "why"),
+                "trigger": _pick(a, "trigger", "entry_zone", "entry", "condition"),
+                "stop": _pick(a, "stop", "invalidation", "stop_loss"),
+                "period": _pick(a, "period", "horizon", "timeframe", default="下周"),
+            }
+        )
+    if act_out:
+        report["actions"] = act_out
+
+    # ── watch_points：event/date/impact → point/detail/stars ──
+    wp_out = []
+    for i, w in enumerate(report.get("watch_points") or []):
+        if not isinstance(w, dict):
+            continue
+        stars = w.get("stars")
+        try:
+            stars = int(stars) if stars is not None else 3
+        except Exception:
+            stars = 3
+        wp_out.append(
+            {
+                "idx": w.get("idx") if w.get("idx") is not None else i + 1,
+                "point": _pick(w, "point", "event", "title", "name"),
+                "detail": _pick(w, "detail", "impact", "description", "content", "date"),
+                "stars": max(1, min(5, stars)),
+            }
+        )
+    if wp_out:
+        report["watch_points"] = wp_out
+
+    # ── positions 兼容 ──
+    pos_out = []
+    for p in report.get("positions") or []:
+        if not isinstance(p, dict):
+            continue
+        pos_out.append(
+            {
+                "code": _pick(p, "code", "ticker", "symbol"),
+                "status": _pick(p, "status", "state"),
+                "risk_change": _pick(p, "risk_change", "risk"),
+                "action": _pick(p, "action"),
+                "trigger": _pick(p, "trigger"),
+                "invalidation": _pick(p, "invalidation", "stop"),
+                "watch": _pick(p, "watch", "note"),
+            }
+        )
+    if pos_out:
+        report["positions"] = pos_out
+
     for prefix, default_max in (("short", 20), ("mid", 25), ("long", 25)):
         rows = report.get(f"score_{prefix}")
         if report.get(f"score_{prefix}_total") is None:
@@ -715,6 +913,13 @@ def build_ui_report(structured: dict | None, fallback_summary: str = "") -> dict
                 report[f"score_{prefix}_total"] = s
         if report.get(f"score_{prefix}_max") is None:
             report[f"score_{prefix}_max"] = default_max
+        # 顶层分数回填到 total（无明细行时至少有总分）
+        top_key = {"short": "short_term_score", "mid": "mid_term_score", "long": "long_term_score"}[prefix]
+        if report.get(f"score_{prefix}_total") is None and st.get(top_key) is not None:
+            try:
+                report[f"score_{prefix}_total"] = int(float(st[top_key]))
+            except Exception:
+                pass
 
     cs = report.get("core_summary")
     if isinstance(cs, dict):
@@ -727,6 +932,20 @@ def build_ui_report(structured: dict | None, fallback_summary: str = "") -> dict
         )
     elif not cs:
         report["core_summary"] = fallback_summary or st.get("one_liner") or ""
+
+    # 占位 one_liner / core_summary → 用 synthesis 拼一句
+    cs_text = str(report.get("core_summary") or "")
+    if (not cs_text.strip()) or ("状态=—" in cs_text and "阶段=—" in cs_text):
+        syn = report.get("synthesis") or []
+        bits = [
+            _pick(s, "value")
+            for s in syn
+            if isinstance(s, dict) and _pick(s, "value") and _pick(s, "value") != "—"
+        ]
+        if bits:
+            report["core_summary"] = "；".join(bits[:3])
+        elif fallback_summary and "状态=—" not in str(fallback_summary):
+            report["core_summary"] = fallback_summary
 
     # 补全 synthesis 第 4 项
     syn = report.get("synthesis")
