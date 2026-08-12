@@ -615,7 +615,7 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
         <div className="uwr-history-drawer-mask" onClick={() => setShowHistory(false)}>
           <div className="uwr-history-drawer" onClick={(e) => e.stopPropagation()}>
             <div className="uwr-history-drawer-h">
-              <span>全部历史周报</span>
+              <span>{isStockReport ? '全部历史个股报告' : '全部历史周报'}</span>
               <button type="button" className="uwr-history-close" onClick={() => setShowHistory(false)}>✕</button>
             </div>
             <div className="uwr-history-list">
@@ -623,6 +623,15 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
                 const id = h.generated_at_utc
                 const date = h.report_date || id?.slice(0, 10) || '—'
                 const active = id === selectedId
+                const title =
+                  h.report_label ||
+                  (h.stock_name || h.symbol
+                    ? `${h.stock_name || h.symbol}${h.symbol && h.stock_name ? `（${h.symbol}）` : ''}`
+                    : '') ||
+                  (isStockReport ? '个股报告' : '美股周报')
+                const isStockItem =
+                  ['stock_supply_chain', 'stock_scorecard'].includes(h.report_type) ||
+                  Boolean(h.symbol && h.report_type !== 'bubble_weekly')
                 return (
                   <button
                     type="button"
@@ -635,18 +644,35 @@ const UsWeeklyReport = ({ guestOnly = false }) => {
                   >
                     <div className="uwr-history-item-l">
                       <div className="uwr-history-item-date">{date}</div>
+                      <div className="uwr-history-item-title">{title}</div>
                       <div className="uwr-history-item-meta">
-                        <span>{h.stage || '—'}</span>
-                        <span>·</span>
-                        <span>{h.market_state || '—'}</span>
-                        <span>·</span>
-                        <span>下周：{h.next_week_bias || '—'}</span>
+                        {isStockItem ? (
+                          <>
+                            <span>{h.strategy ? `策略${h.strategy}` : (h.report_type === 'stock_scorecard' ? '评分卡' : '供应链深度')}</span>
+                            {(h.stock_name || h.symbol) && (
+                              <>
+                                <span>·</span>
+                                <span>{h.stock_name || h.symbol}</span>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <span>{h.stage || '—'}</span>
+                            <span>·</span>
+                            <span>{h.market_state || '—'}</span>
+                            <span>·</span>
+                            <span>下周：{h.next_week_bias || '—'}</span>
+                          </>
+                        )}
                       </div>
                       {h.one_liner && <div className="uwr-history-item-one">{h.one_liner}</div>}
                     </div>
                     <div className="uwr-history-item-r">
                       <div className="uwr-history-item-score">
-                        {h.bubble_total_score ?? '—'}
+                        {isStockItem
+                          ? (h.symbol || '—')
+                          : (h.bubble_total_score ?? '—')}
                       </div>
                       {!h.has_report && <div className="uwr-history-item-seed">仅评分摘要</div>}
                     </div>
