@@ -115,6 +115,22 @@ def _in_a_share_session(dt: datetime) -> bool:
     return (9 * 60 + 30 <= hm <= 11 * 60 + 30) or (13 * 60 <= hm <= 15 * 60)
 
 
+def _in_a_share_scan_window(dt: datetime) -> bool:
+    """允许拉 K / 推送的时间窗：交易时段 + 午盘/收盘后 settle+grace。"""
+    now = _bj_localize_naive(dt)
+    if now.weekday() >= 5:
+        return False
+    if _in_a_share_session(now):
+        return True
+    # 11:30 / 15:00 收盘后短暂宽限（秒级），避免刚出 session 分钟边界就漏扫
+    for hh, mm in ((11, 30), (15, 0)):
+        close = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        elapsed = (now - close).total_seconds()
+        if CLOSE_SETTLE_SEC <= elapsed <= CLOSE_SETTLE_SEC + SCAN_GRACE_SEC:
+            return True
+    return False
+
+
 def _session_boundaries(interval: str, day: datetime) -> List[datetime]:
     """A 股会话内该级别的收盘时刻列表（北京时间）。"""
     iv = str(interval)
@@ -562,31 +578,42 @@ class AShareMonitorService:
         self._thread = None
 
     def _loop(self) -> None:
-        """按各任务 K 线收盘时刻 + CLOSE_SETTLE_SEC 唤醒，尽量收盘即推。"""
+        """按各任务 K 线收盘时刻 + CLOSE_SETTLE_SEC 唤醒；非交易时段不扫描。"""
         while not self._stop.is_set():
             with self._lock:
                 intervals = list({str(t.get("interval") or "5") for t in self.tasks})
             sleep_sec, planned = _seconds_until_next_wake(intervals)
             now = datetime.now(tz=BJ)
-            if now.weekday() >= 5 or not (
-                _in_a_share_session(now)
-                or (now.hour == 15 and now.minute <= 1)
-                or any(str(i) == "D" for i in intervals)
-            ):
-                sleep_sec = max(sleep_sec, 60.0)
+            if not _in_a_share_scan_window(now):
+                # 休市：最多睡到下次唤醒点，且至少 60s，绝不扫盘
+                sleep_sec = max(min(sleep_sec, MAX_SLEEP_SEC), 60.0)
+                if self._stop.wait(sleep_sec):
+                    break
+                continue
             if self._stop.wait(sleep_sec):
                 break
             try:
-                due = _intervals_due_now(intervals, datetime.now(tz=BJ))
+                now2 = datetime.now(tz=BJ)
+                if not _in_a_share_scan_window(now2):
+                    continue
+                due = _intervals_due_now(intervals, now2)
+                # 仅当刚睡到计划点附近时才用 planned，避免 MAX_SLEEP 截断后休市误扫
                 if not due and planned:
-                    due = planned
-                self._scan_once(due_intervals=due or None)
+                    remain, _ = _seconds_until_next_wake(planned, now2)
+                    if remain <= 2.0:
+                        due = list(planned)
+                if not due:
+                    continue
+                self._scan_once(due_intervals=due)
             except Exception as e:
                 self.last_error = str(e)
                 logger.exception("A股监控扫描异常: %s", e)
                 self._notify_datasource_error(str(e))
 
     def _notify_datasource_error(self, msg: str) -> None:
+        if not _in_a_share_scan_window(datetime.now(tz=BJ)):
+            logger.info("A股监控休市忽略数据源告警: %s", msg[:200])
+            return
         day = datetime.now(tz=BJ).strftime("%Y-%m-%d")
         key = f"__datasource__|{day}"
         with self._lock:
@@ -601,6 +628,8 @@ class AShareMonitorService:
 
     def _scan_once(self, due_intervals: Optional[List[str]] = None) -> None:
         now = datetime.now(tz=BJ)
+        if not _in_a_share_scan_window(now):
+            return
         self.last_scan_at = now.strftime("%Y-%m-%d %H:%M:%S")
         with self._lock:
             tasks = list(self.tasks)
