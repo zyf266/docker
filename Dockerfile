@@ -42,6 +42,8 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
 
 COPY backpack_quant_trading/ /app/backpack_quant_trading/
 COPY --from=frontend-builder /build/dist /app/backpack_quant_trading/frontend/dist
+# A 股策略回测 CSV（import 时读 /app/*.csv；缺文件不影响已入库数据的只读接口）
+COPY 159570.csv 300308.csv 603986.csv 688146.csv 002837.csv /app/
 
 COPY deploy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

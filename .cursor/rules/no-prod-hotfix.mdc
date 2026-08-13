@@ -1,15 +1,29 @@
 ---
-description: 正式服禁止热更新，只允许 GitHub Actions CI/CD
+description: 正式服禁止热更代码；必须本地→提交推送→CI/CD
 alwaysApply: true
 ---
 
-# 正式服发布（禁止热更）
+# 正式服发布（禁止热更代码）
 
-对生产机 `47.110.57.118` / `/opt/backpack-quant`：
+对生产机 `47.110.57.118` / `/opt/backpack-quant` / `backpack-api` 等容器：
 
-- **禁止** `docker cp`、局部 `scp`、执行 `deploy/hotfix-*.sh`、`restore-prod-hotfixes.sh` 做热更。
-- **唯一允许**：GitHub Actions → **Deploy to Prod ECS**（`deploy-prod.yml`）。
-- 热更会造成半套版本（如 `margin_type` 报错、前端文案回退、`No module named lighter`）。
-- 用户若要求「热更正式服」，应拒绝并改为：本地改代码 → 提交/推送 → 跑正式机 CI/CD；紧急才可用 `ALLOW_PROD_HOTFIX=1`，事后必须全量 CI 对齐。
+## 禁止（无例外）
 
-详见 `docs/deploy-policy-no-hotfix.md`。
+- 在服务器或容器内 **直接改业务代码**（含 `docker cp`、局部 `scp` 覆盖 `.py`/前端产物、`vi`/`sed` 改源码）
+- 执行 `deploy/hotfix-*.sh`、`restore-prod-hotfixes.sh` 或任何「先拷文件再 restart」的热更
+- 用「用户要马上修好」「只改一两行」作为热更理由
+
+## 唯一正确路径
+
+1. **本地**改代码并验证  
+2. **提交 + 推送**（用户明确要求再 commit/push）  
+3. 走 GitHub Actions → **Deploy to Prod ECS**（`deploy-prod.yml`）
+
+用户若要求「热更正式服 / 直接 ssh 改」，应 **拒绝**，改为上述流水线。
+
+## 仍允许的非代码运维（不算热更）
+
+- 经用户同意后改生产 `.env`（密钥/Webhook，不改仓库源码）
+- 经用户同意后做数据导入（如策略 CSV → DB）、查日志、健康检查
+
+详见 `docs/deploy-policy-no-hotfix.md`（若存在）。

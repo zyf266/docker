@@ -67,6 +67,22 @@ def a_share_monitor_webhook() -> str:
     return (os.getenv("A_SHARE_MONITOR_WEBHOOK") or "").strip()
 
 
+def a_share_monitor_dingtalk_keyword() -> str:
+    """该机器人自定义关键词（当前群为「信号」）；可用环境变量覆盖。"""
+    return (
+        (os.getenv("A_SHARE_MONITOR_DINGTALK_KEYWORD") or "").strip()
+        or "信号"
+    )
+
+
+def _ensure_a_share_dingtalk_keyword(content: str) -> str:
+    text = (content or "").strip()
+    kw = a_share_monitor_dingtalk_keyword()
+    if kw and kw not in text:
+        text = f"【{kw}】\n{text}"
+    return text
+
+
 def _bj_localize_naive(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=BJ)
@@ -443,30 +459,37 @@ def detect_gain(
     }
 
 
-def send_a_share_dingtalk(title: str, body: str) -> bool:
+def send_a_share_dingtalk(title: str, body: str) -> Tuple[bool, str]:
     url = a_share_monitor_webhook()
     if not url:
-        logger.warning("A股监控钉钉跳过：未配置 A_SHARE_MONITOR_WEBHOOK")
-        return False
+        msg = "未配置 A_SHARE_MONITOR_WEBHOOK"
+        logger.warning("A股监控钉钉跳过：%s", msg)
+        return False, msg
     try:
-        from backpack_quant_trading.core.stock_news_alert import ensure_dingtalk_keyword
-
-        content = ensure_dingtalk_keyword(f"{title}\n{body}")
+        content = _ensure_a_share_dingtalk_keyword(f"{title}\n{body}")
         resp = requests.post(url, json={"msgtype": "text", "text": {"content": content}}, timeout=8)
         if resp.status_code != 200:
-            logger.error("A股监控钉钉失败 HTTP %s %s", resp.status_code, resp.text)
-            return False
+            msg = f"HTTP {resp.status_code} {resp.text[:200]}"
+            logger.error("A股监控钉钉失败 %s", msg)
+            return False, msg
         try:
             j = resp.json()
         except Exception:
-            return True
-        if isinstance(j, dict) and int(j.get("errcode", -1) or -1) == 0:
-            return True
-        logger.error("A股监控钉钉失败: %s", j)
-        return False
+            return True, "ok"
+        if isinstance(j, dict):
+            try:
+                errcode = int(j.get("errcode", -1))
+            except (TypeError, ValueError):
+                errcode = -1
+            if errcode == 0:
+                return True, "ok"
+            msg = str(j.get("errmsg") or j)
+            logger.error("A股监控钉钉失败: %s", j)
+            return False, msg
+        return True, "ok"
     except Exception as e:
         logger.error("A股监控钉钉异常: %s", e)
-        return False
+        return False, str(e)
 
 
 def format_alert_message(
@@ -683,7 +706,7 @@ class AShareMonitorService:
                 return
 
         msg = format_alert_message(code, name, strategy, interval, trigger, extra=f"数据源：{src}")
-        ok = send_a_share_dingtalk("【A股标的监控提醒】", msg)
+        ok, _ = send_a_share_dingtalk("【A股标的监控提醒】", msg)
         # 仅成功推送才占日限额；失败不锁 bar，允许宽限内重试
         with self._lock:
             if ok:

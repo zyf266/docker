@@ -247,12 +247,12 @@ def a_share_monitor_signals(
 
 @router.post("/a-share-monitor/test-dingtalk")
 def a_share_monitor_test_dingtalk(user: dict = Depends(require_user)):
-    ok = send_a_share_dingtalk(
+    ok, msg = send_a_share_dingtalk(
         "【A股标的监控提醒】测试",
         "这是一条测试消息\n若收到说明 webhook 配置正常",
     )
     if not ok:
-        raise HTTPException(status_code=502, detail="钉钉发送失败")
+        raise HTTPException(status_code=502, detail=f"钉钉发送失败：{msg}")
     return {"ok": True}
 
 
