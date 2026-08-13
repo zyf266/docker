@@ -38,6 +38,18 @@ from backpack_quant_trading.core.chain_activity_monitor import (
     send_chain_activity_test_dingtalk,
     get_chain_rpc_info,
 )
+from backpack_quant_trading.core.a_share_monitor import (
+    AShareMonitorService,
+    INTERVALS,
+    STRATEGIES,
+    get_a_share_monitor_instance,
+    set_a_share_monitor_instance,
+    mark_a_share_monitor_user_stopped,
+    restore_a_share_monitor_from_db_if_needed,
+    load_signal_history,
+    send_a_share_dingtalk,
+)
+from backpack_quant_trading.core.stockapi_client import fetch_a_share_pool, StockApiError
 
 router = APIRouter()
 
@@ -112,6 +124,136 @@ def list_spot_symbols(all_pairs: bool = Query(False, description="True=全部现
         return {"symbols": symbols, "market": "spot", "all_pairs": bool(all_pairs)}
     except Exception as e:
         return {"symbols": [], "market": "spot", "error": str(e)}
+
+
+# ───────── A股标的监控 ─────────
+class AShareMonitorStartRequest(BaseModel):
+    codes: List[str] = []
+    strategies: List[str] = []
+    interval: str = "5"
+    rsi_threshold: float = 70.0
+    gain_pct: float = 5.0
+    names: Optional[dict] = None  # code -> name
+
+
+@router.get("/a-share-monitor/pool")
+def a_share_monitor_pool(
+    force: bool = Query(False),
+    user: dict = Depends(require_user),
+):
+    try:
+        items = fetch_a_share_pool(force=force)
+        return {"count": len(items), "items": items, "cache_hours": 24}
+    except StockApiError as e:
+        raise HTTPException(status_code=502, detail=f"StockAPI: {e.message}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/a-share-monitor/meta")
+def a_share_monitor_meta(user: dict = Depends(require_user)):
+    return {
+        "strategies": [{"id": k, "label": v} for k, v in STRATEGIES.items()],
+        "intervals": [{"id": i, "label": {"1": "1分钟", "5": "5分钟", "15": "15分钟", "30": "30分钟", "60": "60分钟", "120": "120分钟", "240": "240分钟", "D": "日线"}.get(i, i)} for i in INTERVALS],
+        "defaults": {"rsi_threshold": 70, "gain_pct": 5.0, "interval": "5"},
+    }
+
+
+@router.get("/a-share-monitor/status")
+def a_share_monitor_status(user: dict = Depends(require_user)):
+    inst = get_a_share_monitor_instance()
+    if not inst or not inst.running:
+        inst = restore_a_share_monitor_from_db_if_needed()
+    if not inst:
+        return {
+            "running": False,
+            "tasks": [],
+            "task_count": 0,
+            "signals": load_signal_history(50),
+            "last_error": "",
+            "last_scan_at": "",
+        }
+    st = inst.status()
+    if not st.get("signals"):
+        st["signals"] = load_signal_history(50)
+    return st
+
+
+@router.post("/a-share-monitor/start")
+def a_share_monitor_start(req: AShareMonitorStartRequest, user: dict = Depends(require_user)):
+    codes = [str(c).strip() for c in (req.codes or []) if str(c).strip()]
+    strategies = [str(s).strip() for s in (req.strategies or []) if str(s).strip() in STRATEGIES]
+    interval = str(req.interval or "5")
+    if interval not in INTERVALS:
+        raise HTTPException(status_code=400, detail=f"K线级别无效: {interval}")
+    if not codes:
+        raise HTTPException(status_code=400, detail="请选择标的")
+    if not strategies:
+        raise HTTPException(status_code=400, detail="请选择策略")
+    names = req.names or {}
+    new_tasks = []
+    for code in codes:
+        for stg in strategies:
+            new_tasks.append({
+                "code": code,
+                "name": str(names.get(code) or ""),
+                "strategy": stg,
+                "interval": interval,
+                "rsi_threshold": float(req.rsi_threshold or 70),
+                "gain_pct": float(req.gain_pct or 5),
+            })
+    old = get_a_share_monitor_instance()
+    merged = list(new_tasks)
+    if old and old.tasks:
+        seen = {(t["code"], t["strategy"], t["interval"]) for t in new_tasks}
+        for t in old.tasks:
+            key = (t.get("code"), t.get("strategy"), t.get("interval"))
+            if key not in seen:
+                merged.append(t)
+                seen.add(key)
+    if old and old.running:
+        old.stop()
+    mark_a_share_monitor_user_stopped(False)
+    service = AShareMonitorService(tasks=merged)
+    set_a_share_monitor_instance(service)
+    service.start()
+    DatabaseManager().save_a_share_monitor_config(json.dumps({"tasks": merged}, ensure_ascii=False))
+    return {"message": "已启动", **service.status()}
+
+
+@router.post("/a-share-monitor/stop")
+def a_share_monitor_stop(user: dict = Depends(require_user)):
+    inst = get_a_share_monitor_instance()
+    if inst and inst.running:
+        inst.stop()
+    set_a_share_monitor_instance(None)
+    mark_a_share_monitor_user_stopped(True)
+    DatabaseManager().delete_a_share_monitor_config()
+    return {"message": "ok", "running": False}
+
+
+@router.get("/a-share-monitor/signals")
+def a_share_monitor_signals(
+    limit: int = Query(50, ge=1, le=200),
+    user: dict = Depends(require_user),
+):
+    inst = get_a_share_monitor_instance()
+    mem = (inst.status().get("signals") if inst else None) or []
+    disk = load_signal_history(limit)
+    # 内存优先
+    merged = mem + [x for x in disk if x not in mem]
+    return {"items": merged[:limit]}
+
+
+@router.post("/a-share-monitor/test-dingtalk")
+def a_share_monitor_test_dingtalk(user: dict = Depends(require_user)):
+    ok = send_a_share_dingtalk(
+        "【A股标的监控提醒】测试",
+        "这是一条测试消息\n若收到说明 webhook 配置正常",
+    )
+    if not ok:
+        raise HTTPException(status_code=502, detail="钉钉发送失败")
+    return {"ok": True}
 
 
 class SpotNetInflowStartRequest(BaseModel):

@@ -23,6 +23,12 @@ const CONFIG = {
     subtitle: '聚焦英维克等精密温控龙头，动量轮动捕捉 AI 算力液冷与储能温控景气周期。',
     initialCapital: 500000,
   },
+  '159570': {
+    name: '创新药ETF',
+    subtitle: '聚焦创新药 ETF（159570），动量轮动全仓复利，捕捉创新药板块趋势行情。',
+    initialCapital: 2000000,
+    startDate: '2026-02-05',
+  },
 }
 
 export default function AShareMomentumStrategy({ code }) {

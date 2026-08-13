@@ -103,6 +103,7 @@ _CSV_COL_MAP = {
     "净损益 CNY": "pnl",
     "净损益 USD": "pnl",
     "净损益 %": "pnl_pct",
+    "回报 %": "pnl_pct",
     "有利波动 CNY": "runup",
     "有利波动 USD": "runup",
     "有利波动 %": "runup_pct",
@@ -183,6 +184,18 @@ A_SHARE_STRATEGY_SPECS: Tuple[AShareStrategySpec, ...] = (
         trade_start_date=date(2026, 1, 30),
         initial_capital_cny=500_000.0,
         trade_start_open_price=74.48,
+    ),
+    AShareStrategySpec(
+        code="159570",
+        name="创新药ETF",
+        strategy_name="159570_2H",
+        symbol="159570",
+        yahoo_ticker="159570.SZ",
+        csv_filename="159570.csv",
+        route_slug="159570-2h",
+        report_date=date(2026, 2, 4),
+        trade_start_date=date(2026, 2, 5),
+        initial_capital_cny=2_000_000.0,
     ),
 )
 

@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-MTM_CODES = frozenset({"300308", "603986", "688146", "002837"})
+MTM_CODES = frozenset({"300308", "603986", "688146", "002837", "159570"})
 MTM_EXIT_SIGNAL_KEYS = ("开盘价", "收盘价", "收盘")
 CACHE_PATH = Path(__file__).resolve().parents[1] / "data" / "a_share_strategy_close_cache.json"
 

@@ -51,3 +51,15 @@ export const checkChainActivityNow = () =>
 export const getChainRpcInfo = () => request.get('/currency-monitor/chain-activity/rpc-info')
 export const testChainActivityDingtalk = () =>
   request.post('/currency-monitor/chain-activity/test-dingtalk')
+
+// A股标的监控
+export const getASharePool = (params) =>
+  request.get('/currency-monitor/a-share-monitor/pool', { params, timeout: 120000 })
+export const getAShareMonitorMeta = () => request.get('/currency-monitor/a-share-monitor/meta')
+export const getAShareMonitorStatus = () => request.get('/currency-monitor/a-share-monitor/status')
+export const startAShareMonitor = (data) => request.post('/currency-monitor/a-share-monitor/start', data)
+export const stopAShareMonitor = () => request.post('/currency-monitor/a-share-monitor/stop')
+export const getAShareMonitorSignals = (params) =>
+  request.get('/currency-monitor/a-share-monitor/signals', { params })
+export const testAShareMonitorDingtalk = () =>
+  request.post('/currency-monitor/a-share-monitor/test-dingtalk')

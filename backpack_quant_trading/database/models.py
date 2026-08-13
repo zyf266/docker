@@ -855,6 +855,36 @@ class DatabaseManager:
         finally:
             session.close()
 
+    # ===== A股标的监控配置 =====
+    def get_a_share_monitor_config(self) -> Optional[tuple]:
+        session = self.get_session()
+        try:
+            row = session.query(UserInstance).filter_by(
+                instance_type='a_share_monitor', instance_id='singleton'
+            ).first()
+            return (row.instance_id, row.config_json) if row and row.config_json else None
+        finally:
+            session.close()
+
+    def save_a_share_monitor_config(self, config_json: str):
+        self.delete_a_share_monitor_config()
+        uid = self.get_first_user_id()
+        if uid is not None:
+            self.save_user_instance(uid, 'a_share_monitor', 'singleton', config_json)
+
+    def delete_a_share_monitor_config(self):
+        session = self.get_session()
+        try:
+            session.query(UserInstance).filter_by(
+                instance_type='a_share_monitor', instance_id='singleton'
+            ).delete()
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
     def delete_user_instance(self, user_id: int, instance_type: str, instance_id: str):
         """删除用户实例归属（停止时调用）"""
         session = self.get_session()

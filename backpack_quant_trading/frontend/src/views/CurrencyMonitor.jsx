@@ -26,6 +26,11 @@ import {
   startSpotNetInflow,
   stopSpotNetInflow,
   getSpotNetInflowSeries,
+  getASharePool,
+  getAShareMonitorStatus,
+  startAShareMonitor,
+  stopAShareMonitor,
+  testAShareMonitorDingtalk,
 } from '../api/currencyMonitor'
 import {
   getOptions as getMacdOptions,
@@ -370,6 +375,23 @@ const CurrencyMonitor = () => {
     snapshots: {},
   })
 
+  const [aSharePoolLabels, setASharePoolLabels] = useState([])
+  const [aShareLabelToMeta, setAShareLabelToMeta] = useState({})
+  const [aShareSelected, setAShareSelected] = useState([])
+  const [aShareStrategies, setAShareStrategies] = useState(['macd'])
+  const [aShareInterval, setAShareInterval] = useState('5')
+  const [aShareRsiThr, setAShareRsiThr] = useState(70)
+  const [aShareGainPct, setAShareGainPct] = useState(5)
+  const [aShareLoading, setAShareLoading] = useState(false)
+  const [aSharePoolLoading, setASharePoolLoading] = useState(false)
+  const [aShareStatus, setAShareStatus] = useState({
+    running: false,
+    tasks: [],
+    signals: [],
+    last_error: '',
+    last_scan_at: '',
+  })
+
   const [chainLoading, setChainLoading] = useState(false)
   const [chainOptions, setChainOptions] = useState(DEFAULT_CHAIN_OPTIONS)
   const [chainStatus, setChainStatus] = useState({
@@ -521,6 +543,40 @@ const CurrencyMonitor = () => {
     } catch (_) {}
   }
 
+  const refreshAShareStatus = async () => {
+    try {
+      const res = await getAShareMonitorStatus()
+      setAShareStatus({
+        running: !!res.running,
+        tasks: res.tasks || [],
+        signals: res.signals || [],
+        last_error: res.last_error || '',
+        last_scan_at: res.last_scan_at || '',
+        data_source_note: res.data_source_note || '',
+      })
+    } catch (_) {}
+  }
+
+  const loadASharePool = async (force = false) => {
+    setASharePoolLoading(true)
+    try {
+      const res = await getASharePool({ force })
+      const items = res.items || []
+      const map = {}
+      const labels = items.map((it) => {
+        const label = it.label || `${it.code} ${it.name || ''}`.trim()
+        map[label] = { code: it.code, name: it.name || '' }
+        return label
+      })
+      setAShareLabelToMeta(map)
+      setASharePoolLabels(labels)
+    } catch (e) {
+      alert(e?.response?.data?.detail || '加载A股标的池失败')
+    } finally {
+      setASharePoolLoading(false)
+    }
+  }
+
   const refreshChainStatus = async () => {
     try {
       const res = await getChainActivityStatus()
@@ -555,7 +611,7 @@ const CurrencyMonitor = () => {
   }
 
   useEffect(() => {
-    let t1, t2, t3, t4, t5, t6
+    let t1, t2, t3, t4, t5, t6, t7
     const load = async () => {
       try {
         const res = await getSymbols()
@@ -584,12 +640,15 @@ const CurrencyMonitor = () => {
       await refreshNetInflowStatus()
       await refreshChainStatus()
       await refreshMacdStatus()
+      await refreshAShareStatus()
+      loadASharePool(false)
       t1 = setInterval(refreshStatus, 5000)
       t2 = setInterval(refreshMinuteStatus, 5000)
       t3 = setInterval(refreshSpotMinuteStatus, 5000)
       t4 = setInterval(refreshChainStatus, 5000)
       t5 = setInterval(refreshMacdStatus, 5000)
       t6 = setInterval(refreshNetInflowStatus, 15000)
+      t7 = setInterval(refreshAShareStatus, 8000)
     }
     load()
     return () => {
@@ -599,6 +658,7 @@ const CurrencyMonitor = () => {
       if (t4) clearInterval(t4)
       if (t5) clearInterval(t5)
       if (t6) clearInterval(t6)
+      if (t7) clearInterval(t7)
     }
   }, [])
 
@@ -628,6 +688,69 @@ const CurrencyMonitor = () => {
       await refreshStatus()
     } catch (e) {
       alert(e?.response?.data?.detail || '停止失败')
+    }
+  }
+
+  const toggleAShareStrategy = (id) => {
+    setAShareStrategies((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
+  const handleAShareStart = async () => {
+    if (!aShareSelected.length) {
+      alert('请选择A股标的')
+      return
+    }
+    if (!aShareStrategies.length) {
+      alert('请选择策略')
+      return
+    }
+    setAShareLoading(true)
+    try {
+      const codes = []
+      const names = {}
+      aShareSelected.forEach((label) => {
+        const meta = aShareLabelToMeta[label]
+        const code = meta?.code || String(label).split(/\s+/)[0]
+        if (!code) return
+        codes.push(code)
+        names[code] = meta?.name || ''
+      })
+      await startAShareMonitor({
+        codes,
+        strategies: aShareStrategies,
+        interval: aShareInterval,
+        rsi_threshold: Number(aShareRsiThr),
+        gain_pct: Number(aShareGainPct),
+        names,
+      })
+      alert('已启动 A股标的监控')
+      setAShareSelected([])
+      await refreshAShareStatus()
+    } catch (e) {
+      alert(e?.response?.data?.detail || '启动失败')
+    } finally {
+      setAShareLoading(false)
+    }
+  }
+
+  const handleAShareStop = async () => {
+    try {
+      await stopAShareMonitor()
+      alert('已停止 A股标的监控')
+      await refreshAShareStatus()
+    } catch (e) {
+      alert(e?.response?.data?.detail || '停止失败')
+    }
+  }
+
+  const handleAShareTestDing = async () => {
+    try {
+      await testAShareMonitorDingtalk()
+      alert('测试消息已发送')
+    } catch (e) {
+      alert(e?.response?.data?.detail || '发送失败')
     }
   }
 
@@ -981,6 +1104,189 @@ const CurrencyMonitor = () => {
               ◻ 停止监视
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Card: A股标的监控 */}
+      <div className="mon-card">
+        <div className="mon-card-header">
+          <div className="mon-card-title">
+            <span className="mon-icon">📈</span>
+            <span>A股标的监控</span>
+            {aShareStatus.running && (
+              <span className="mon-badge-orange">⚡ 运行中 · {aShareStatus.tasks?.length || 0} 任务</span>
+            )}
+          </div>
+        </div>
+        <div className="mon-card-body">
+          <div className="mon-grid-2">
+            <div className="mon-field-group">
+              <label className="mon-label">
+                标的池（全A，缓存24h）
+                <button
+                  type="button"
+                  className="mon-btn-outline-red"
+                  style={{ marginLeft: 8, padding: '2px 8px', fontSize: 12 }}
+                  disabled={aSharePoolLoading}
+                  onClick={() => loadASharePool(true)}
+                >
+                  {aSharePoolLoading ? '加载中…' : '刷新池'}
+                </button>
+              </label>
+              <MultiSelectDropdown
+                options={aSharePoolLabels}
+                value={aShareSelected}
+                onChange={setAShareSelected}
+                placeholder={aSharePoolLabels.length ? '搜索代码/名称…' : '请先加载标的池…'}
+              />
+              {aShareSelected.length > 0 && (
+                <p className="mon-hint-blue">已选择 {aShareSelected.length} 只</p>
+              )}
+            </div>
+            <div className="mon-field-group">
+              <label className="mon-label">策略（可多选）</label>
+              <div className="mon-checkbox-list">
+                {[
+                  { id: 'macd', label: 'MACD策略（金叉）' },
+                  { id: 'rsi', label: 'RSI策略（上穿阈值）' },
+                  { id: 'gain', label: '涨幅策略' },
+                ].map((opt) => (
+                  <label key={opt.id} className="mon-checkbox-item">
+                    <input
+                      type="checkbox"
+                      checked={aShareStrategies.includes(opt.id)}
+                      onChange={() => toggleAShareStrategy(opt.id)}
+                    />
+                    <span>{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+              <label className="mon-label" style={{ marginTop: 12 }}>K线级别</label>
+              <select
+                className="mon-input"
+                value={aShareInterval}
+                onChange={(e) => setAShareInterval(e.target.value)}
+              >
+                {[
+                  ['1', '1分钟'],
+                  ['5', '5分钟'],
+                  ['15', '15分钟'],
+                  ['30', '30分钟'],
+                  ['60', '60分钟'],
+                  ['120', '120分钟'],
+                  ['240', '240分钟'],
+                  ['D', '日线'],
+                ].map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+              <div className="mon-grid-2" style={{ marginTop: 12 }}>
+                <div>
+                  <label className="mon-label">RSI 阈值</label>
+                  <input
+                    className="mon-input"
+                    type="number"
+                    min={50}
+                    max={90}
+                    step={1}
+                    value={aShareRsiThr}
+                    onChange={(e) => setAShareRsiThr(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mon-label">涨幅阈值 %</label>
+                  <input
+                    className="mon-input"
+                    type="number"
+                    min={0.5}
+                    max={20}
+                    step={0.5}
+                    value={aShareGainPct}
+                    onChange={(e) => setAShareGainPct(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mon-btn-row">
+            <button className="mon-btn-primary" disabled={aShareLoading} onClick={handleAShareStart}>
+              ▶ {aShareLoading ? '启动中…' : '开始监控'}
+            </button>
+            <button className="mon-btn-outline-red" disabled={!aShareStatus.running} onClick={handleAShareStop}>
+              ◻ 停止
+            </button>
+            <button className="mon-btn-outline-red" type="button" onClick={handleAShareTestDing}>
+              测试钉钉
+            </button>
+          </div>
+          {aShareStatus.last_scan_at && (
+            <p className="mon-hint-blue">
+              最近扫描：{aShareStatus.last_scan_at}
+              {aShareStatus.data_source_note ? ` · 数据源 ${aShareStatus.data_source_note}` : ''}
+              {aShareStatus.last_error ? ` · 错误 ${aShareStatus.last_error}` : ''}
+            </p>
+          )}
+          {aShareStatus.tasks?.length > 0 && (
+            <div className="mon-table-wrap" style={{ marginTop: 12 }}>
+              <table className="mon-table">
+                <thead>
+                  <tr>
+                    <th>代码</th>
+                    <th>名称</th>
+                    <th>策略</th>
+                    <th>K线</th>
+                    <th>参数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {aShareStatus.tasks.slice(0, 40).map((t, i) => (
+                    <tr key={`${t.code}-${t.strategy}-${t.interval}-${i}`}>
+                      <td>{t.code}</td>
+                      <td>{t.name || '—'}</td>
+                      <td>{t.strategy === 'macd' ? 'MACD' : t.strategy === 'rsi' ? 'RSI' : '涨幅'}</td>
+                      <td>{t.interval === 'D' ? '日线' : `${t.interval}分`}</td>
+                      <td>
+                        {t.strategy === 'rsi' ? `阈值 ${t.rsi_threshold}` : null}
+                        {t.strategy === 'gain' ? `≥${t.gain_pct}%` : null}
+                        {t.strategy === 'macd' ? '金叉' : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {aShareStatus.signals?.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div className="mon-label">命中历史</div>
+              <div className="mon-table-wrap">
+                <table className="mon-table">
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>标的</th>
+                      <th>策略</th>
+                      <th>K线</th>
+                      <th>触发</th>
+                      <th>钉钉</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aShareStatus.signals.slice(0, 30).map((s, i) => (
+                      <tr key={`${s.ts}-${s.code}-${i}`}>
+                        <td>{s.ts}</td>
+                        <td>{s.code} {s.name || ''}</td>
+                        <td>{s.strategy_label || s.strategy}</td>
+                        <td>{s.interval_label || s.interval}</td>
+                        <td>{s.trigger}</td>
+                        <td>{s.dingtalk_ok ? '✓' : '✗'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

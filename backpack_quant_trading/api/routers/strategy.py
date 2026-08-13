@@ -1743,7 +1743,7 @@ def _query_a_share_trades(code: str) -> List:
         )
     finally:
         session.close()
-    if rows and code in {"300308", "603986", "688146", "002837"}:
+    if rows and code in {"300308", "603986", "688146", "002837", "159570"}:
         from backpack_quant_trading.core.a_share_strategy_mtm import apply_mtm_to_trades
 
         rows = apply_mtm_to_trades(

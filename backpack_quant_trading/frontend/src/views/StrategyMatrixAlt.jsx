@@ -19,7 +19,7 @@ import {
   getMatrixYearlyReturns,
 } from '../api/strategy'
 
-const A_SHARE_KEYS = ['300308', '603986', '688146', '002837', 'sse-510210']
+const A_SHARE_KEYS = ['300308', '603986', '688146', '002837', '159570', 'sse-510210']
 const DEFAULT_USD_CNY = 7.25
 const ORDER_STORAGE_KEY = 'strategy-matrix-card-order'
 const STATUS_STORAGE_KEY = 'strategy-matrix-card-status'
@@ -117,6 +117,20 @@ const strategies = [
     title: 'A股趋势追踪策略·英维克',
     code: 'ML-AMR',
     description: '聚焦英维克（002837）精密温控龙头，动量轮动全仓复利，捕捉 AI 液冷与储能温控景气周期。',
+    status: '运行中',
+    statusColor: 'bg-green-500 text-white',
+    progress: 72,
+    progressColor: '#10b981',
+    riskIndex: '中风险',
+    isRiskWarning: true,
+  },
+  {
+    key: '159570',
+    to: '/strategies/a-share-159570',
+    icon: '💊',
+    title: 'A股趋势追踪策略·创新药ETF',
+    code: 'ML-AMR',
+    description: '聚焦创新药 ETF（159570），动量轮动全仓复利（本金 200 万），东财 2H K 线盯市，捕捉创新药板块趋势行情。',
     status: '运行中',
     statusColor: 'bg-green-500 text-white',
     progress: 72,
@@ -228,16 +242,16 @@ const DEFAULT_ORDER = strategies.map((s) => s.key)
 const STRATEGY_BY_KEY = Object.fromEntries(strategies.map((s) => [s.key, s]))
 const FIXED_DRAWDOWN = {
   nvda: '--', intc: '--', mu: '--',
-  '300308': '--', '603986': '--', '688146': '--', '002837': '--',
+  '300308': '--', '603986': '--', '688146': '--', '002837': '--', '159570': '--',
   'sse-510210': '--', 'alpha-eth': '-0.9%', eth: '-3.48%', hype: '-6.47%', paxg: '-1.44%', nas100: '-4%', 'mnq-dip': '--',
 }
 const FIXED_PROFIT_FACTOR = {
   nvda: '--', intc: '--', mu: '--',
-  '300308': '--', '603986': '--', '688146': '--', '002837': '--',
+  '300308': '--', '603986': '--', '688146': '--', '002837': '--', '159570': '--',
   'sse-510210': '--', 'alpha-eth': '2.75', eth: '2.58', hype: '2.84', paxg: '2.25', nas100: '0.71', 'mnq-dip': '--',
 }
 const USE_LIVE_DRAWDOWN = new Set([
-  'intc', 'nvda', 'mu', '300308', '603986', '688146', '002837', 'sse-510210', 'mnq-dip',
+  'intc', 'nvda', 'mu', '300308', '603986', '688146', '002837', '159570', 'sse-510210', 'mnq-dip',
 ])
 
 function loadCardOrder() {
@@ -338,6 +352,7 @@ export default function StrategyMatrixAlt() {
       { key: '603986', fn: () => getAShareOverview('603986') },
       { key: '688146', fn: () => getAShareOverview('688146') },
       { key: '002837', fn: () => getAShareOverview('002837') },
+      { key: '159570', fn: () => getAShareOverview('159570') },
     ]
 
     reqs.forEach((r) => {
