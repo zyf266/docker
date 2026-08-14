@@ -245,6 +245,19 @@ def _eastmoney_secid(code: str) -> Optional[str]:
     return f"{market}.{c}"
 
 
+def _a_share_symbol_prefix(code: str) -> Optional[str]:
+    c = str(code or "").strip()
+    if not c.isdigit() or len(c) != 6:
+        return None
+    return f"sh{c}" if c.startswith(("5", "6", "9")) else f"sz{c}"
+
+
+def _direct_session() -> requests.Session:
+    sess = requests.Session()
+    sess.trust_env = False
+    return sess
+
+
 def fetch_eastmoney_klines(code: str, interval: str, limit: int = 200) -> List[Dict[str, Any]]:
     """东财分钟/日 K（klt）。240 按交易日合成一根（上午+下午）。"""
     secid = _eastmoney_secid(code)
@@ -266,28 +279,41 @@ def fetch_eastmoney_klines(code: str, interval: str, limit: int = 200) -> List[D
     klt = klt_map.get(iv)
     if not klt:
         return []
-    try:
-        sess = requests.Session()
-        sess.trust_env = False
-        r = sess.get(
-            "https://push2his.eastmoney.com/api/qt/stock/kline/get",
-            params={
-                "secid": secid,
-                "klt": klt,
-                "fqt": "1",
-                "lmt": str(limit),
-                "end": "20500101",
-                "fields1": "f1,f2,f3,f4,f5,f6",
-                "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
-                "ut": "fa5fd1943c7b386f172d6893dbfba10b",
-            },
-            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"},
-            timeout=25,
-        )
-        r.raise_for_status()
-        lines = ((r.json() or {}).get("data") or {}).get("klines") or []
-    except Exception as e:
-        logger.warning("东财K线失败 %s %s: %s", code, iv, e)
+    params = {
+        "secid": secid,
+        "klt": klt,
+        "fqt": "1",
+        "lmt": str(limit),
+        "end": "20500101",
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+        "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+    }
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"}
+    url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    last_err: Optional[BaseException] = None
+    lines: List[Any] = []
+    # 国内源直连（ECS 上代理对东财无效，且易 ProxyError）；断连短重试
+    for _ in range(3):
+        try:
+            r = _direct_session().get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=25,
+                proxies={"http": None, "https": None},
+            )
+            r.raise_for_status()
+            lines = ((r.json() or {}).get("data") or {}).get("klines") or []
+            if lines:
+                last_err = None
+                break
+        except Exception as e:
+            last_err = e
+            lines = []
+        time.sleep(0.6)
+    if not lines:
+        logger.warning("东财K线失败 %s %s: %s", code, iv, last_err or "empty")
         return []
     bars: List[Dict[str, Any]] = []
     for line in lines:
@@ -313,6 +339,116 @@ def fetch_eastmoney_klines(code: str, interval: str, limit: int = 200) -> List[D
         except Exception:
             continue
     return bars
+
+
+def fetch_sina_minute_klines(code: str, interval: str, limit: int = 200) -> List[Dict[str, Any]]:
+    """新浪分钟 K（ECS 上东财偶发断连时的兜底）。scale=1/5/15/30/60。"""
+    sym = _a_share_symbol_prefix(code)
+    if not sym:
+        return []
+    iv = str(interval)
+    if iv in ("120", "240"):
+        raw = fetch_sina_minute_klines(code, "60", limit=max(limit * 4, 200))
+        if iv == "240":
+            return _aggregate_session_240(raw)[-limit:]
+        return _resample_minutes(raw, 120)[-limit:]
+    scale_map = {"1": 1, "5": 5, "15": 15, "30": 30, "60": 60}
+    scale = scale_map.get(iv)
+    if not scale:
+        return []
+    try:
+        r = _direct_session().get(
+            "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData",
+            params={"symbol": sym, "scale": scale, "ma": "no", "datalen": max(limit, 120)},
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"},
+            timeout=20,
+            proxies={"http": None, "https": None},
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if not isinstance(rows, list):
+            return []
+    except Exception as e:
+        logger.warning("新浪K线失败 %s %s: %s", code, iv, e)
+        return []
+    bars: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            label = str(row.get("day") or "").strip()
+            dt = _parse_cn_bar_time(label)
+            ts = _bj_ts_ms(dt)
+            bars.append({
+                "open_time": ts,
+                "open": float(row["open"]),
+                "close": float(row["close"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "volume": float(row.get("volume") or 0),
+                "close_time": ts,
+                "time_label": label,
+            })
+        except Exception:
+            continue
+    return bars[-limit:]
+
+
+def fetch_tencent_minute_klines(code: str, interval: str, limit: int = 200) -> List[Dict[str, Any]]:
+    """腾讯 mkline 分钟 K 兜底。"""
+    sym = _a_share_symbol_prefix(code)
+    if not sym:
+        return []
+    iv = str(interval)
+    if iv in ("120", "240"):
+        raw = fetch_tencent_minute_klines(code, "60", limit=max(limit * 4, 200))
+        if iv == "240":
+            return _aggregate_session_240(raw)[-limit:]
+        return _resample_minutes(raw, 120)[-limit:]
+    if iv not in ("1", "5", "15", "30", "60"):
+        return []
+    key = f"m{iv}"
+    try:
+        r = _direct_session().get(
+            "http://ifzq.gtimg.cn/appstock/app/kline/mkline",
+            params={"param": f"{sym},{key},,{max(limit, 120)}"},
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.qq.com/"},
+            timeout=20,
+            proxies={"http": None, "https": None},
+        )
+        r.raise_for_status()
+        data = ((r.json() or {}).get("data") or {}).get(sym) or {}
+        rows = data.get(key) or []
+    except Exception as e:
+        logger.warning("腾讯K线失败 %s %s: %s", code, iv, e)
+        return []
+    bars: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) < 5:
+            continue
+        try:
+            # ['202608141130', open, close, high, low, volume, ...]
+            raw_t = str(row[0])
+            if len(raw_t) >= 12:
+                label = f"{raw_t[0:4]}-{raw_t[4:6]}-{raw_t[6:8]} {raw_t[8:10]}:{raw_t[10:12]}"
+            else:
+                continue
+            dt = _parse_cn_bar_time(label)
+            ts = _bj_ts_ms(dt)
+            o, c, h, l_ = float(row[1]), float(row[2]), float(row[3]), float(row[4])
+            bars.append({
+                "open_time": ts,
+                "open": o,
+                "close": c,
+                "high": h,
+                "low": l_,
+                "volume": float(row[5]) if len(row) > 5 else 0,
+                "close_time": ts,
+                "time_label": label,
+            })
+        except Exception:
+            continue
+    return bars[-limit:]
 
 
 def _aggregate_session_240(klines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -372,7 +508,7 @@ def _resample_minutes(klines: List[Dict[str, Any]], minutes: int) -> List[Dict[s
 
 
 def fetch_klines_for_interval(code: str, interval: str, limit: int = 200) -> Tuple[List[Dict[str, Any]], str]:
-    """返回 (bars, source)。source=stockapi|eastmoney|mixed。"""
+    """返回 (bars, source)。source=stockapi|eastmoney|sina|tencent。"""
     iv = str(interval)
     if iv == "D":
         try:
@@ -382,7 +518,9 @@ def fetch_klines_for_interval(code: str, interval: str, limit: int = 200) -> Tup
         except Exception as e:
             logger.warning("stockapi 日线失败 %s: %s", code, e)
         bars = fetch_eastmoney_klines(code, "D", limit=limit)
-        return bars, "eastmoney"
+        if bars:
+            return bars, "eastmoney"
+        return [], "none"
 
     if iv == "240":
         bars60, src = fetch_klines_for_interval(code, "60", limit=limit * 4 + 20)
@@ -392,9 +530,18 @@ def fetch_klines_for_interval(code: str, interval: str, limit: int = 200) -> Tup
     if bars:
         return bars[-limit:], "stockapi"
     if err:
-        logger.info("stockapi 分钟线不可用 %s %s: %s → 东财兜底", code, iv, err)
+        logger.info("stockapi 分钟线不可用 %s %s: %s → 东财/新浪/腾讯兜底", code, iv, err)
+
     bars = fetch_eastmoney_klines(code, iv, limit=limit)
-    return bars, "eastmoney"
+    if bars:
+        return bars, "eastmoney"
+    bars = fetch_sina_minute_klines(code, iv, limit=limit)
+    if bars:
+        return bars, "sina"
+    bars = fetch_tencent_minute_klines(code, iv, limit=limit)
+    if bars:
+        return bars, "tencent"
+    return [], "none"
 
 
 def drop_forming_bar(bars: List[Dict[str, Any]], interval: str) -> List[Dict[str, Any]]:
@@ -543,6 +690,8 @@ class AShareMonitorService:
         self._last_bar: Dict[str, int] = {}
         # (code, strategy, date) -> count
         self._daily_counts: Dict[str, int] = {}
+        # (code|interval|klines) -> consecutive empty-fetch failures
+        self._fetch_fails: Dict[str, int] = {}
         self.signals: List[Dict[str, Any]] = []
         self.last_error: str = ""
         self.last_scan_at: str = ""
@@ -669,9 +818,26 @@ class AShareMonitorService:
                 self.data_source_note = src
                 need = 3 if str(group[0].get("strategy")) == "gain" else 30
                 if len(bars) < need:
-                    self.last_error = f"{code}/{interval}: K线不足({len(bars)})"
-                    self._notify_datasource_error(self.last_error)
-                    continue
+                    # 东财偶发断连：短等再拉一次，仍不足才记连续失败
+                    time.sleep(2.5)
+                    bars2, src2 = fetch_klines_for_interval(code, interval)
+                    bars2 = drop_forming_bar(bars2, interval)
+                    if len(bars2) >= need:
+                        bars, src = bars2, src2
+                        self.data_source_note = src
+                    else:
+                        fail_key = f"{code}|{interval}|klines"
+                        with self._lock:
+                            fails = int(self._fetch_fails.get(fail_key, 0)) + 1
+                            self._fetch_fails[fail_key] = fails
+                        self.last_error = f"{code}/{interval}: K线不足({len(bars2) or len(bars)})"
+                        logger.warning("%s (连续%d次)", self.last_error, fails)
+                        # 单次瞬时失败不打扰；连续 2 次再钉钉
+                        if fails >= 2:
+                            self._notify_datasource_error(self.last_error)
+                        continue
+                with self._lock:
+                    self._fetch_fails.pop(f"{code}|{interval}|klines", None)
                 closes = [float(b["close"]) for b in bars]
                 opens = [float(b["open"]) for b in bars]
                 bar_ts = int(bars[-1]["open_time"])
