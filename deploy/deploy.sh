@@ -51,8 +51,18 @@ else
   fi
 fi
 
+# 前端必须预构建：小内存 ECS 上跑 npm 会 OOM（npm Exit handler never called / vite not found）
+if [ ! -f backpack_quant_trading/frontend/dist/index.html ]; then
+  echo "ERROR: 缺少 backpack_quant_trading/frontend/dist/index.html" >&2
+  echo "正式/测试部署应由 GitHub Actions 先执行 deploy/build-frontend.sh 再打包。" >&2
+  echo "本地可先: bash deploy/build-frontend.sh" >&2
+  exit 1
+fi
+echo "==> 已检测到预构建前端 dist"
+
 echo "==> 构建镜像（清除宿主机代理，避免 BuildKit 解析 host.docker.internal 失败）..."
 # compose 会读 .env 里的 HTTP(S)_PROXY 并传给 build；构建应走 registry-mirrors / 本机直连
+# 构建期不再跑 Node，内存压力显著下降
 env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
   -u FTP_PROXY -u ftp_proxy \
   "${COMPOSE[@]}" build --pull

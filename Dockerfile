@@ -1,21 +1,5 @@
-# ── Stage 1: 构建前端 ──────────────────────────────────────────
-FROM node:20-alpine AS frontend-builder
-
-WORKDIR /build
-# 构建期必须拿到 vite；CI/生产常默认 NODE_ENV=production 会跳过 devDependencies
-ENV NODE_ENV=development
-# 避免宿主机/compose 传入的 npm 生产模式污染
-ENV NPM_CONFIG_PRODUCTION=false
-
-COPY backpack_quant_trading/frontend/package.json backpack_quant_trading/frontend/package-lock.json* ./
-RUN (npm ci --include=dev --ignore-scripts || npm install --include=dev --ignore-scripts) \
-  && test -x node_modules/.bin/vite
-
-COPY backpack_quant_trading/frontend/ ./
-RUN npm run build \
-  && test -f dist/index.html
-
-# ── Stage 2: Python 运行环境 ─────────────────────────────────
+# 正式/测试机 Docker 构建：不再在 ECS 上跑 npm（小内存易 OOM → Exit handler never called）。
+# 前端必须由 GitHub Actions（或本地）预先产出 backpack_quant_trading/frontend/dist。
 FROM python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -48,7 +32,10 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
     -r /app/backpack_quant_trading/requirements.txt
 
 COPY backpack_quant_trading/ /app/backpack_quant_trading/
-COPY --from=frontend-builder /build/dist /app/backpack_quant_trading/frontend/dist
+
+# 强制要求预构建前端，避免静默带上空 dist
+RUN test -f /app/backpack_quant_trading/frontend/dist/index.html \
+    || (echo "ERROR: 缺少 frontend/dist/index.html。请先在 CI/本地执行 deploy/build-frontend.sh" >&2; exit 1)
 
 COPY deploy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

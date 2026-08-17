@@ -23,13 +23,26 @@ jobs:
         run: |
           bash -n deploy/remote-ci.sh
           bash -n deploy/deploy.sh
+          bash -n deploy/build-frontend.sh
           bash -n deploy/install-docker.sh
           bash -n deploy/bootstrap-prod-47.sh
           bash -n deploy/verify-prod.sh
 
+      # 在 Actions（大内存）构建前端；禁止在小内存 ECS 内 npm（会 OOM）
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backpack_quant_trading/frontend/package-lock.json
+
+      - name: Build frontend dist
+        run: bash deploy/build-frontend.sh
+
       - name: Pack source
         run: |
           set -euo pipefail
+          test -f backpack_quant_trading/frontend/dist/index.html
           tar -czf /tmp/backpack-quant.tgz \
             --exclude='./.git' \
             --exclude='./node_modules' \
@@ -48,6 +61,7 @@ jobs:
             -C "${GITHUB_WORKSPACE}" .
           cp /tmp/backpack-quant.tgz "${GITHUB_WORKSPACE}/backpack-quant.tgz"
           ls -lh "${GITHUB_WORKSPACE}/backpack-quant.tgz"
+          tar -tzf "${GITHUB_WORKSPACE}/backpack-quant.tgz" | grep -F 'frontend/dist/index.html'
 
       - name: Upload package
         uses: appleboy/scp-action@v0.1.7

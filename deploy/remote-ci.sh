@@ -17,7 +17,7 @@ rm -f "${PKG}"
 cd "${APP_DIR}"
 
 chmod +x deploy/install-docker.sh deploy/deploy.sh deploy/entrypoint.sh deploy/ensure-swap.sh \
-  deploy/bootstrap-prod-47.sh deploy/verify-prod.sh 2>/dev/null || true
+  deploy/bootstrap-prod-47.sh deploy/verify-prod.sh deploy/build-frontend.sh 2>/dev/null || true
 chmod +x deploy/*.sh 2>/dev/null || true
 
 # 小内存 ECS：无 swap 时 MySQL 会被 OOM 杀掉（外部 DB 时仍无害）

@@ -11,3 +11,9 @@
 
 - 发现正式服问题：在本地修代码 → commit / push → 触发 `Deploy to Prod ECS`。
 - 不要再写「热更正式服」类脚本到生产执行路径。
+
+## 前端构建（强制）
+
+- **禁止**在正式/测试 ECS 的 Docker 构建阶段执行 `npm install` / `vite`（小内存易 OOM，表现为 `Exit handler never called` 或 `vite: not found`）。
+- Actions 必须先跑 `deploy/build-frontend.sh`，把 `frontend/dist` 打进 `backpack-quant.tgz`；镜像只 `COPY` 预构建产物。
+- 本地 `docker compose build` 前若无 dist：先执行 `bash deploy/build-frontend.sh`。
