@@ -2,11 +2,16 @@
 FROM node:20-alpine AS frontend-builder
 
 WORKDIR /build
+# 构建期必须装 vite 等 devDependencies；CI/生产环境常默认 NODE_ENV=production 会跳过它们
+ENV NODE_ENV=development
+
 COPY backpack_quant_trading/frontend/package.json backpack_quant_trading/frontend/package-lock.json* ./
-RUN npm ci --ignore-scripts 2>/dev/null || npm install
+RUN npm ci --include=dev --ignore-scripts \
+  || npm install --include=dev --ignore-scripts
 
 COPY backpack_quant_trading/frontend/ ./
-RUN npm run build
+RUN npm run build \
+  && test -f dist/index.html
 
 # ── Stage 2: Python 运行环境 ─────────────────────────────────
 FROM python:3.11-slim-bookworm
