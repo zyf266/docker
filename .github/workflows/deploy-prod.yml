@@ -1,34 +1,104 @@
 name: Deploy to Prod ECS
 
 # 正式机 47.110.57.118 — 仅手动触发，避免误推
-# 这是正式服唯一允许的更新路径（禁止 docker cp / hotfix 热更）。
+# 支持：全量发布（带版本） / 列出版本 / 回滚到指定版本
 # 详见 docs/deploy-policy-no-hotfix.md
 # Secrets: SSH_HOST_PROD / SSH_USER_PROD / SSH_PRIVATE_KEY_PROD / SSH_PORT_PROD
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy=全量发布 / rollback=回滚 / list=查看版本"
+        type: choice
+        options:
+          - deploy
+          - rollback
+          - list
+        default: deploy
+      rollback_version:
+        description: "回滚目标版本（action=rollback 时必填），如 20260817-090015-a1b2c3d"
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: deploy-ecs-prod
   cancel-in-progress: false
 
 jobs:
+  list-or-rollback:
+    if: inputs.action == 'list' || inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout (scripts)
+        uses: actions/checkout@v4
+
+      - name: List or rollback on Prod ECS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST_PROD }}
+          username: ${{ secrets.SSH_USER_PROD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY_PROD }}
+          port: ${{ secrets.SSH_PORT_PROD || 22 }}
+          debug: true
+          command_timeout: 30m
+          script_stop: true
+          envs: ACTION,ROLLBACK_VERSION,SKIP_MYSQL
+          script: |
+            set -euo pipefail
+            APP_DIR=/opt/backpack-quant
+            cd "${APP_DIR}"
+            if [ ! -x deploy/versioning.sh ]; then
+              echo "服务器尚无 versioning.sh，请先跑一次 action=deploy 全量发布" >&2
+              exit 1
+            fi
+            if [ "${ACTION}" = "list" ]; then
+              bash deploy/versioning.sh list
+              exit 0
+            fi
+            if [ -z "${ROLLBACK_VERSION}" ]; then
+              echo "rollback 需要填写 rollback_version" >&2
+              bash deploy/versioning.sh list || true
+              exit 1
+            fi
+            export SKIP_MYSQL="${SKIP_MYSQL:-1}"
+            bash deploy/versioning.sh rollback "${ROLLBACK_VERSION}"
+        env:
+          ACTION: ${{ inputs.action }}
+          ROLLBACK_VERSION: ${{ inputs.rollback_version }}
+          SKIP_MYSQL: "1"
+
   deploy:
+    if: inputs.action == 'deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA}"
+          SHORT="$(echo "${SHA}" | cut -c1-7)"
+          VERSION="$(date -u +%Y%m%d-%H%M%S)-${SHORT}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "### Prod release \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- git: \`${SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Syntax-check scripts
         run: |
           bash -n deploy/remote-ci.sh
           bash -n deploy/deploy.sh
           bash -n deploy/build-frontend.sh
+          bash -n deploy/versioning.sh
           bash -n deploy/install-docker.sh
           bash -n deploy/bootstrap-prod-47.sh
           bash -n deploy/verify-prod.sh
 
-      # 在 Actions（大内存）构建前端；禁止在小内存 ECS 内 npm（会 OOM）
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -43,6 +113,10 @@ jobs:
         run: |
           set -euo pipefail
           test -f backpack_quant_trading/frontend/dist/index.html
+          VERSION="${{ steps.ver.outputs.version }}"
+          SHA="${{ steps.ver.outputs.sha }}"
+          printf '%s\n' "${VERSION}" > VERSION
+          printf '%s\n' "${SHA}" > GIT_SHA
           tar -czf /tmp/backpack-quant.tgz \
             --exclude='./.git' \
             --exclude='./node_modules' \
@@ -62,6 +136,7 @@ jobs:
           cp /tmp/backpack-quant.tgz "${GITHUB_WORKSPACE}/backpack-quant.tgz"
           ls -lh "${GITHUB_WORKSPACE}/backpack-quant.tgz"
           tar -tzf "${GITHUB_WORKSPACE}/backpack-quant.tgz" | grep -F 'frontend/dist/index.html'
+          tar -tzf "${GITHUB_WORKSPACE}/backpack-quant.tgz" | grep -E '(^|/)VERSION$'
 
       - name: Upload package
         uses: appleboy/scp-action@v0.1.7
@@ -87,7 +162,9 @@ jobs:
           command_timeout: 45m
           script_stop: true
           script_path: deploy/remote-ci.sh
-          envs: SKIP_MYSQL,DEPLOY_ENV
+          envs: SKIP_MYSQL,DEPLOY_ENV,DEPLOY_VERSION,DEPLOY_GIT_SHA
         env:
           SKIP_MYSQL: "1"
           DEPLOY_ENV: prod
+          DEPLOY_VERSION: ${{ steps.ver.outputs.version }}
+          DEPLOY_GIT_SHA: ${{ steps.ver.outputs.sha }}

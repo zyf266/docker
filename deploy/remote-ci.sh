@@ -4,20 +4,41 @@ set -euo pipefail
 
 APP_DIR="/opt/backpack-quant"
 PKG="/tmp/backpack-quant.tgz"
+RELEASE_ROOT="/opt/backpack-quant-releases"
 
 if [ ! -f "${PKG}" ]; then
   echo "缺少 ${PKG}，请确认 Actions SCP 步骤成功" >&2
   exit 1
 fi
 
+# 版本号：优先用 Actions 传入的 DEPLOY_VERSION
+DEPLOY_VERSION="${DEPLOY_VERSION:-}"
+DEPLOY_GIT_SHA="${DEPLOY_GIT_SHA:-}"
+if [ -z "${DEPLOY_VERSION}" ]; then
+  DEPLOY_VERSION="$(date -u +%Y%m%d-%H%M%S)-manual"
+fi
+export DEPLOY_VERSION
+export DEPLOY_GIT_SHA
+
+echo "==> 发布版本: ${DEPLOY_VERSION} (sha=${DEPLOY_GIT_SHA:-n/a})"
+
+# 归档发布包（回滚兜底：镜像被删仍可重建）
+mkdir -p "${RELEASE_ROOT}/${DEPLOY_VERSION}"
+cp -f "${PKG}" "${RELEASE_ROOT}/${DEPLOY_VERSION}/backpack-quant.tgz"
+echo "${DEPLOY_GIT_SHA}" > "${RELEASE_ROOT}/${DEPLOY_VERSION}/git_sha.txt" || true
+echo "${DEPLOY_VERSION}" > "${RELEASE_ROOT}/${DEPLOY_VERSION}/VERSION"
+
 echo "==> 解压到 ${APP_DIR}"
 mkdir -p "${APP_DIR}"
+# 保留生产 .env / 本地数据目录不被整包误伤：先解压再写 VERSION
 tar -xzf "${PKG}" -C "${APP_DIR}"
 rm -f "${PKG}"
 cd "${APP_DIR}"
 
+printf '%s\n' "${DEPLOY_VERSION}" > "${APP_DIR}/VERSION"
+
 chmod +x deploy/install-docker.sh deploy/deploy.sh deploy/entrypoint.sh deploy/ensure-swap.sh \
-  deploy/bootstrap-prod-47.sh deploy/verify-prod.sh deploy/build-frontend.sh 2>/dev/null || true
+  deploy/bootstrap-prod-47.sh deploy/verify-prod.sh deploy/build-frontend.sh deploy/versioning.sh 2>/dev/null || true
 chmod +x deploy/*.sh 2>/dev/null || true
 
 # 小内存 ECS：无 swap 时 MySQL 会被 OOM 杀掉（外部 DB 时仍无害）
@@ -46,4 +67,4 @@ export SKIP_MYSQL="${SKIP_MYSQL:-0}"
 echo "==> docker compose"
 bash deploy/deploy.sh
 
-echo "==> remote-ci 完成"
+echo "==> remote-ci 完成 (version=${DEPLOY_VERSION})"

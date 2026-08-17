@@ -60,6 +60,16 @@ if [ ! -f backpack_quant_trading/frontend/dist/index.html ]; then
 fi
 echo "==> 已检测到预构建前端 dist"
 
+# 写入版本文件，随镜像 COPY，供 /api/health 返回
+if [ -n "${DEPLOY_VERSION:-}" ]; then
+  printf '%s\n' "${DEPLOY_VERSION}" > VERSION
+  printf '%s\n' "${DEPLOY_VERSION}" > backpack_quant_trading/VERSION
+  if [ -n "${DEPLOY_GIT_SHA:-}" ]; then
+    printf '%s\n' "${DEPLOY_GIT_SHA}" > GIT_SHA
+  fi
+  echo "==> 构建版本: ${DEPLOY_VERSION}"
+fi
+
 echo "==> 构建镜像（清除宿主机代理，避免 BuildKit 解析 host.docker.internal 失败）..."
 # compose 会读 .env 里的 HTTP(S)_PROXY 并传给 build；构建应走 registry-mirrors / 本机直连
 # 构建期不再跑 Node，内存压力显著下降
@@ -154,8 +164,21 @@ if [ -n "${HTTPS_PROXY_VAL}" ]; then
   fi
 fi
 
-echo "==> 清理旧镜像..."
+echo "==> 清理悬空镜像（保留已打版本标签的镜像，供回滚）..."
 docker image prune -f
+
+# 打版本标签 + 记录（回滚重建时可跳过）
+if [ "${SKIP_RELEASE_TAG:-0}" != "1" ] && [ -n "${DEPLOY_VERSION:-}" ]; then
+  if [ -x deploy/versioning.sh ]; then
+    bash deploy/versioning.sh tag "${DEPLOY_VERSION}"
+    bash deploy/versioning.sh record "${DEPLOY_VERSION}" "${DEPLOY_GIT_SHA:-}" deploy
+    bash deploy/versioning.sh prune
+  else
+    docker tag backpack-quant:latest "backpack-quant:${DEPLOY_VERSION}" || true
+    echo "${DEPLOY_VERSION}" > VERSION
+  fi
+  echo "==> 当前发布版本: ${DEPLOY_VERSION}"
+fi
 
 echo "==> 服务状态:"
 "${COMPOSE[@]}" ps -a

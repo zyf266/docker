@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   Brain,
+  Bot,
 } from 'lucide-react'
 import ChatBot from '../components/ChatBot'
 import AisPageBackground from '../components/AisPageBackground'
@@ -24,6 +25,7 @@ import './MainLayout.css'
 // 导航配置：支持父菜单 + 子菜单
 const navItems = [
   { type: 'item', to: '/strategies', icon: Layers, label: 'AI量化实盘' },
+  { type: 'item', to: '/strategies/a-share-ai-agent', icon: Bot, label: 'A股AI自适应' },
   { type: 'item', to: '/ai-stock', icon: LayoutGrid, label: 'AI选股' },
   {
     type: 'item',
@@ -55,6 +57,7 @@ const pageTitles = {
   '/stock-ai': 'A股 AI 选股',
   '/ai-stock': 'AI选股',
   '/strategies': 'AI量化实盘',
+  '/strategies/a-share-ai-agent': 'A股AI自适应',
   '/okx-console': 'OKX 操作台',
   '/us-weekly-report': '泡沫检测',
   '/study-center': '学习中心',
@@ -63,6 +66,9 @@ const pageTitles = {
 
 function getPageTitle(pathname) {
   if (pathname.startsWith('/study-center')) return '学习中心'
+  if (pathname === '/strategies/a-share-ai-agent' || pathname.startsWith('/strategies/a-share-ai-agent/')) {
+    return 'A股AI自适应'
+  }
   if (pathname.startsWith('/strategies')) return 'AI量化实盘'
   if (pathname === '/trading') return '策略交易'
   // AI 实验室父菜单下的三个子页面，统一父标题
@@ -173,12 +179,12 @@ const MainLayout = () => {
             }
 
             const { to, icon: Icon, label } = item
-            const isStrategies = to === '/strategies' && location.pathname.startsWith('/strategies')
             return (
               <NavLink
                 key={label}
                 to={to}
-                className={({ isActive }) => `nav-link${isActive || isStrategies ? ' active' : ''}`}
+                end={to === '/strategies'}
+                className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
               >
                 <Icon className="nav-icon" size={20} />
                 <span>{label}</span>

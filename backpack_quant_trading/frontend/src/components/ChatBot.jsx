@@ -711,7 +711,15 @@ const ChatBot = () => {
               src="/xiaomo-avatar.png"
               alt="小沫"
               draggable={false}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+                const fallback = e.currentTarget.parentElement?.querySelector('.avatar-fallback')
+                if (fallback) fallback.style.display = 'flex'
+              }}
             />
+            <div className="avatar-fallback" style={{ display: 'none' }} aria-hidden>
+              沫
+            </div>
           )}
         </div>
         {!panelOpen && <span className="avatar-pulse" />}

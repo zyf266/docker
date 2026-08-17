@@ -114,7 +114,22 @@ except Exception as _exc:
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "backpack-quant-api"}
+    version = ""
+    try:
+        for p in (
+            Path(__file__).resolve().parents[1] / "VERSION",
+            Path(__file__).resolve().parents[2] / "VERSION",
+        ):
+            if p.is_file():
+                version = p.read_text(encoding="utf-8").strip()
+                break
+    except Exception:
+        version = ""
+    return {
+        "status": "ok",
+        "service": "backpack-quant-api",
+        "version": version or "unknown",
+    }
 
 
 # ──────────────────────────────────────────────────────────
@@ -645,6 +660,23 @@ for base in (_pkg_dir, _cwd_dir, _cwd_dir / "backpack_quant_trading"):
         # SPA 根及子路由：返回 index.html
         from fastapi.responses import FileResponse
         _dist = str(frontend_dist)
+
+        # public/ 下的静态资源（Vite 会拷到 dist 根目录）；此前只挂了 /assets，导致小沫头像 404 变黑圈
+        @app.get("/xiaomo-avatar.png")
+        def _xiaomo_avatar_png():
+            p = frontend_dist / "xiaomo-avatar.png"
+            if not p.is_file():
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail="xiaomo-avatar.png missing")
+            return FileResponse(p, media_type="image/png")
+
+        @app.get("/vite.svg")
+        def _vite_svg():
+            p = frontend_dist / "vite.svg"
+            if p.is_file():
+                return FileResponse(p)
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404)
         @app.get("/")
         def _index():
             return FileResponse(frontend_dist / "index.html")
