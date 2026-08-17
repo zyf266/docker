@@ -63,6 +63,11 @@ from backpack_quant_trading.api.routers.ai_stock_hub import router as ai_stock_h
 from backpack_quant_trading.api.routers.crypto_signal_hub import router as crypto_signal_hub_router
 from backpack_quant_trading.api.routers.quiz import router as quiz_router
 
+try:
+    from backpack_quant_trading.api.routers.avatar import router as avatar_router
+except Exception:  # pragma: no cover
+    avatar_router = None
+
 app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
 app.include_router(trading_router, prefix="/api/trading", tags=["实盘交易"])
 app.include_router(grid_router, prefix="/api/grid", tags=["网格交易"])
@@ -80,6 +85,8 @@ app.include_router(polymarket_alert_router, prefix="/api/polymarket-alert", tags
 app.include_router(ai_stock_hub_router, prefix="/api/ai-stock-hub", tags=["AI选股卡片"])
 app.include_router(crypto_signal_hub_router, prefix="/api/crypto-signal-hub", tags=["加密信号评分"])
 app.include_router(quiz_router, prefix="/api/quiz", tags=["AI Agent 考试"])
+if avatar_router is not None:
+    app.include_router(avatar_router, prefix="/api/avatar", tags=["小沫数字人"])
 
 # 可选：旧镜像可能缺这些文件，不能拖垮整站
 try:

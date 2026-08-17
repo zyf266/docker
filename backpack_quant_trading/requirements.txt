@@ -31,6 +31,9 @@ passlib[bcrypt]>=1.7.4
 # 配置管理
 python-dotenv>=1.0.0
 
+# 小沫数字人云端 TTS（免费神经女声）
+edge-tts>=6.1.0
+
 # 数据可视化
 matplotlib>=3.7.0
 plotly>=5.18.0

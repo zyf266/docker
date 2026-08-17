@@ -232,6 +232,40 @@ def a_share_monitor_stop(user: dict = Depends(require_user)):
     return {"message": "ok", "running": False}
 
 
+class AShareMonitorRemoveRequest(BaseModel):
+    code: str
+    strategy: str
+    interval: str
+
+
+@router.post("/a-share-monitor/remove-task")
+def a_share_monitor_remove_task(req: AShareMonitorRemoveRequest, user: dict = Depends(require_user)):
+    """删除单条任务；删光后自动停止监控。"""
+    code = str(req.code or "").strip()
+    strategy = str(req.strategy or "").strip()
+    interval = str(req.interval or "").strip()
+    if not code or not strategy or not interval:
+        raise HTTPException(status_code=400, detail="code/strategy/interval 必填")
+    inst = get_a_share_monitor_instance()
+    if not inst:
+        inst = restore_a_share_monitor_from_db_if_needed()
+    if not inst:
+        raise HTTPException(status_code=404, detail="当前没有运行中的 A 股监控")
+    ok = inst.remove_task(code, strategy, interval)
+    if not ok:
+        raise HTTPException(status_code=404, detail="未找到该监控任务")
+    remaining = list(inst.tasks)
+    if not remaining:
+        if inst.running:
+            inst.stop()
+        set_a_share_monitor_instance(None)
+        mark_a_share_monitor_user_stopped(True)
+        DatabaseManager().delete_a_share_monitor_config()
+        return {"message": "已删除，无剩余任务，监控已停止", "running": False, "tasks": [], "task_count": 0}
+    DatabaseManager().save_a_share_monitor_config(json.dumps({"tasks": remaining}, ensure_ascii=False))
+    return {"message": "已删除", **inst.status()}
+
+
 @router.get("/a-share-monitor/signals")
 def a_share_monitor_signals(
     limit: int = Query(50, ge=1, le=200),

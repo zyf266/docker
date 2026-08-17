@@ -30,6 +30,7 @@ import {
   getAShareMonitorStatus,
   startAShareMonitor,
   stopAShareMonitor,
+  removeAShareMonitorTask,
   testAShareMonitorDingtalk,
 } from '../api/currencyMonitor'
 import {
@@ -745,6 +746,26 @@ const CurrencyMonitor = () => {
     }
   }
 
+  const handleAShareRemoveTask = async (t) => {
+    const label = `${t.code} ${t.name || ''} · ${
+      t.strategy === 'macd' ? 'MACD' : t.strategy === 'rsi' ? 'RSI' : '涨幅'
+    } · ${t.interval === 'D' ? '日线' : `${t.interval}分`}`
+    if (!window.confirm(`确定删除这条监控？\n${label}`)) return
+    try {
+      const res = await removeAShareMonitorTask({
+        code: t.code,
+        strategy: t.strategy,
+        interval: String(t.interval),
+      })
+      if (res?.running === false && !(res?.tasks?.length > 0)) {
+        alert('已删除，无剩余任务，监控已停止')
+      }
+      await refreshAShareStatus()
+    } catch (e) {
+      alert(e?.response?.data?.detail || '删除失败')
+    }
+  }
+
   const handleAShareTestDing = async () => {
     try {
       await testAShareMonitorDingtalk()
@@ -1108,17 +1129,22 @@ const CurrencyMonitor = () => {
       </div>
 
       {/* Card: A股标的监控 */}
-      <div className="mon-card">
-        <div className="mon-card-header">
+      <div className="mon-card mon-card-ashare">
+        <div className="mon-card-header mon-card-header-ashare">
           <div className="mon-card-title">
             <span className="mon-icon">📈</span>
             <span>A股标的监控</span>
-            {aShareStatus.running && (
-              <span className="mon-badge-orange">⚡ 运行中 · {aShareStatus.tasks?.length || 0} 任务</span>
+            {aShareStatus.running ? (
+              <span className="mon-badge-ashare">运行中 · {aShareStatus.tasks?.length || 0} 条</span>
+            ) : (
+              <span className="mon-badge-muted">未运行</span>
             )}
           </div>
         </div>
         <div className="mon-card-body">
+          <p className="mon-hint">
+            选择标的与策略后点「开始监控」可追加任务；列表支持单条删除。全部停止仍用下方红色按钮。
+          </p>
           <div className="mon-grid-2">
             <div className="mon-field-group">
               <label className="mon-label">
@@ -1213,52 +1239,88 @@ const CurrencyMonitor = () => {
               ▶ {aShareLoading ? '启动中…' : '开始监控'}
             </button>
             <button className="mon-btn-outline-red" disabled={!aShareStatus.running} onClick={handleAShareStop}>
-              ◻ 停止
+              ◻ 全部停止
             </button>
             <button className="mon-btn-outline-red" type="button" onClick={handleAShareTestDing}>
               测试钉钉
             </button>
           </div>
-          {aShareStatus.last_scan_at && (
-            <p className="mon-hint-blue">
-              最近扫描：{aShareStatus.last_scan_at}
-              {aShareStatus.data_source_note ? ` · 数据源 ${aShareStatus.data_source_note}` : ''}
-              {aShareStatus.last_error ? ` · 错误 ${aShareStatus.last_error}` : ''}
-            </p>
-          )}
-          {aShareStatus.tasks?.length > 0 && (
-            <div className="mon-table-wrap" style={{ marginTop: 12 }}>
-              <table className="mon-table">
-                <thead>
-                  <tr>
-                    <th>代码</th>
-                    <th>名称</th>
-                    <th>策略</th>
-                    <th>K线</th>
-                    <th>参数</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aShareStatus.tasks.slice(0, 40).map((t, i) => (
-                    <tr key={`${t.code}-${t.strategy}-${t.interval}-${i}`}>
-                      <td>{t.code}</td>
-                      <td>{t.name || '—'}</td>
-                      <td>{t.strategy === 'macd' ? 'MACD' : t.strategy === 'rsi' ? 'RSI' : '涨幅'}</td>
-                      <td>{t.interval === 'D' ? '日线' : `${t.interval}分`}</td>
-                      <td>
-                        {t.strategy === 'rsi' ? `阈值 ${t.rsi_threshold}` : null}
-                        {t.strategy === 'gain' ? `≥${t.gain_pct}%` : null}
-                        {t.strategy === 'macd' ? '金叉' : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+          {(aShareStatus.last_scan_at || aShareStatus.last_error) && (
+            <div className={`ashare-scan-bar${aShareStatus.last_error ? ' err' : ''}`}>
+              <span>
+                {aShareStatus.last_scan_at
+                  ? `最近扫描：${aShareStatus.last_scan_at}`
+                  : '尚未扫描'}
+              </span>
+              {aShareStatus.data_source_note ? (
+                <span className="ashare-pill">数据源 {aShareStatus.data_source_note}</span>
+              ) : null}
+              {aShareStatus.last_error ? (
+                <span className="ashare-pill err">错误 {aShareStatus.last_error}</span>
+              ) : null}
             </div>
           )}
-          {aShareStatus.signals?.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div className="mon-label">命中历史</div>
+
+          <div className="ashare-section">
+            <div className="ashare-section-head">
+              <h4>监控中</h4>
+              <span>{aShareStatus.tasks?.length || 0} 条任务</span>
+            </div>
+            {aShareStatus.tasks?.length > 0 ? (
+              <div className="mon-table-wrap">
+                <table className="mon-table">
+                  <thead>
+                    <tr>
+                      <th>代码</th>
+                      <th>名称</th>
+                      <th>策略</th>
+                      <th>K线</th>
+                      <th>参数</th>
+                      <th className="col-action">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aShareStatus.tasks.map((t, i) => (
+                      <tr key={`${t.code}-${t.strategy}-${t.interval}-${i}`}>
+                        <td className="mono">{t.code}</td>
+                        <td>{t.name || '—'}</td>
+                        <td>
+                          <span className={`stg-tag stg-${t.strategy}`}>
+                            {t.strategy === 'macd' ? 'MACD' : t.strategy === 'rsi' ? 'RSI' : '涨幅'}
+                          </span>
+                        </td>
+                        <td>{t.interval === 'D' ? '日线' : `${t.interval}分`}</td>
+                        <td className="muted">
+                          {t.strategy === 'rsi' ? `阈值 ${t.rsi_threshold}` : null}
+                          {t.strategy === 'gain' ? `≥ ${t.gain_pct}%` : null}
+                          {t.strategy === 'macd' ? '金叉' : null}
+                        </td>
+                        <td className="col-action">
+                          <button
+                            type="button"
+                            className="mon-btn-row-del"
+                            onClick={() => handleAShareRemoveTask(t)}
+                          >
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="ashare-empty">暂无监控任务。选择标的与策略后点击「开始监控」。</p>
+            )}
+          </div>
+
+          <div className="ashare-section">
+            <div className="ashare-section-head">
+              <h4>命中历史</h4>
+              <span>最近 {Math.min(aShareStatus.signals?.length || 0, 30)} 条</span>
+            </div>
+            {aShareStatus.signals?.length > 0 ? (
               <div className="mon-table-wrap">
                 <table className="mon-table">
                   <thead>
@@ -1274,19 +1336,28 @@ const CurrencyMonitor = () => {
                   <tbody>
                     {aShareStatus.signals.slice(0, 30).map((s, i) => (
                       <tr key={`${s.ts}-${s.code}-${i}`}>
-                        <td>{s.ts}</td>
-                        <td>{s.code} {s.name || ''}</td>
+                        <td className="mono">{s.ts}</td>
+                        <td>
+                          <span className="mono">{s.code}</span>
+                          {s.name ? ` ${s.name}` : ''}
+                        </td>
                         <td>{s.strategy_label || s.strategy}</td>
                         <td>{s.interval_label || s.interval}</td>
-                        <td>{s.trigger}</td>
-                        <td>{s.dingtalk_ok ? '✓' : '✗'}</td>
+                        <td className="trigger-cell">{s.trigger}</td>
+                        <td>
+                          <span className={`ding-pill${s.dingtalk_ok ? ' ok' : ' bad'}`}>
+                            {s.dingtalk_ok ? '已发' : '失败'}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="ashare-empty">暂无命中记录。</p>
+            )}
+          </div>
         </div>
       </div>
 

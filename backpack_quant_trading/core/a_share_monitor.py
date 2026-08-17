@@ -726,6 +726,29 @@ class AShareMonitorService:
             th.join(timeout=3.0)
         self._thread = None
 
+    def remove_task(self, code: str, strategy: str, interval: str) -> bool:
+        """删除单条监控任务。返回是否确实删到了。"""
+        code = str(code or "").strip()
+        strategy = str(strategy or "").strip()
+        interval = str(interval or "").strip()
+        with self._lock:
+            before = len(self.tasks)
+            self.tasks = [
+                t
+                for t in self.tasks
+                if not (
+                    str(t.get("code") or "") == code
+                    and str(t.get("strategy") or "") == strategy
+                    and str(t.get("interval") or "") == interval
+                )
+            ]
+            removed = len(self.tasks) < before
+            if removed:
+                # key_bar = f"{code}|{strategy}|{interval}"
+                dead = f"{code}|{strategy}|{interval}"
+                self._last_bar = {k: v for k, v in self._last_bar.items() if str(k) != dead}
+            return removed
+
     def _loop(self) -> None:
         """按各任务 K 线收盘时刻 + CLOSE_SETTLE_SEC 唤醒；非交易时段不扫描。"""
         while not self._stop.is_set():

@@ -59,6 +59,8 @@ export const getAShareMonitorMeta = () => request.get('/currency-monitor/a-share
 export const getAShareMonitorStatus = () => request.get('/currency-monitor/a-share-monitor/status')
 export const startAShareMonitor = (data) => request.post('/currency-monitor/a-share-monitor/start', data)
 export const stopAShareMonitor = () => request.post('/currency-monitor/a-share-monitor/stop')
+export const removeAShareMonitorTask = (data) =>
+  request.post('/currency-monitor/a-share-monitor/remove-task', data)
 export const getAShareMonitorSignals = (params) =>
   request.get('/currency-monitor/a-share-monitor/signals', { params })
 export const testAShareMonitorDingtalk = () =>
