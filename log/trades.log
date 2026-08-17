@@ -14194,3 +14194,975 @@
 2026-08-17 17:40:32 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4953
 2026-08-17 17:40:32 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 39 条
 2026-08-17 17:40:32 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:39:18 | 拉取 226 条 (金十数据=17, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=39) | 已推送过 0 | 非最新 0 | 未命中关键词 209 | 非重要快讯 17 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:41:02 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:41:03 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:41:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:41:03 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:41:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:41:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:41:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:41:04 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:41:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:41:05 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:41:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:41:06 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 78630
+2026-08-17 17:41:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:41:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:41:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:41:07 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:41:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:41:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435885AC10>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:41:09 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:09 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:41:11 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:41:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:41:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:41:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:41:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:41:15 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:41:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5F90>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:41:21 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:21 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:41:24 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:24 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:41:26 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:26 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:41:28 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:28 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:41:33 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:37 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:41:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.hyperliquid.xyz:443
+2026-08-17 17:41:39 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:39 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:41:40 | ERROR    | backpack_quant_trading.core.hyperliquid_klines:225 | HL metaAndAssetCtxs 失败: HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Max retries exceeded with url: /info (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D0F50>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:41:40 | INFO     | kline_scheduler:424 | [上涨扫描] 定时完成: 2026-08-17 09:41:40 UTC · 通过 0 个 · 耗时 2.1s
+2026-08-17 17:41:40 | INFO     | kline_scheduler:434 | [上涨扫描] 下次扫描约 1.0h 后
+2026-08-17 17:41:41 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:41 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:41:43 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:43 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:41:49 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:50 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:41:52 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:54 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:41:56 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:56 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:41:59 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:41:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:42:02 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:42:02 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:42:04 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 17:42:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:42:06 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:42:06 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:42:07 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:42:08 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4646
+2026-08-17 17:42:08 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:42:08 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:42:09 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:42:10 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3028
+2026-08-17 17:42:10 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 29 条
+2026-08-17 17:42:10 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:41:02 | 拉取 217 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=29) | 已推送过 0 | 非最新 0 | 未命中关键词 204 | 非重要快讯 13 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:42:10 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D02D0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:42:17 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:42:17 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:42:19 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:42:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:42:21 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5090>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:42:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:42:41 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:42:41 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:42:41 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:42:41 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:42:42 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:42:42 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:42:43 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:42:43 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:42:44 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 79014
+2026-08-17 17:42:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:42:47 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:42:49 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:42:52 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:42:52 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:42:53 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:42:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:42:58 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:42:58 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:43:00 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:43:03 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:43:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:43:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:43:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:43:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:43:07 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:07 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:43:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5090>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:43:09 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:09 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:43:11 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:43:12 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:43:12 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:43:14 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:43:14 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:43:16 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:16 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:43:16 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6AD0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:43:18 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:18 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:43:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:43:25 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:25 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (2): query1.finance.yahoo.com:443
+2026-08-17 17:43:27 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:27 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:43:31 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:31 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:43:33 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:43:41 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:43:41 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:43:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:43:53 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:43:53 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3762
+2026-08-17 17:43:54 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:43:58 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3028
+2026-08-17 17:43:58 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 26 条
+2026-08-17 17:43:58 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:42:40 | 拉取 214 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=26) | 已推送过 0 | 非最新 0 | 未命中关键词 202 | 非重要快讯 12 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:44:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:44:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:44:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:44:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:44:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6AD0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:44:12 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:44:12 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:44:14 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:44:14 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:44:16 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435885A850>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:44:28 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:44:29 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:44:29 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:44:29 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:44:29 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:44:30 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:44:30 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:44:31 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:44:31 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:44:32 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 79671
+2026-08-17 17:44:32 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:44:34 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:44:34 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:44:35 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:44:35 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:44:40 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:44:40 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:44:42 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:44:45 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:44:56 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:44:56 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:45:00 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:45:02 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:02 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:45:04 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:04 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:45:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:45:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:45:06 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:45:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:45:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6FD0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:45:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:45:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:45:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:45:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:45:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:45:16 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:45:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6850>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:45:18 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (2): query1.finance.yahoo.com:443
+2026-08-17 17:45:19 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:19 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:45:21 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:21 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:45:26 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:26 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:45:28 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:28 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:45:33 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:33 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:45:36 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:45:37 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:45:39 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:45:43 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:45:44 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3762
+2026-08-17 17:45:50 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:45:51 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3026
+2026-08-17 17:45:52 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 26 条
+2026-08-17 17:45:52 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:44:28 | 拉取 214 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=26) | 已推送过 0 | 非最新 0 | 未命中关键词 202 | 非重要快讯 12 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:46:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:46:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:46:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:46:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:46:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6990>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:46:12 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:46:12 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:46:14 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:46:14 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:46:16 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5E50>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:46:22 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:46:23 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:46:23 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:46:24 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:46:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:46:24 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:46:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:46:25 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:46:25 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:46:26 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 78667
+2026-08-17 17:46:26 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:46:32 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:46:32 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:46:34 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:34 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:46:36 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:46:38 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:38 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:46:45 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:46:47 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:47 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:46:51 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:51 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:46:53 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:53 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:46:55 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:46:57 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:46:58 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:46:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:47:01 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:47:01 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:47:03 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:47:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:47:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:47:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:47:04 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:47:04 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:47:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:47:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:47:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A429450>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:47:12 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:47:12 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:47:14 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:47:14 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:47:16 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D3250>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:47:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:47:21 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:47:21 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (2): query2.finance.yahoo.com:443
+2026-08-17 17:47:26 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:47:29 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 17:47:29 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:47:31 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:47:31 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3760
+2026-08-17 17:47:32 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:47:32 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4862
+2026-08-17 17:47:33 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 35 条
+2026-08-17 17:47:33 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:46:22 | 拉取 223 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=35) | 已推送过 0 | 非最新 0 | 未命中关键词 207 | 非重要快讯 16 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:48:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:48:03 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:48:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:48:04 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:48:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:48:04 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:48:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:48:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:48:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:48:05 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:48:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:48:06 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 78942
+2026-08-17 17:48:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:48:07 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:48:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:48:09 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D7B10>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:48:10 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:48:13 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:48:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:48:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:48:15 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:48:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:48:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:48:16 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A428A50>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:48:19 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:48:21 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:21 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:48:23 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:48:25 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:25 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:48:28 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:28 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:48:30 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:30 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:48:31 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:31 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:48:41 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:41 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:48:42 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:42 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:48:45 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:45 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:48:47 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:47 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:48:49 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:50 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:48:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:48:58 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:48:58 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (2): query2.finance.yahoo.com:443
+2026-08-17 17:49:01 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:49:01 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:49:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:49:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:49:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:49:04 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:49:05 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3761
+2026-08-17 17:49:06 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:49:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:49:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:49:06 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4861
+2026-08-17 17:49:06 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 35 条
+2026-08-17 17:49:06 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:48:03 | 拉取 223 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=35) | 已推送过 0 | 非最新 0 | 未命中关键词 207 | 非重要快讯 16 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:49:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D1A90>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:49:12 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:49:12 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:49:14 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:49:14 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:49:16 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D0A50>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:49:36 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:49:37 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:49:37 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:49:38 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:49:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:49:38 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:49:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:49:39 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:49:39 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:49:40 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 79582
+2026-08-17 17:49:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:49:42 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:49:42 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:49:44 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:49:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:49:46 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:49:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:49:49 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:49:52 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:50:01 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:50:03 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (2): query2.finance.yahoo.com:443
+2026-08-17 17:50:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:50:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:50:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:50:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:50:06 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:06 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:50:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5D10>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:50:08 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:08 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:50:10 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:50:12 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:50:12 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:50:12 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:12 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:50:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:50:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:50:16 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6AD0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:50:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:50:27 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:29 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:50:31 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:31 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:50:33 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:33 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:50:34 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:34 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:50:36 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:50:39 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:50:39 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:50:41 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 17:50:41 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:50:43 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:50:44 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3760
+2026-08-17 17:50:44 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:50:45 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3028
+2026-08-17 17:50:45 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 26 条
+2026-08-17 17:50:45 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:49:36 | 拉取 215 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=26) | 已推送过 0 | 非最新 0 | 未命中关键词 204 | 非重要快讯 11 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:51:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:51:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:51:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:51:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:51:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5310>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:51:12 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:51:12 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:51:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:51:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:51:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:51:16 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:51:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:51:16 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:51:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:51:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5E50>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:51:17 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:51:17 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:51:18 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:51:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:51:19 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 79750
+2026-08-17 17:51:20 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:51:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:51:27 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:51:27 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:51:28 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:51:28 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:51:30 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:51:33 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:51:35 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:51:35 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:51:38 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:51:40 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:51:42 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:51:42 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:51:43 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:51:52 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:51:55 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:51:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:52:00 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:52:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:52:02 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:52:02 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:52:04 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:52:04 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:52:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:52:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:52:06 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:52:06 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:52:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:52:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:52:08 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:52:08 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:52:09 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D0910>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:52:10 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:52:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:52:12 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:52:12 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:52:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:52:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:52:14 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:52:16 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:52:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:52:17 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (2): finance.yahoo.com:443
+2026-08-17 17:52:18 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x0000014358859F90>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:52:18 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 17:52:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:52:21 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:52:22 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4645
+2026-08-17 17:52:23 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:52:23 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3028
+2026-08-17 17:52:27 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 29 条
+2026-08-17 17:52:27 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:51:15 | 拉取 218 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=29) | 已推送过 0 | 非最新 0 | 未命中关键词 206 | 非重要快讯 12 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:52:57 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:52:58 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:52:58 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:52:58 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:52:58 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:52:59 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:52:59 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:52:59 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:52:59 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:53:00 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 79447
+2026-08-17 17:53:01 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:53:02 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:53:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:53:04 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:05 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:53:05 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:53:07 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:53:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:53:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:53:09 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:09 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:53:09 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D7C50>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:53:11 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:53:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:53:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:53:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:53:15 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:53:17 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:53:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435885AD50>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:53:19 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:20 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:53:22 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:34 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:53:36 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:53:41 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:41 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:53:43 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:47 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:53:49 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:50 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:53:51 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:51 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:53:53 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:53 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:53:57 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:53:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:54:00 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:54:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:54:02 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:54:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:54:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:54:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:54:05 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:54:05 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:54:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:54:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:54:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:54:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6FD0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:54:09 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:54:10 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4645
+2026-08-17 17:54:11 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:54:11 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4863
+2026-08-17 17:54:11 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 38 条
+2026-08-17 17:54:12 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:52:57 | 拉取 226 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=38) | 已推送过 0 | 非最新 0 | 未命中关键词 210 | 非重要快讯 16 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:54:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:54:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:54:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:54:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:54:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5590>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:54:42 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:54:42 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:54:42 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:54:43 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:54:43 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:54:44 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:54:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:54:45 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:54:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:54:46 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 78276
+2026-08-17 17:54:46 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:54:48 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:54:48 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:54:50 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:54:50 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:54:52 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:54:54 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:54:57 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:54:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:54:59 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:54:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:55:01 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:01 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:55:04 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:04 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:55:05 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:55:05 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:55:06 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:06 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:55:07 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:55:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:55:09 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6FD0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:55:09 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:55:11 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:12 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:55:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:55:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:55:16 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:16 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:55:16 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:55:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:55:18 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:18 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:55:18 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D7110>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:55:20 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:25 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:55:26 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:26 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:55:28 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:32 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:55:35 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:55:35 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:55:40 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:55:42 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 17:55:42 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:55:44 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:55:47 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 500 32
+2026-08-17 17:55:48 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:55:49 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3029
+2026-08-17 17:55:49 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 11 条
+2026-08-17 17:55:49 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:54:42 | 拉取 200 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=11) | 已推送过 0 | 非最新 0 | 未命中关键词 192 | 非重要快讯 8 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:56:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:56:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:56:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:56:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:56:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435885AD50>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:56:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:56:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:56:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:56:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:56:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D7890>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:56:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:56:20 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:56:20 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:56:21 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:56:21 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:56:21 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:56:21 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:56:23 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:56:23 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:56:24 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 78276
+2026-08-17 17:56:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:56:26 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:56:36 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:56:37 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:56:37 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:56:48 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:56:48 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:56:52 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:56:52 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:56:53 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:56:53 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:56:57 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:56:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:56:59 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:56:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:57:02 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:57:06 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:57:06 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:57:08 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:08 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:57:08 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:57:08 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:57:09 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:57:10 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D7D90>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:57:12 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:12 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:57:14 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:14 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:57:16 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:57:16 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:57:16 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:16 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:57:18 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:57:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:57:20 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D7390>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:57:21 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:21 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:57:25 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:25 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:57:29 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:29 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:57:32 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:57:32 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:57:34 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 17:57:34 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:57:36 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:57:36 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3660
+2026-08-17 17:57:38 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:57:39 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3070
+2026-08-17 17:57:41 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 26 条
+2026-08-17 17:57:41 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:56:19 | 拉取 215 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=26) | 已推送过 0 | 非最新 0 | 未命中关键词 205 | 非重要快讯 10 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:58:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:58:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:58:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:58:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:58:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A428910>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:58:11 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:58:12 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:58:12 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:58:12 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:58:12 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:58:13 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:58:13 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:58:13 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:58:13 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:58:14 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:58:14 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:58:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:58:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:58:15 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 77549
+2026-08-17 17:58:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:58:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D3750>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:58:18 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:58:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:58:20 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:20 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:58:23 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:58:26 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:26 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:58:27 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:27 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:58:29 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:29 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:58:31 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:31 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:58:32 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:32 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:58:38 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:58:41 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:41 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (2): query2.finance.yahoo.com:443
+2026-08-17 17:58:43 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:43 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:58:44 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:44 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:58:46 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:58:49 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:49 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:58:56 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:56 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:58:57 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:58:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 17:59:02 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:59:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 17:59:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 17:59:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:59:05 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 17:59:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 17:59:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:59:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:59:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6C10>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:59:10 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:59:11 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3661
+2026-08-17 17:59:12 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 17:59:12 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3070
+2026-08-17 17:59:13 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 26 条
+2026-08-17 17:59:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 17:59:13 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:58:11 | 拉取 215 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=26) | 已推送过 0 | 非最新 0 | 未命中关键词 205 | 非重要快讯 10 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 17:59:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 17:59:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 17:59:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 17:59:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6E90>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 17:59:43 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 17:59:44 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 17:59:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 17:59:45 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 17:59:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 17:59:45 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 17:59:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 17:59:46 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 17:59:46 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 17:59:47 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 79764
+2026-08-17 17:59:47 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 17:59:52 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 17:59:52 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 17:59:54 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:59:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 17:59:57 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 17:59:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 17:59:59 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:00:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 18:00:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:00:06 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:00:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:00:06 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:00:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D1310>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:00:08 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:08 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:00:11 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:00:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 18:00:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:00:14 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:14 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:00:16 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:00:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:00:17 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:00:18 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D3390>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:00:19 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:20 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:00:22 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:22 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:00:24 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:24 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:00:26 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:26 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:00:27 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:27 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:00:30 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:30 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:00:32 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:32 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:00:34 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:00:37 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 18:00:40 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 18:00:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 18:00:43 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 18:00:43 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4686
+2026-08-17 18:00:44 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 18:00:45 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4702
+2026-08-17 18:00:45 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 38 条
+2026-08-17 18:00:45 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 09:59:43 | 拉取 228 条 (金十数据=20, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=38) | 已推送过 0 | 非最新 0 | 未命中关键词 211 | 非重要快讯 17 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 18:01:05 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 18:01:05 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:01:07 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:01:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:01:09 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5590>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:01:15 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 18:01:15 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:01:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 18:01:16 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 18:01:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 18:01:17 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:01:17 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:01:17 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 18:01:17 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 18:01:18 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 18:01:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 18:01:19 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 18:01:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 18:01:19 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D6990>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:01:19 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 79011
+2026-08-17 18:01:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 18:01:21 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 18:01:21 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 18:01:23 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 18:01:27 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:29 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:01:31 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:31 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:01:33 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:33 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:01:35 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:35 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:01:38 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:38 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:01:43 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:43 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:01:45 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:45 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:01:47 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:48 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:01:50 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:50 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:01:53 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:53 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:01:55 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:01:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:01:58 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:02:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:02:03 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:02:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:02:05 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 18:02:05 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:02:08 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:02:08 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:02:08 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:02:08 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:02:10 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D11D0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:02:11 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:02:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 18:02:13 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-08-17 18:02:13 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 18:02:15 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 18:02:15 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:02:15 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 18:02:16 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3661
+2026-08-17 18:02:16 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 393
+2026-08-17 18:02:17 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:02:17 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:02:17 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3072
+2026-08-17 18:02:17 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 26 条
+2026-08-17 18:02:17 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 10:01:15 | 拉取 215 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=26) | 已推送过 0 | 非最新 0 | 未命中关键词 205 | 非重要快讯 10 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 18:02:19 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D5F90>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:02:47 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-08-17 18:02:47 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-08-17 18:02:47 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-08-17 18:02:48 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 None
+2026-08-17 18:02:48 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-08-17 18:02:49 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-08-17 18:02:49 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-08-17 18:02:50 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-08-17 18:02:50 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-08-17 18:02:51 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 78480
+2026-08-17 18:02:51 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-08-17 18:02:55 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-08-17 18:02:55 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-08-17 18:02:57 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:02:58 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-08-17 18:02:59 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:02:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:03:01 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:01 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:03:04 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:04 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 18:03:04 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:03:04 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:03:06 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:06 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:03:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:03:06 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:03:08 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A428E10>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:03:08 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:08 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:03:11 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:03:13 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 18:03:13 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:03:15 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:03:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:03:16 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:03:17 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A429F90>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:03:18 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:18 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:03:21 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:03:25 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:25 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:03:27 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:03:39 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:39 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:03:40 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:40 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-08-17 18:03:43 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:43 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-08-17 18:03:45 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-08-17 18:03:45 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-08-17 18:03:49 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-08-17 18:03:52 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 18:03:52 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 3661
+2026-08-17 18:03:53 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-08-17 18:03:53 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 3072
+2026-08-17 18:03:56 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:795 | [雅虎财经] 直连 Search 获取 26 条
+2026-08-17 18:03:57 | INFO     | stock_news_alert:555 | 轮询完成 @ 2026-08-17 10:02:47 | 拉取 215 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=26) | 已推送过 0 | 非最新 0 | 未命中关键词 203 | 非重要快讯 12 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-08-17 18:04:05 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '15', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2']' returned non-zero exit status 7.
+2026-08-17 18:04:05 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:04:07 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:04:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:04:09 | ERROR    | backpack_quant_trading.core.binance_monitor:344 | 获取币安K线失败 futures BTCUSDT 1m: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=2 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001435A4D51D0>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))
+2026-08-17 18:04:14 | WARNING  | backpack_quant_trading.core.binance_monitor:143 | 币安行情 curl 兜底失败: Command '['curl', '-fsSL', '--max-time', '10', '-A', 'Mozilla/5.0', '-x', 'http://127.0.0.1:7891', 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=50']' returned non-zero exit status 7.
+2026-08-17 18:04:14 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-08-17 18:04:16 | WARNING  | backpack_quant_trading.core.binance_monitor:147 | 币安行情 aiohttp 兜底失败: Cannot connect to host 127.0.0.1:7891 ssl:False [远程计算机拒绝网络连接。]
+2026-08-17 18:04:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): fapi.binance.com:443
+2026-08-17 18:04:18 | ERROR    | backpack_quant_trading.core.binance_monitor:364 | 获取币安深度失败 futures BTCUSDT: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/depth?symbol=BTCUSDT&limit=50 (Caused by ProxyError('Cannot connect to proxy.', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000143595D3890>: Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。')))

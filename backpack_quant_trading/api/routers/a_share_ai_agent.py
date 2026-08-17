@@ -59,7 +59,7 @@ class BacktestRequest(BaseModel):
     interval: str = "D"
     start: str = ""
     end: str = ""
-    max_llm_calls: int = 40
+    max_llm_calls: int = 12
 
 
 @router.get("/meta")
@@ -220,7 +220,7 @@ def backtest(req: BacktestRequest, user: dict = Depends(require_user)) -> Dict[s
             interval=req.interval,
             start=req.start,
             end=req.end,
-            max_llm_calls=max(5, min(int(req.max_llm_calls or 40), 80)),
+            max_llm_calls=max(3, min(int(req.max_llm_calls or 12), 40)),
         )
     except Exception as e:
         logger.exception("backtest failed")

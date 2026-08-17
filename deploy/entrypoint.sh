@@ -51,6 +51,8 @@ case "${1:-api}" in
       -w "${WORKERS}" \
       -k uvicorn.workers.UvicornWorker \
       -b 0.0.0.0:8100 \
+      --timeout "${GUNICORN_TIMEOUT:-900}" \
+      --graceful-timeout 30 \
       --max-requests 1000 \
       --max-requests-jitter 100 \
       --access-logfile - \

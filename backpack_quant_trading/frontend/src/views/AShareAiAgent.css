@@ -208,6 +208,36 @@
   background: #020617;
 }
 
+.asa-decisions {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.asa-decisions h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #e2e8f0;
+}
+
+.asa-decisions ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.asa-decisions li {
+  margin-bottom: 6px;
+}
+
+.asa-decisions strong {
+  color: #f8fafc;
+}
+
 @media (max-width: 900px) {
   .asa-grid,
   .asa-prefs {

@@ -30,14 +30,28 @@ const AShareAiAgent = () => {
   const [loading, setLoading] = useState(false)
   const [prefs, setPrefs] = useState({ confirmed: {}, draft: {} })
   const [feedback, setFeedback] = useState('')
+  const [btCode, setBtCode] = useState('600519')
+  const [btName, setBtName] = useState('贵州茅台')
   const [btStart, setBtStart] = useState('')
   const [btEnd, setBtEnd] = useState('')
   const [btInterval, setBtInterval] = useState('D')
   const [btLoading, setBtLoading] = useState(false)
+  const [btElapsed, setBtElapsed] = useState(0)
   const [btResult, setBtResult] = useState(null)
   const [lastDecide, setLastDecide] = useState(null)
   const chartRef = useRef(null)
   const chartInst = useRef(null)
+  const btSectionRef = useRef(null)
+
+  useEffect(() => {
+    if (!btLoading) {
+      setBtElapsed(0)
+      return undefined
+    }
+    const t0 = Date.now()
+    const t = setInterval(() => setBtElapsed(Math.floor((Date.now() - t0) / 1000)), 1000)
+    return () => clearInterval(t)
+  }, [btLoading])
 
   const refresh = useCallback(async () => {
     try {
@@ -61,49 +75,69 @@ const AShareAiAgent = () => {
   }, [refresh])
 
   useEffect(() => {
-    if (!btResult?.bars?.length || !chartRef.current) return undefined
-    if (!chartInst.current) chartInst.current = echarts.init(chartRef.current)
-    const times = btResult.bars.map((b) =>
-      new Date(b.time).toLocaleString('zh-CN', { hour12: false })
-    )
-    const ohlc = btResult.bars.map((b) => [b.open, b.close, b.low, b.high])
-    const markPoints = (btResult.markers || []).map((m) => {
-      const idx = btResult.bars.findIndex((b) => b.time === m.time)
-      return {
-        name: m.side === 'buy' ? '买' : '卖',
-        coord: [Math.max(0, idx), m.price],
-        value: m.side,
-        itemStyle: { color: m.side === 'buy' ? '#16a34a' : '#dc2626' },
+    if (!btResult?.bars?.length) return undefined
+    let disposed = false
+    let chart = chartInst.current
+    const timer = window.setTimeout(() => {
+      if (disposed || !chartRef.current) return
+      if (!chart) {
+        chart = echarts.init(chartRef.current)
+        chartInst.current = chart
       }
-    })
-    chartInst.current.setOption({
-      backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis' },
-      grid: { left: 48, right: 24, top: 24, bottom: 48 },
-      xAxis: { type: 'category', data: times, axisLabel: { color: '#94a3b8' } },
-      yAxis: { scale: true, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
-      series: [
+      const times = btResult.bars.map((b) =>
+        new Date(b.time).toLocaleString('zh-CN', { hour12: false })
+      )
+      const ohlc = btResult.bars.map((b) => [b.open, b.close, b.low, b.high])
+      const markPoints = (btResult.markers || []).map((m) => {
+        const idx = btResult.bars.findIndex((b) => b.time === m.time)
+        return {
+          name: m.side === 'buy' ? '买' : '卖',
+          coord: [Math.max(0, idx), m.price],
+          value: m.side,
+          itemStyle: { color: m.side === 'buy' ? '#16a34a' : '#dc2626' },
+        }
+      })
+      chart.setOption(
         {
-          type: 'candlestick',
-          data: ohlc,
-          itemStyle: {
-            color: '#ef4444',
-            color0: '#22c55e',
-            borderColor: '#ef4444',
-            borderColor0: '#22c55e',
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'axis' },
+          grid: { left: 48, right: 24, top: 24, bottom: 48 },
+          xAxis: { type: 'category', data: times, axisLabel: { color: '#94a3b8' } },
+          yAxis: {
+            scale: true,
+            axisLabel: { color: '#94a3b8' },
+            splitLine: { lineStyle: { color: '#1e293b' } },
           },
-          markPoint: {
-            symbol: 'pin',
-            symbolSize: 42,
-            data: markPoints,
-            label: { formatter: '{b}', color: '#fff' },
-          },
+          series: [
+            {
+              type: 'candlestick',
+              data: ohlc,
+              itemStyle: {
+                color: '#ef4444',
+                color0: '#22c55e',
+                borderColor: '#ef4444',
+                borderColor0: '#22c55e',
+              },
+              markPoint: {
+                symbol: 'pin',
+                symbolSize: 42,
+                data: markPoints,
+                label: { formatter: '{b}', color: '#fff' },
+              },
+            },
+          ],
         },
-      ],
-    })
+        true
+      )
+      chart.resize()
+    }, 80)
     const onResize = () => chartInst.current?.resize()
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    return () => {
+      disposed = true
+      window.clearTimeout(timer)
+      window.removeEventListener('resize', onResize)
+    }
   }, [btResult])
 
   const handleStart = async () => {
@@ -142,24 +176,41 @@ const AShareAiAgent = () => {
   }
 
   const handleBacktest = async () => {
+    const c = (btCode || '').trim()
+    if (!c) {
+      alert('请填写回测标的代码')
+      return
+    }
     setBtLoading(true)
     setBtResult(null)
+    btSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     try {
       const res = await backtestAShareAiAgent({
-        code: code.trim(),
-        name: name.trim(),
+        code: c,
+        name: (btName || '').trim(),
         interval: btInterval,
         start: btStart,
         end: btEnd,
-        max_llm_calls: 40,
+        max_llm_calls: 12,
       })
       if (!res?.ok) {
         alert(res?.error || '回测失败')
         return
       }
       setBtResult(res)
+      // 等 DOM 挂上图表容器再画
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'))
+      }, 50)
     } catch (e) {
-      alert(e?.response?.data?.detail || '回测失败（可能较慢/超时）')
+      const detail = e?.response?.data?.detail
+      const msg =
+        typeof detail === 'string'
+          ? detail
+          : e?.code === 'ECONNABORTED'
+            ? '回测超时：请缩短日期区间或稍后再试'
+            : e?.message || '回测失败（可能较慢/超时）'
+      alert(msg)
     } finally {
       setBtLoading(false)
     }
@@ -353,9 +404,28 @@ const AShareAiAgent = () => {
         </div>
       </section>
 
-      <section className="asa-card">
-        <h2>LLM 回测（最长约 1 年 · 采样调用）</h2>
+      <section className="asa-card" ref={btSectionRef}>
+        <h2>LLM 回测（最长约 1 年 · 采样约 12 次调用）</h2>
+        <p className="asa-hint">
+          可单独选择回测标的（与上方实时任务互不影响）。页面默认示例是贵州茅台 600519，改成你的代码即可。采样约 12 次 LLM，通常 1～3 分钟。
+        </p>
         <div className="asa-grid">
+          <label>
+            回测代码
+            <input
+              value={btCode}
+              onChange={(e) => setBtCode(e.target.value)}
+              placeholder="如 603629"
+            />
+          </label>
+          <label>
+            回测名称
+            <input
+              value={btName}
+              onChange={(e) => setBtName(e.target.value)}
+              placeholder="如 利通电子"
+            />
+          </label>
           <label>
             周期
             <select value={btInterval} onChange={(e) => setBtInterval(e.target.value)}>
@@ -376,16 +446,61 @@ const AShareAiAgent = () => {
           </label>
         </div>
         <div className="asa-actions">
+          <button
+            type="button"
+            className="asa-btn"
+            disabled={btLoading}
+            onClick={() => {
+              setBtCode(code)
+              setBtName(name)
+            }}
+          >
+            同步上方任务标的
+          </button>
           <button type="button" className="asa-btn primary" disabled={btLoading} onClick={handleBacktest}>
-            {btLoading ? '回测中（可能数分钟）…' : '开始回测'}
+            {btLoading ? `回测中… ${btElapsed}s（约需 1～3 分钟）` : `开始回测 ${btCode || ''}`}
           </button>
         </div>
+        {btLoading && (
+          <p className="asa-hint">
+            正在回测 {btCode} {btName}，请勿刷新。若超过 10 分钟仍无结果，请缩短日期后再试。
+          </p>
+        )}
         {btResult?.ok && (
           <>
             <p className="asa-hint">
-              LLM 调用 {btResult.llm_calls} 次 · 标注 {(btResult.markers || []).length} 个买卖点
+              标的 {btResult.code} {btResult.name || ''} · LLM 调用 {btResult.llm_calls} 次
+              {btResult.llm_fail ? `（失败 ${btResult.llm_fail}）` : ''}
+              {' · '}
+              买 {(btResult.action_counts && btResult.action_counts.buy) || 0} /
+              卖 {(btResult.action_counts && btResult.action_counts.sell) || 0} /
+              观望 {(btResult.action_counts && btResult.action_counts.hold) || 0}
+              {' · '}
+              图上标注 {(btResult.markers || []).length} 个买卖点
             </p>
+            {(btResult.markers || []).length === 0 && (
+              <p className="asa-hint">
+                本区间采样点均为观望/未通过硬规则，所以图上无买卖钉。下方可查看每次采样的结论摘要（属策略风格偏保守，不一定是程序坏了）。
+              </p>
+            )}
             <div className="asa-chart" ref={chartRef} />
+            {(btResult.decisions || []).length > 0 && (
+              <div className="asa-decisions">
+                <h3>采样决策摘要</h3>
+                <ul>
+                  {(btResult.decisions || []).slice(-12).map((x, i) => (
+                    <li key={i}>
+                      <strong>{String(x.action || '').toUpperCase()}</strong>
+                      {x.raw_action && x.raw_action !== x.action ? `（原始:${x.raw_action}）` : ''}
+                      {' · '}
+                      {x.price != null ? Number(x.price).toFixed(2) : '—'}
+                      {' · '}
+                      {x.thesis || '—'}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </>
         )}
       </section>

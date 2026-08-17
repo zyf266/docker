@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from backpack_quant_trading.core.a_share_ai_agent_prompts import SYSTEM_PROMPT
+from backpack_quant_trading.core.a_share_ai_agent_prompts import SYSTEM_PROMPT, BACKTEST_USER_HINT
 from backpack_quant_trading.core.a_share_monitor import (
     BJ,
     INTERVAL_LABEL,
@@ -190,6 +190,23 @@ def _bar_limit_status(bars: List[Dict[str, Any]], code: str) -> str:
     return "normal"
 
 
+def normalize_action(raw: Any) -> str:
+    """把模型可能输出的中英文 action 归一到 buy/sell/hold。"""
+    s = str(raw or "").strip().lower()
+    if not s:
+        return "hold"
+    if s in ("buy", "sell", "hold"):
+        return s
+    # 常见中文 / 混写
+    if any(k in s for k in ("买入", "建仓", "开多", "加仓", "buy")) and "不买" not in s and "别买" not in s:
+        return "buy"
+    if any(k in s for k in ("卖出", "减仓", "平仓", "开空", "sell")) and "不卖" not in s:
+        return "sell"
+    if any(k in s for k in ("观望", "持有", "不买", "空仓", "等待", "hold")):
+        return "hold"
+    return "hold"
+
+
 def apply_hard_rules(
     decision: Dict[str, Any],
     *,
@@ -197,9 +214,7 @@ def apply_hard_rules(
     position: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     d = dict(decision or {})
-    action = str(d.get("action") or "hold").lower()
-    if action not in ("buy", "sell", "hold"):
-        action = "hold"
+    action = normalize_action(d.get("action"))
     d["action"] = action
     d["limit_status"] = limit_status
     d.setdefault("valid", True)
@@ -573,18 +588,25 @@ def run_backtest(
         bars = bars[-260:]
 
     if len(bars) < 40:
-        return {"ok": False, "error": "区间 K 线不足", "bars": [], "markers": []}
+        return {"ok": False, "error": "区间 K 线不足（请放宽日期或换日线）", "bars": [], "markers": []}
 
-    step = max(1, len(bars) // max(1, int(max_llm_calls)))
+    max_calls = max(3, min(int(max_llm_calls or 12), 40))
+    # 采样：保证调用次数可控，避免一次回测卡死整站
+    usable = max(1, len(bars) - 35)
+    step = max(1, (usable + max_calls - 1) // max_calls)
     markers: List[Dict[str, Any]] = []
     decisions: List[Dict[str, Any]] = []
     fund = get_fundamentals(code)
+    # 偏好只取一次：循环内反复查 RAG 会把回测拖成数十分钟
+    prefs_once = _prefs_block()
 
     from backpack_quant_trading.agents.analysts.base import call_analyst_llm
 
     calls = 0
+    llm_fail = 0
+    action_counts = {"buy": 0, "sell": 0, "hold": 0}
     for i in range(35, len(bars), step):
-        if calls >= max_llm_calls:
+        if calls >= max_calls:
             break
         window = bars[: i + 1]
         limit_status = _bar_limit_status(window, code)
@@ -594,17 +616,34 @@ def run_backtest(
             "as_of": datetime.fromtimestamp(_ts(window[-1]) / 1000, tz=BJ).strftime("%Y-%m-%d %H:%M:%S"),
             "bars": _summarize_bars(window, 40),
             "fundamentals": {k: v for k, v in fund.items() if not str(k).startswith("_")},
-            "rag_prefs": _prefs_block(),
+            "rag_prefs": prefs_once,
             "limit_hint": limit_status,
             "backtest": True,
         }
-        llm = call_analyst_llm(SYSTEM_PROMPT, json.dumps(payload, ensure_ascii=False)[:12000])
+        user_prompt = (
+            f"{BACKTEST_USER_HINT}\n请根据以下输入给出决策 JSON。\n"
+            + json.dumps(payload, ensure_ascii=False)[:12000]
+        )
+        llm = call_analyst_llm(SYSTEM_PROMPT, user_prompt)
         calls += 1
         if not llm.get("ok"):
+            llm_fail += 1
             continue
+        raw_action = (llm.get("structured") or {}).get("action")
         d = apply_hard_rules(llm.get("structured") or {}, limit_status=limit_status)
         action = str(d.get("action") or "hold")
-        decisions.append({"i": i, "action": action, "decision": d, "t": _ts(window[-1])})
+        action_counts[action] = int(action_counts.get(action) or 0) + 1
+        decisions.append(
+            {
+                "i": i,
+                "action": action,
+                "raw_action": raw_action,
+                "valid": d.get("valid", True),
+                "thesis": (d.get("thesis") or "")[:200],
+                "t": _ts(window[-1]),
+                "price": float(window[-1].get("close") or 0),
+            }
+        )
         if action in ("buy", "sell") and d.get("valid", True):
             markers.append(
                 {
@@ -623,6 +662,9 @@ def run_backtest(
         "interval": interval,
         "data_source": src,
         "llm_calls": calls,
+        "llm_fail": llm_fail,
+        "sample_step": step,
+        "action_counts": action_counts,
         "bars": [
             {
                 "time": _ts(b),
