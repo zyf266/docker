@@ -5,7 +5,7 @@
 **/.env
 **/.env.secrets
 **/node_modules
-**/frontend/dist
+# 注意：不要忽略 frontend/dist —— CI 预构建后由 Docker COPY 进镜像；忽略会导致「缺少 index.html」
 backpack_quant_trading/log/
 backpack_quant_trading/data/kline_cache/
 .idea/
