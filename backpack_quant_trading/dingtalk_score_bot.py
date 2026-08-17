@@ -58,6 +58,38 @@ class ManualScoreBotHandler:
     def __init__(self, handler: "dingtalk_stream.ChatbotHandler"):
         self._handler = handler
 
+    def _a_share_ai_feedback_work(self, incoming, raw: dict, user_text: str) -> None:
+        from backpack_quant_trading.core.a_share_ai_agent_feedback import (
+            handle_a_share_ai_dingtalk_feedback,
+        )
+
+        sender_staff = str(raw.get("senderStaffId") or getattr(incoming, "sender_staff_id", "") or "")
+        sender_id = str(raw.get("senderId") or getattr(incoming, "sender_id", "") or "")
+
+        if not _allowed_sender(sender_staff, sender_id):
+            self._handler.reply_text("无反馈权限，请联系管理员配置白名单。", incoming)
+            return
+
+        try:
+            reply_body, result = handle_a_share_ai_dingtalk_feedback(
+                user_text, raw, sender_id=sender_staff or sender_id,
+            )
+        except Exception as exc:
+            logger.exception("[A股AI自适应点评] 异常: %s", exc)
+            try:
+                self._handler.reply_text(f"点评记录失败：{exc}", incoming)
+            except Exception:
+                pass
+            return
+
+        try:
+            self._handler.reply_markdown("A股AI点评已记录", reply_body, incoming)
+        except Exception:
+            try:
+                self._handler.reply_text(reply_body, incoming)
+            except Exception:
+                pass
+
     def _feedback_work(self, incoming, raw: dict, user_text: str) -> None:
         from backpack_quant_trading.core.score_feedback import handle_dingtalk_feedback
 
@@ -231,6 +263,27 @@ class ManualScoreBotHandler:
             user_text[:160],
             raw.get("text"),
         )
+
+        # A股 AI 自适应卡片点评（优先于通用评分反馈）
+        try:
+            from backpack_quant_trading.core.a_share_ai_agent_feedback import (
+                should_handle_a_share_ai_feedback,
+            )
+
+            if should_handle_a_share_ai_feedback(user_text, raw):
+                threading.Thread(
+                    target=self._a_share_ai_feedback_work,
+                    args=(incoming, raw, user_text),
+                    daemon=True,
+                    name="dingtalk-a-share-ai-feedback",
+                ).start()
+                try:
+                    self._handler.reply_text("收到，正在记录你对 A股AI自适应 的点评…", incoming)
+                except Exception:
+                    pass
+                return
+        except Exception as exc:
+            logger.warning("a_share_ai feedback route skip: %s", exc)
 
         # 多 Agent 编排优先（与旧评分并存；AGENT_ORCH_ENABLED=0 可回滚）
         if should_route_to_agent(user_text):

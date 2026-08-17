@@ -1,0 +1,28 @@
+{
+  "style_notes": [
+    {
+      "text": "量能萎缩不应该买入，警惕诱多",
+      "ts": "2026-08-17 15:51:11",
+      "meta": {
+        "code": "600519",
+        "interval": null,
+        "source": "dingtalk_stream",
+        "sender_id": "u1",
+        "replied_excerpt": "### A股AI自适应策略 · 买入\n标的：茅台 600519"
+      }
+    },
+    {
+      "text": "我觉得这个时候可以买入，量能其实已经开始放大，分析不对",
+      "ts": "2026-08-17 16:00:26",
+      "meta": {
+        "code": "600519",
+        "interval": null,
+        "source": "dingtalk_stream",
+        "sender_id": "smoke_user",
+        "replied_excerpt": "A股AI自适应策略 · 不买入/观望 600519",
+        "agent_action_hint": ""
+      }
+    }
+  ],
+  "confirmed_at": "2026-08-17 16:00:32"
+}

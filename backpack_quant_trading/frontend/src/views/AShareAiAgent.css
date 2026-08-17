@@ -1,0 +1,216 @@
+.asa-page {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: #e2e8f0;
+}
+
+.asa-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 22px 24px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0f172a 0%, #134e4a 55%, #0f766e 120%);
+  border: 1px solid rgba(45, 212, 191, 0.25);
+}
+
+.asa-eyebrow {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #99f6e4;
+}
+
+.asa-hero h1 {
+  margin: 0;
+  font-size: 26px;
+  color: #fff;
+}
+
+.asa-sub {
+  margin: 8px 0 0;
+  max-width: 720px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #ccfbf1;
+}
+
+.asa-pill {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  font-size: 12px;
+}
+.asa-pill.on {
+  background: rgba(16, 185, 129, 0.25);
+  color: #a7f3d0;
+}
+
+.asa-card {
+  background: #0b1220;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.asa-card h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  color: #f8fafc;
+}
+
+.asa-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.asa-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.asa-grid input,
+.asa-grid select,
+.asa-card textarea {
+  border: 1px solid #334155;
+  background: #020617;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.asa-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+}
+
+.asa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.asa-btn {
+  border: 1px solid #334155;
+  background: #111827;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.asa-btn.primary {
+  background: #0f766e;
+  border-color: #14b8a6;
+}
+.asa-btn.accent {
+  background: #b45309;
+  border-color: #f59e0b;
+}
+.asa-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.asa-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.asa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.asa-table th,
+.asa-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #1e293b;
+}
+.asa-link-del {
+  border: none;
+  background: transparent;
+  color: #f87171;
+  cursor: pointer;
+}
+
+.asa-empty {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.asa-decision {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #111827;
+  margin-bottom: 10px;
+}
+.asa-decision.buy {
+  border-left: 3px solid #22c55e;
+}
+.asa-decision.sell {
+  border-left: 3px solid #ef4444;
+}
+.asa-decision.hold {
+  border-left: 3px solid #94a3b8;
+}
+
+.asa-json {
+  max-height: 240px;
+  overflow: auto;
+  background: #020617;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.asa-prefs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 12px;
+}
+.asa-prefs h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+.asa-prefs ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.asa-chart {
+  margin-top: 12px;
+  height: 380px;
+  width: 100%;
+  border-radius: 10px;
+  background: #020617;
+}
+
+@media (max-width: 900px) {
+  .asa-grid,
+  .asa-prefs {
+    grid-template-columns: 1fr;
+  }
+}

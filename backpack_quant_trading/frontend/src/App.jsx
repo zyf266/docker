@@ -25,6 +25,7 @@ import UsMomentumIntcStrategy from './views/UsMomentumIntcStrategy'
 import UsMomentumNvdaStrategy from './views/UsMomentumNvdaStrategy'
 import UsMomentumMuStrategy from './views/UsMomentumMuStrategy'
 import AShareMomentumStrategy from './views/AShareMomentumStrategy'
+import AShareAiAgent from './views/AShareAiAgent'
 import UsWeeklyReport from './views/UsWeeklyReport'
 import StockNewsAlert from './views/StockNewsAlert'
 import PolymarketAlert from './views/PolymarketAlert'
@@ -102,6 +103,7 @@ function App() {
           <Route path="strategies/nas100-trend" element={<Nas100TrendStrategy />} />
           <Route path="strategies/sse-510210" element={<Sse510210Strategy />} />
           <Route path="strategies/mnq-dip" element={<MnqDipStrategy />} />
+          <Route path="strategies/a-share-ai-agent" element={<AShareAiAgent />} />
           <Route path="strategies/a-share-300308" element={<AShareMomentumStrategy code="300308" />} />
           <Route path="strategies/a-share-603986" element={<AShareMomentumStrategy code="603986" />} />
           <Route path="strategies/a-share-688146" element={<AShareMomentumStrategy code="688146" />} />

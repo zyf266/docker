@@ -68,6 +68,11 @@ try:
 except Exception:  # pragma: no cover
     avatar_router = None
 
+try:
+    from backpack_quant_trading.api.routers.a_share_ai_agent import router as a_share_ai_agent_router
+except Exception:  # pragma: no cover
+    a_share_ai_agent_router = None
+
 app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
 app.include_router(trading_router, prefix="/api/trading", tags=["实盘交易"])
 app.include_router(grid_router, prefix="/api/grid", tags=["网格交易"])
@@ -87,6 +92,9 @@ app.include_router(crypto_signal_hub_router, prefix="/api/crypto-signal-hub", ta
 app.include_router(quiz_router, prefix="/api/quiz", tags=["AI Agent 考试"])
 if avatar_router is not None:
     app.include_router(avatar_router, prefix="/api/avatar", tags=["小沫数字人"])
+
+if a_share_ai_agent_router is not None:
+    app.include_router(a_share_ai_agent_router, prefix="/api/a-share-ai-agent", tags=["A股AI自适应Agent"])
 
 # 可选：旧镜像可能缺这些文件，不能拖垮整站
 try:

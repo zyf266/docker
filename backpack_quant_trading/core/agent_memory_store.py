@@ -25,6 +25,7 @@ KIND_TO_COLLECTION = {
     "agent_reports": "agent_reports",
     "agent_research": "agent_research",
     "agent_reviews": "agent_reviews",
+    "a_share_ai_feedback": "a_share_ai_feedback",
     "prefs": "agent_prefs",
     "reports": "agent_reports",
     "research": "agent_research",

@@ -2,12 +2,14 @@
 FROM node:20-alpine AS frontend-builder
 
 WORKDIR /build
-# 构建期必须装 vite 等 devDependencies；CI/生产环境常默认 NODE_ENV=production 会跳过它们
+# 构建期必须拿到 vite；CI/生产常默认 NODE_ENV=production 会跳过 devDependencies
 ENV NODE_ENV=development
+# 避免宿主机/compose 传入的 npm 生产模式污染
+ENV NPM_CONFIG_PRODUCTION=false
 
 COPY backpack_quant_trading/frontend/package.json backpack_quant_trading/frontend/package-lock.json* ./
-RUN npm ci --include=dev --ignore-scripts \
-  || npm install --include=dev --ignore-scripts
+RUN (npm ci --include=dev --ignore-scripts || npm install --include=dev --ignore-scripts) \
+  && test -x node_modules/.bin/vite
 
 COPY backpack_quant_trading/frontend/ ./
 RUN npm run build \

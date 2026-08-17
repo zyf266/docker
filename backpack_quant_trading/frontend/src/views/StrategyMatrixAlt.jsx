@@ -27,6 +27,21 @@ const STATUS_OPTIONS = ['运行中', '已平仓', '测试中']
 
 const strategies = [
   {
+    key: 'a-share-ai-agent',
+    to: '/strategies/a-share-ai-agent',
+    icon: '🧠',
+    title: 'A股AI自适应策略Agent',
+    code: 'AI-ASA',
+    description:
+      '基本面优先 + 量能终裁的 LLM 决策 Agent：30/60分钟与日线多任务扫描，交易时段推送 OpenClaw ActionCard，支持点评学习与 LLM 回测标注。',
+    status: '测试中',
+    statusColor: 'bg-amber-500 text-white',
+    progress: 55,
+    progressColor: '#14b8a6',
+    riskIndex: '中风险',
+    isRiskWarning: true,
+  },
+  {
     key: 'nvda',
     to: '/strategies/us-momentum-nvda',
     icon: '🟢',
