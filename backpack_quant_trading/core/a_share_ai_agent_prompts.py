@@ -127,10 +127,24 @@ SYSTEM_PROMPT = """# 角色
 """
 
 BACKTEST_USER_HINT = (
-    "【回测采样·带仓位】这是历史某时点的复盘决策。"
-    "必须结合 position 字段："
-    "若 holding=false，只能在赔率足够时 buy，禁止无意义 sell；"
-    "若 holding=true，优先评估是否卖出兑现/止损，趋势完好可 hold，禁止再 buy（已持仓）；"
+    "【回测采样·禁止前视】这是历史某时点的复盘，不是今天的实盘扫描。"
+    "禁止用输入里的当前 PE/PB/市值否决买点（那是未来估值）。"
+    "必须结合 position："
+    "若 holding=false，根据当时 K 线/量能/回撤决定是否 buy；"
+    "相对窗口高点回撤大、止跌放量或连续下跌后的反抽，空仓应倾向 buy，而不是习惯性 hold；"
+    "禁止无意义 sell。"
+    "若 holding=true，优先评估是否卖出兑现/止损，趋势完好可 hold，禁止再 buy。"
     "T+1：若 sellable=false 则禁止 sell。"
     "action 必须是英文 buy/sell/hold。"
 )
+
+BACKTEST_SYSTEM_ADDENDUM = """
+# 回测覆盖规则（本段优先于上文「宁可晚不可错」）
+你在做历史回测采样，目的是检验策略会不会交易，不是写一篇永远观望的研报。
+1. 输入中的 PE/PB/ROE/市值若标注为当前快照或被关闭，一律不得作为 hold 的理由。
+2. 空仓决策只看当时 bars / tape / volume_hint：趋势、回撤、量能、止跌或反抽。
+3. 若 tape.buy_bias=true（深回撤或大跌后），空仓默认应给出 buy，除非涨停买不进。
+4. 不得把 10 次以上采样全部写成 hold；那是过拟合「不敢买」，回测无意义。
+5. 持仓后按破位/放量滞涨/趋势完好决定 sell 或 hold。T+1 与涨跌停硬规则仍有效。
+"""
+

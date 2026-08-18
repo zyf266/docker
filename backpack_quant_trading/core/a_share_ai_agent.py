@@ -11,7 +11,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from backpack_quant_trading.core.a_share_ai_agent_prompts import SYSTEM_PROMPT, BACKTEST_USER_HINT
+from backpack_quant_trading.core.a_share_ai_agent_prompts import (
+    BACKTEST_SYSTEM_ADDENDUM,
+    BACKTEST_USER_HINT,
+    SYSTEM_PROMPT,
+)
 from backpack_quant_trading.core.a_share_monitor import (
     BJ,
     INDEX_META,
@@ -1314,6 +1318,57 @@ def _maybe_push_scan_result(result: Dict[str, Any], *, push: bool) -> None:
         result["dingtalk_msg"] = "非推送窗口（休市或已过15:00）"
 
 
+def compute_tape_stats(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """回测用盘面摘要：回撤/涨跌，避免模型只盯着未来估值。"""
+    closes = []
+    for b in bars:
+        try:
+            closes.append(float(b.get("close") or 0))
+        except (TypeError, ValueError):
+            continue
+    if len(closes) < 5:
+        return {"ok": False, "buy_bias": False}
+    last = closes[-1]
+    high = max(closes)
+    low = min(c for c in closes if c > 0) if any(c > 0 for c in closes) else last
+    dd = ((last / high) - 1.0) * 100.0 if high > 0 else 0.0
+    ret5 = ((last / closes[-6]) - 1.0) * 100.0 if len(closes) > 6 and closes[-6] else None
+    ret20 = ((last / closes[-21]) - 1.0) * 100.0 if len(closes) > 21 and closes[-21] else None
+    down = 0
+    for i in range(len(closes) - 1, 0, -1):
+        if closes[i] < closes[i - 1]:
+            down += 1
+        else:
+            break
+    buy_bias = bool(dd <= -18.0 or (ret20 is not None and ret20 <= -12.0) or down >= 4)
+    return {
+        "ok": True,
+        "last": round(last, 4),
+        "window_high": round(high, 4),
+        "window_low": round(low, 4),
+        "drawdown_from_high_pct": round(dd, 2),
+        "ret_5_pct": None if ret5 is None else round(ret5, 2),
+        "ret_20_pct": None if ret20 is None else round(ret20, 2),
+        "consecutive_down": down,
+        "buy_bias": buy_bias,
+        "note": (
+            f"相对窗口高点回撤 {dd:.1f}%"
+            + ("；空仓应评估低吸，禁止用当前估值当 hold 理由" if buy_bias else "")
+        ),
+    }
+
+
+def backtest_fundamentals_payload(fund: Dict[str, Any]) -> Dict[str, Any]:
+    """回测不得把今日 PE/PB 当成历史估值。"""
+    fund = fund or {}
+    return {
+        "mode": "backtest_no_lookahead",
+        "name": fund.get("name"),
+        "industry": fund.get("industry"),
+        "note": "PE/PB/ROE/市值为今日快照，属于前视数据，禁止用来否决本时点买点。请只根据 bars/tape/volume_hint 决策。",
+    }
+
+
 def run_backtest(
     *,
     code: str,
@@ -1376,7 +1431,6 @@ def run_backtest(
     decisions: List[Dict[str, Any]] = []
     trades: List[Dict[str, Any]] = []
     fund = get_fundamentals(code)
-    prefs_once = _prefs_block()
     index_bars_by_key: Dict[str, Tuple[List[Dict[str, Any]], str]] = {}
     for k in index_keys_for_code(code):
         ib, isrc = fetch_index_klines(k, interval, limit=320)
@@ -1434,25 +1488,30 @@ def run_backtest(
             use_cache=False,
             index_bars_by_key=index_bars_by_key,
         )
+        tape = compute_tape_stats(window)
+        vol_hint = compute_volume_structure(window)
         payload = {
             "universe": {"code": code, "name": name or code},
             "timeframe": interval,
             "as_of": datetime.fromtimestamp(tms / 1000, tz=BJ).strftime("%Y-%m-%d %H:%M:%S"),
             "bars": _summarize_bars(window, 40),
+            "tape": tape,
             "market": _market_for_llm(market),
-            "fundamentals": {k: v for k, v in fund.items() if not str(k).startswith("_")},
-            "fundamentals_raw": (fund.get("raw_text") or "")[:2500],
-            "rag_prefs": prefs_once,
+            "volume_hint": vol_hint,
+            "fundamentals": backtest_fundamentals_payload(fund),
             "limit_hint": limit_status,
             "position": position,
             "backtest": True,
         }
+        extra = ""
+        if tape.get("buy_bias") and not holding:
+            extra = "本时点 tape.buy_bias=true（深回撤或连跌），空仓应给出 buy，除非涨停买不进。\n"
         user_prompt = (
-            f"{BACKTEST_USER_HINT}\n请根据以下输入给出决策 JSON。"
-            "若 market.ok=true，禁止写「无大盘数据」。\n"
+            f"{BACKTEST_USER_HINT}\n{extra}请根据以下输入给出决策 JSON。"
+            "禁止写「无大盘数据」；禁止用当前 PE/PB 当 hold 理由。\n"
             + json.dumps(payload, ensure_ascii=False)[:12000]
         )
-        llm = call_analyst_llm(SYSTEM_PROMPT, user_prompt)
+        llm = call_analyst_llm(SYSTEM_PROMPT + "\n" + BACKTEST_SYSTEM_ADDENDUM, user_prompt)
         calls += 1
         if not llm.get("ok"):
             llm_fail += 1

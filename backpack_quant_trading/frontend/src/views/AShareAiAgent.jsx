@@ -500,7 +500,8 @@ const AShareAiAgent = () => {
       <section className="asa-card" ref={btSectionRef}>
         <h2>LLM 回测（最长约 1 年 · 采样约 12 次调用）</h2>
         <p className="asa-hint">
-          可单独选择回测标的。回测按「空仓→买入→持仓评估卖出」配对成交，并统计收益率；期末仍持仓会按收盘价强平。
+            可单独选择回测标的。回测按「空仓→买入→持仓评估卖出」配对成交。
+            不会用今天的 PE/PB 去否决历史买点（避免 3 个月全是观望）。
         </p>
         <div className="asa-grid">
           <label>
