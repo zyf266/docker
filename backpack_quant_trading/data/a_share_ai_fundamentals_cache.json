@@ -1,30 +1,32 @@
 {
   "603629": {
     "code": "603629",
-    "name": null,
+    "name": "利通电子",
     "pe": 98.02094743,
     "pe_static": 179.03410701,
     "pb": 23.33589331,
     "peg": 0.057814582204,
     "ps": 14.54894733,
-    "roe": null,
-    "revenue_growth": null,
+    "roe": 12.93,
+    "revenue_growth": 41.612779145531,
     "market_cap": 52383427520.0,
     "market_cap_yi": 523.83,
     "industry": null,
-    "report_date": null,
+    "report_date": "2026-03-31",
     "value_asof": "2026-08-17",
-    "raw_text": "PE(TTM):98.02094743；PB:23.33589331；PEG:0.057814582204；总市值:523.83亿；估值日期:2026-08-17；缺失:roe,revenue_growth,industry",
+    "raw_text": "已提供：简称:利通电子；PE(TTM):98.02094743；PB:23.33589331；PEG:0.057814582204；ROE:12.93%；营收同比%:41.612779145531；净利:2.71亿；营收:9.97亿；总市值:523.83亿；估值日期:2026-08-17；报告期:2026-03-31\n仅以下字段未取到（禁止把已提供字段说成缺失）：industry",
     "missing": [
-      "roe",
-      "revenue_growth",
       "industry"
     ],
     "sources": [
-      "eastmoney_value_em"
+      "eastmoney_value_em",
+      "tencent_quote",
+      "eastmoney_f10"
     ],
-    "_ts": 1786962039.4263773,
+    "_ts": 1787023127.264784,
     "_fresh": true,
-    "close": 142.84
+    "close": 142.84,
+    "net_profit_yi": 2.71,
+    "revenue_yi": 9.97
   }
 }

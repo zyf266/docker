@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,8 @@ from backpack_quant_trading.core.a_share_monitor import (
     BJ,
     INDEX_META,
     INTERVAL_LABEL,
+    _a_share_symbol_prefix,
+    _direct_session,
     _in_a_share_session,
     drop_forming_bar,
     fetch_index_klines,
@@ -32,6 +35,8 @@ STYLE_ADDENDUM_PATH = DATA_DIR / "a_share_ai_agent_style_addendum.txt"
 
 INTERVALS_ALLOWED = ("30", "60", "D")
 FUND_TTL_SEC = 24 * 3600
+FUND_PARTIAL_TTL_SEC = 20 * 60
+FUND_EMPTY_TTL_SEC = 10 * 60
 
 _instance_lock = threading.Lock()
 _instance: Optional["AShareAIAdaptiveAgent"] = None
@@ -228,6 +233,87 @@ def _fundamentals_from_individual_info(code: str) -> Dict[str, Any]:
     return out
 
 
+def _fundamentals_from_tencent_quote(code: str) -> Dict[str, Any]:
+    """腾讯行情：PE/PB/市值/简称（东财 push2 在部分网络会断连）。"""
+    out: Dict[str, Any] = {}
+    sym = _a_share_symbol_prefix(code)
+    if not sym:
+        return out
+    try:
+        r = _direct_session().get(
+            f"https://qt.gtimg.cn/q={sym}",
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.qq.com/"},
+            timeout=10,
+            proxies={"http": None, "https": None},
+        )
+        r.raise_for_status()
+        text = r.text or ""
+        i = text.find('"')
+        j = text.rfind('"')
+        if i < 0 or j <= i:
+            return out
+        p = text[i + 1 : j].split("~")
+        if len(p) < 47:
+            return out
+        name = str(p[1] or "").strip()
+        if name:
+            out["name"] = name
+        out["pe"] = _to_float(p[39])
+        out["pb"] = _to_float(p[46])
+        yi = _to_float(p[45])
+        if yi is not None:
+            out["market_cap_yi"] = yi
+            out["market_cap"] = yi * 1e8
+        out["_source_tencent"] = True
+    except Exception as e:
+        logger.debug("tencent quote %s: %s", code, e)
+    return out
+
+
+def _fundamentals_from_eastmoney_f10(code: str) -> Dict[str, Any]:
+    """东财 F10 主要指标：ROE、营收同比、报告期。"""
+    out: Dict[str, Any] = {}
+    c = str(code or "").strip().zfill(6)
+    try:
+        r = _direct_session().get(
+            "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params={
+                "reportName": "RPT_F10_FINANCE_MAINFINADATA",
+                "columns": "ALL",
+                "filter": f'(SECURITY_CODE="{c}")',
+                "pageNumber": "1",
+                "pageSize": "1",
+                "sortTypes": "-1",
+                "sortColumns": "REPORT_DATE",
+                "source": "F10",
+                "client": "WEB",
+            },
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://data.eastmoney.com/"},
+            timeout=15,
+            proxies={"http": None, "https": None},
+        )
+        r.raise_for_status()
+        rows = (((r.json() or {}).get("result") or {}).get("data") or [])
+        if not rows or not isinstance(rows[0], dict):
+            return out
+        row = rows[0]
+        out["roe"] = _to_float(row.get("ROEJQ") or row.get("WEIGHTAVGROE"))
+        out["revenue_growth"] = _to_float(row.get("TOTALOPERATEREVETZ") or row.get("OI_YOYRATIO_PK"))
+        rd = str(row.get("REPORT_DATE") or "")[:10]
+        if rd:
+            out["report_date"] = rd
+        profit = _to_float(row.get("PARENTNETPROFIT"))
+        reve = _to_float(row.get("TOTALOPERATEREVE"))
+        if profit is not None:
+            out["net_profit_yi"] = round(profit / 1e8, 2)
+        if reve is not None:
+            out["revenue_yi"] = round(reve / 1e8, 2)
+        out["_source_f10"] = True
+    except Exception as e:
+        logger.debug("eastmoney f10 %s: %s", code, e)
+    return out
+
+
 def get_fundamentals(code: str, force: bool = False) -> Dict[str, Any]:
     """
     拉取 A 股关键基本面（多源）：
@@ -240,8 +326,16 @@ def get_fundamentals(code: str, force: bool = False) -> Dict[str, Any]:
     cache = load_fundamentals_cache()
     hit = cache.get(code) or {}
     ts = float(hit.get("_ts") or 0)
-    if not force and hit and (time.time() - ts) < FUND_TTL_SEC:
-        return hit
+    age = time.time() - ts
+    core_ok = hit.get("pe") is not None or hit.get("pb") is not None
+    extra_ok = hit.get("roe") is not None and hit.get("revenue_growth") is not None
+    if not force and hit and ts:
+        if core_ok and extra_ok and age < FUND_TTL_SEC:
+            return hit
+        if core_ok and not extra_ok and age < FUND_PARTIAL_TTL_SEC:
+            return hit
+        if not core_ok and age < FUND_EMPTY_TTL_SEC:
+            return hit
 
     out: Dict[str, Any] = {
         "code": code,
@@ -285,7 +379,27 @@ def get_fundamentals(code: str, force: bool = False) -> Dict[str, Any]:
     if v2.get("_source_individual_info"):
         out["sources"].append("eastmoney_individual_info")
 
-    # 3) 文本摘要 + 新浪财报（兼容旧逻辑 / 补 report_date）
+    # 3) 腾讯估值（补 PE/PB）
+    v3 = _fundamentals_from_tencent_quote(code)
+    for k, v in v3.items():
+        if k.startswith("_"):
+            continue
+        if v is not None and (out.get(k) is None or out.get(k) == ""):
+            out[k] = v
+    if v3.get("_source_tencent"):
+        out["sources"].append("tencent_quote")
+
+    # 4) F10 财务（ROE / 营收同比 / 报告期）
+    v4 = _fundamentals_from_eastmoney_f10(code)
+    for k, v in v4.items():
+        if k.startswith("_"):
+            continue
+        if v is not None and (out.get(k) is None or out.get(k) == ""):
+            out[k] = v
+    if v4.get("_source_f10"):
+        out["sources"].append("eastmoney_f10")
+
+    # 5) 文本摘要 + 新浪财报（补行业/报告期）
     try:
         from backpack_quant_trading.core.stock_ai import _get_basic_info_summary, _get_sina_financial_snippet
 
@@ -335,31 +449,41 @@ def get_fundamentals(code: str, force: bool = False) -> Dict[str, Any]:
         out["sources"] = ["none"]
         out["_fresh"] = False
 
-    # 给 LLM 的可读摘要（避免只看到一堆 null）
-    bits = []
+    present = []
     if out.get("name"):
-        bits.append(f"简称:{out['name']}")
+        present.append(f"简称:{out['name']}")
     if out.get("industry"):
-        bits.append(f"行业:{out['industry']}")
+        present.append(f"行业:{out['industry']}")
     if out.get("pe") is not None:
-        bits.append(f"PE(TTM):{out['pe']}")
+        present.append(f"PE(TTM):{out['pe']}")
     if out.get("pb") is not None:
-        bits.append(f"PB:{out['pb']}")
+        present.append(f"PB:{out['pb']}")
     if out.get("peg") is not None:
-        bits.append(f"PEG:{out['peg']}")
+        present.append(f"PEG:{out['peg']}")
     if out.get("roe") is not None:
-        bits.append(f"ROE:{out['roe']}")
+        present.append(f"ROE:{out['roe']}%")
     if out.get("revenue_growth") is not None:
-        bits.append(f"增速%:{out['revenue_growth']}")
+        present.append(f"营收同比%:{out['revenue_growth']}")
+    if out.get("net_profit_yi") is not None:
+        present.append(f"净利:{out['net_profit_yi']}亿")
+    if out.get("revenue_yi") is not None:
+        present.append(f"营收:{out['revenue_yi']}亿")
     if out.get("market_cap_yi") is not None:
-        bits.append(f"总市值:{out['market_cap_yi']}亿")
+        present.append(f"总市值:{out['market_cap_yi']}亿")
     if out.get("value_asof"):
-        bits.append(f"估值日期:{out['value_asof']}")
-    if out.get("missing"):
-        bits.append(f"缺失:{','.join(out['missing'])}")
-    summary = "；".join(bits)
+        present.append(f"估值日期:{out['value_asof']}")
+    if out.get("report_date"):
+        present.append(f"报告期:{out['report_date']}")
+    summary = "；".join(present)
+    miss = out.get("missing") or []
+    rules = []
     if summary:
-        out["raw_text"] = (summary + "\n" + (out.get("raw_text") or "")).strip()[:4000]
+        rules.append("已提供：" + summary)
+    if miss:
+        rules.append("仅以下字段未取到（禁止把已提供字段说成缺失）：" + ",".join(miss))
+    else:
+        rules.append("关键估值字段已齐，禁止写「PE/PB缺失」。")
+    out["raw_text"] = ("\n".join(rules) + "\n" + (out.get("raw_text") or "")).strip()[:4000]
 
     cache[code] = out
     save_fundamentals_cache(cache)
@@ -828,6 +952,180 @@ def _market_for_llm(market: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+VOLUME_STATE_CN = {
+    "expand": "放量",
+    "shrink": "缩量",
+    "neutral": "平量",
+    "climax": "天量",
+    "unclear": "量能不明",
+}
+VOLUME_DIV_CN = {
+    "none": "无背离",
+    "price_up_vol_down": "价涨量缩",
+    "price_down_vol_up": "价跌量增",
+    "other": "其它背离",
+}
+VOLUME_TRAP_CN = {
+    "none": "低",
+    "bull_trap": "诱多",
+    "bear_trap": "诱空",
+    "possible": "可能有",
+}
+MARKET_ALIGN_CN = {
+    "lead": "强于大盘",
+    "lag": "弱于大盘",
+    "sync": "同步",
+    "unclear": "不明",
+}
+
+
+def compute_volume_structure(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """用成交量均量比 + 近几根价量方向，避免模型输出 expand 同时又写价涨量缩。"""
+    if len(bars) < 10:
+        return {
+            "state": "unclear",
+            "divergence": "other",
+            "trap_risk": "possible",
+            "vol_ratio": None,
+            "note": "成交量样本不足",
+        }
+    vols = [float(b.get("volume") or 0) for b in bars]
+    closes = [float(b.get("close") or 0) for b in bars]
+    window = vols[-21:-1] if len(vols) >= 21 else vols[:-1]
+    ma = sum(window) / max(len(window), 1)
+    last = vols[-1]
+    ratio = (last / ma) if ma > 0 else 1.0
+    if ratio >= 2.0:
+        state = "climax"
+    elif ratio >= 1.25:
+        state = "expand"
+    elif ratio <= 0.7:
+        state = "shrink"
+    else:
+        state = "neutral"
+
+    div = "none"
+    trap = "none"
+    if len(closes) >= 4:
+        px_chg = closes[-1] - closes[-4]
+        v_prev = sum(vols[-4:-1]) / 3.0
+        if px_chg > 0 and last < v_prev * 0.85:
+            div = "price_up_vol_down"
+            trap = "bull_trap" if ratio < 1.15 else "possible"
+        elif px_chg < 0 and last > v_prev * 1.15:
+            div = "price_down_vol_up"
+            trap = "possible"
+
+    note = f"近1根成交量是近20均量的 {ratio:.2f} 倍（{VOLUME_STATE_CN.get(state, state)}）"
+    if div == "price_up_vol_down":
+        note += "；近几根上涨时量能未同步放大，属价涨量缩，需防诱多"
+    elif div == "price_down_vol_up":
+        note += "；下跌放量，抛压较重"
+    return {
+        "state": state,
+        "divergence": div,
+        "trap_risk": trap,
+        "vol_ratio": round(ratio, 3),
+        "note": note,
+    }
+
+
+def apply_volume_structure(decision: Dict[str, Any], computed: Dict[str, Any]) -> Dict[str, Any]:
+    d = dict(decision or {})
+    vs = dict(computed or {})
+    d["volume_structure"] = {
+        "state": vs.get("state") or "unclear",
+        "divergence": vs.get("divergence") or "other",
+        "trap_risk": vs.get("trap_risk") or "possible",
+        "note": vs.get("note") or "",
+        "vol_ratio": vs.get("vol_ratio"),
+    }
+    return d
+
+
+def format_volume_cn(vol: Dict[str, Any]) -> str:
+    if not isinstance(vol, dict):
+        return "—"
+    st = VOLUME_STATE_CN.get(str(vol.get("state") or ""), str(vol.get("state") or "—"))
+    dv = VOLUME_DIV_CN.get(str(vol.get("divergence") or ""), str(vol.get("divergence") or "—"))
+    tr = VOLUME_TRAP_CN.get(str(vol.get("trap_risk") or ""), str(vol.get("trap_risk") or "—"))
+    note = str(vol.get("note") or "").strip()
+    base = f"{st} · 背离：{dv} · 诱多/诱空：{tr}"
+    return f"{base}（{note}）" if note else base
+
+
+def fundamentals_brief(fund: Dict[str, Any]) -> str:
+    if not isinstance(fund, dict):
+        return "基本面暂不可用"
+    parts = []
+
+    def _n(key: str, label: str, suffix: str = "", nd: int = 2) -> None:
+        v = fund.get(key)
+        if v is None or v == "":
+            return
+        try:
+            parts.append(f"{label} {float(v):.{nd}f}{suffix}")
+        except (TypeError, ValueError):
+            parts.append(f"{label} {v}{suffix}")
+
+    if fund.get("industry"):
+        parts.append(str(fund.get("industry")))
+    _n("pe", "PE(TTM)", nd=1)
+    _n("pb", "PB", nd=2)
+    _n("roe", "ROE", "%", nd=2)
+    _n("revenue_growth", "营收同比", "%", nd=1)
+    _n("market_cap_yi", "市值", "亿", nd=1)
+    if fund.get("report_date"):
+        parts.append(f"报告期 {fund.get('report_date')}")
+    miss = [x for x in (fund.get("missing") or []) if fund.get(x) is None]
+    if miss and not parts:
+        return "基本面暂不可用（" + ",".join(miss) + "）"
+    if miss:
+        parts.append("未覆盖:" + ",".join(miss))
+    return " · ".join(parts) if parts else "基本面暂不可用"
+
+
+def scrub_false_missing_fundamentals(decision: Dict[str, Any], fund: Dict[str, Any]) -> Dict[str, Any]:
+    """有 PE/PB 时禁止卡片/理由再写「估值关键数据缺失」。"""
+    d = dict(decision or {})
+    pe, pb = fund.get("pe"), fund.get("pb")
+    if pe is None and pb is None:
+        return d
+    bits = []
+    try:
+        if pe is not None:
+            bits.append(f"PE(TTM) {float(pe):.1f}")
+        if pb is not None:
+            bits.append(f"PB {float(pb):.2f}")
+        if fund.get("roe") is not None:
+            bits.append(f"ROE {float(fund['roe']):.1f}%")
+        if fund.get("revenue_growth") is not None:
+            bits.append(f"营收同比 {float(fund['revenue_growth']):.1f}%")
+    except (TypeError, ValueError):
+        pass
+    fact = "、".join(bits) or "估值字段已取到"
+
+    def _fix(text: str) -> str:
+        t = str(text or "")
+        t = re.sub(r"PE/?PB[^。；\n]{0,24}缺失", f"估值可用（{fact}）", t)
+        t = re.sub(r"(PE|市盈率|市净率)[、/]?(PB)?等?关键(数据|指标)缺失", f"估值可用（{fact}）", t)
+        t = re.sub(r"基本面关键(数据|指标)缺失[^。；\n]{0,20}", f"估值可用（{fact}）", t)
+        t = t.replace("无法进行有效估值", f"估值可用（{fact}）")
+        t = t.replace("无法评估估值和成长性", f"估值可用（{fact}）")
+        t = t.replace("无法评估估值。", f"估值可用（{fact}）。")
+        t = t.replace("，无法评估。", "。")
+        t = t.replace("无法评估。", f"估值可用（{fact}）。")
+        return t
+
+    d["thesis"] = _fix(d.get("thesis") or "")
+    risks = d.get("risk_notes")
+    if isinstance(risks, list):
+        d["risk_notes"] = [_fix(x) for x in risks if str(x).strip()]
+    elif isinstance(risks, str):
+        d["risk_notes"] = [_fix(risks)]
+    return d
+
+
 def _summarize_bars(bars: List[Dict[str, Any]], n: int = 40) -> List[Dict[str, Any]]:
     out = []
     for b in bars[-n:]:
@@ -889,6 +1187,7 @@ def decide_once(
     limit_status = _bar_limit_status(bars, code)
     last_ms = int(bars[-1].get("open_time") or 0) if bars else None
     market = build_market_context(code, interval, bars, as_of_ms=last_ms, use_cache=True)
+    vol_hint = compute_volume_structure(bars)
 
     user_payload = {
         "universe": {"code": code, "name": name or code, "market": "A"},
@@ -896,6 +1195,7 @@ def decide_once(
         "as_of": as_of,
         "bars": _summarize_bars(bars),
         "market": _market_for_llm(market),
+        "volume_hint": vol_hint,
         "fundamentals": {k: v for k, v in fund.items() if not str(k).startswith("_")},
         "fundamentals_raw": (fund.get("raw_text") or "")[:2500],
         "position": position or {"holding": False},
@@ -907,6 +1207,8 @@ def decide_once(
         "请根据以下输入给出决策 JSON。"
         "无论 action 是 buy/sell/hold，都必须填写可复核的 thesis（不买入也要写清为什么）。\n"
         "若 market.ok=true，必须根据相对强弱填写 market_vs_stock（lead/lag/sync），禁止写「无大盘数据」。\n"
+        "fundamentals 里已有数值的字段（如 PE/PB）禁止写成缺失。"
+        "volume_structure 必须与 volume_hint 一致，thesis 里用中文解释量能（放量/缩量/价涨量缩），不要堆英文枚举。\n"
         + json.dumps(user_payload, ensure_ascii=False)[:14000]
     )
 
@@ -941,14 +1243,28 @@ def decide_once(
 
     structured = apply_hard_rules(llm.get("structured") or {}, limit_status=limit_status, position=position)
     structured = apply_market_vs_stock(structured, market)
+    structured = apply_volume_structure(structured, vol_hint)
+    structured = scrub_false_missing_fundamentals(structured, fund)
+    fund_snap = {
+        "pe": fund.get("pe"),
+        "pb": fund.get("pb"),
+        "roe": fund.get("roe"),
+        "revenue_growth": fund.get("revenue_growth"),
+        "market_cap_yi": fund.get("market_cap_yi"),
+        "industry": fund.get("industry"),
+        "report_date": fund.get("report_date"),
+        "missing": fund.get("missing") or [],
+        "brief": fundamentals_brief(fund),
+    }
     result = {
         "ok": True,
         "code": code,
-        "name": name or code,
+        "name": name or fund.get("name") or code,
         "interval": interval,
         "interval_label": INTERVAL_LABEL.get(interval, interval),
         "as_of": as_of,
         "data_source": src,
+        "fundamentals": fund_snap,
         "market": {
             "ok": bool(market.get("ok")),
             "primary": market.get("primary"),

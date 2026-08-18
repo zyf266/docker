@@ -58,6 +58,15 @@ SYSTEM_PROMPT = """# 角色
 - 大盘强、个股弱（lag）且量能萎：更应警惕，而不是追买。
 - 若 market.ok=false：才允许 alignment=unclear，并在 note 写清指数拉取失败。
 
+处理 fundamentals 的方式：
+- 以 fundamentals / fundamentals_raw 里的「已提供」为准。
+- PE/PB 只要有数字，禁止写「PE/PB缺失」「关键指标缺失无法估值」。
+- 只有 missing 列表里的字段才能说尚未取到。
+
+处理 volume_hint 的方式：
+- volume_structure 必须与 volume_hint 一致。
+- thesis 用中文：放量/缩量/平量/天量、价涨量缩/价跌量增、诱多/诱空。禁止把英文枚举（expand、price_up_vol_down、bull_trap）直接写给用户。
+
 处理 rag_prefs 的方式：
 - 当作「风格偏好与踩坑提醒」，用于提高警惕与表达重点；
 - 不得用偏好覆盖硬规则；
@@ -112,6 +121,8 @@ SYSTEM_PROMPT = """# 角色
 [ ] thesis 是否非空，且按 基本面→量能→其它技术 展开？
 [ ] action=hold 时，thesis 是否明确解释「为什么不买入」？
 [ ] 若输入含 market.ok=true，market_vs_stock 是否仍写成「无大盘数据」？
+[ ] 若 PE/PB 已有数字，是否仍写「估值数据缺失」？
+[ ] 量能描述是否中文，且与 volume_hint 一致？
 [ ] 若量价与基本面支持进攻，是否错误地一律 hold？
 """
 
