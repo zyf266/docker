@@ -45,11 +45,8 @@ def _volume_line(vol: Dict[str, Any]) -> str:
 
 
 def resolve_agent_webhook() -> str:
-    return (
-        os.getenv("A_SHARE_AI_AGENT_DINGTALK_WEBHOOK", "").strip()
-        or os.getenv("A_SHARE_MONITOR_WEBHOOK", "").strip()
-        or os.getenv("DINGTALK_WEBHOOK", "").strip()
-    )
+    """仅本功能专用群；不回退到 A 股监控 Webhook，避免误发到旧群。"""
+    return (os.getenv("A_SHARE_AI_AGENT_DINGTALK_WEBHOOK") or "").strip()
 
 
 def resolve_agent_keyword() -> str:
