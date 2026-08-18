@@ -13,3 +13,5 @@ export const postAShareAiAgentFeedback = (data) => request.post('/a-share-ai-age
 export const confirmAShareAiAgentPrefs = () => request.post('/a-share-ai-agent/prefs/confirm')
 export const backtestAShareAiAgent = (data) =>
   request.post('/a-share-ai-agent/backtest', data, { timeout: 600000 })
+export const lookupAShareAiAgent = (q) =>
+  request.get('/a-share-ai-agent/lookup', { params: { q }, timeout: 15000 })

@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-17 05:00:00",
+  "updated_at": "2026-08-18 05:00:00",
   "prices": {
     "NVDA": {
       "quote_symbol": "NVDA",
@@ -117,22 +117,22 @@
       "quote_symbol": "603986.SH",
       "currency": "CNY",
       "source": "sina",
-      "fetched_at": "2026-08-17 05:00:00",
-      "price": 417.48
+      "fetched_at": "2026-08-18 05:00:00",
+      "price": 444.0
     },
     "688146": {
       "quote_symbol": "688146.SH",
       "currency": "CNY",
       "source": "sina",
-      "fetched_at": "2026-08-17 05:00:00",
-      "price": 300.96
+      "fetched_at": "2026-08-18 05:00:00",
+      "price": 310.11
     },
     "300308": {
       "quote_symbol": "300308.SZ",
       "currency": "CNY",
       "source": "sina",
-      "fetched_at": "2026-08-17 05:00:00",
-      "price": 943.0
+      "fetched_at": "2026-08-18 05:00:00",
+      "price": 1001.03
     }
   }
 }

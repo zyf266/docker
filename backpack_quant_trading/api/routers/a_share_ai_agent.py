@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backpack_quant_trading.api.deps import require_user
@@ -72,6 +73,43 @@ def meta(user: dict = Depends(require_user)) -> Dict[str, Any]:
     }
 
 
+def _lookup_pair(q: str) -> Optional[Tuple[str, str]]:
+    raw = str(q or "").strip()[:40]
+    if not raw:
+        return None
+    from backpack_quant_trading.agents.a_share_resolve import resolve_a_share_token
+
+    return resolve_a_share_token(raw)
+
+
+def _normalize_code_name(code: str, name: str) -> Tuple[str, str]:
+    code = str(code or "").strip()
+    name = str(name or "").strip()
+    if not re.fullmatch(r"\d{6}", code) and name:
+        hit = _lookup_pair(name)
+        if hit:
+            code, name = str(hit[0]), (hit[1] or name)
+    if re.fullmatch(r"\d{1,6}", code):
+        code = code.zfill(6)
+    else:
+        code = ""
+    if code and (not name or name == code):
+        hit = _lookup_pair(code)
+        if hit:
+            name = hit[1] or name
+    return code, name
+
+
+@router.get("/lookup")
+def lookup(q: str = Query("", max_length=40), user: dict = Depends(require_user)) -> Dict[str, Any]:
+    """代码↔名称：输入 600519 或 贵州茅台 / 茅台。"""
+    hit = _lookup_pair(q)
+    if not hit:
+        return {"ok": False, "error": "未找到匹配标的"}
+    code, name = hit
+    return {"ok": True, "code": str(code).zfill(6), "name": str(name or "")}
+
+
 @router.get("/status")
 def status(user: dict = Depends(require_user)) -> Dict[str, Any]:
     inst = get_agent_instance()
@@ -86,14 +124,14 @@ def status(user: dict = Depends(require_user)) -> Dict[str, Any]:
 def start(req: StartRequest, user: dict = Depends(require_user)) -> Dict[str, Any]:
     new_tasks = []
     for t in req.tasks or []:
-        code = str(t.get("code") or "").strip().zfill(6)
+        code, name = _normalize_code_name(t.get("code") or "", t.get("name") or "")
         interval = str(t.get("interval") or "30")
         if not code or interval not in INTERVALS_ALLOWED:
             continue
         new_tasks.append(
             {
                 "code": code,
-                "name": str(t.get("name") or ""),
+                "name": name,
                 "interval": interval,
             }
         )
@@ -158,8 +196,9 @@ def remove_task(req: RemoveRequest, user: dict = Depends(require_user)) -> Dict[
 
 @router.post("/decide")
 def decide(req: DecideRequest, user: dict = Depends(require_user)) -> Dict[str, Any]:
+    code, name = _normalize_code_name(req.code, req.name)
     try:
-        return decide_once(code=req.code, name=req.name, interval=req.interval, push=bool(req.push))
+        return decide_once(code=code, name=name, interval=req.interval, push=bool(req.push))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -213,10 +252,11 @@ def prefs_confirm(user: dict = Depends(require_user)) -> Dict[str, Any]:
 
 @router.post("/backtest")
 def backtest(req: BacktestRequest, user: dict = Depends(require_user)) -> Dict[str, Any]:
+    code, name = _normalize_code_name(req.code, req.name)
     try:
         return run_backtest(
-            code=req.code,
-            name=req.name,
+            code=code,
+            name=name,
             interval=req.interval,
             start=req.start,
             end=req.end,

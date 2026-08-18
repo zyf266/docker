@@ -12,6 +12,7 @@ import {
   startAShareAiAgent,
   stopAShareAiAgent,
   testAShareAiAgentDingtalk,
+  lookupAShareAiAgent,
 } from '../api/aShareAiAgent'
 import './AShareAiAgent.css'
 
@@ -20,6 +21,71 @@ const INTERVALS = [
   { id: '60', label: '60分钟' },
   { id: 'D', label: '日线' },
 ]
+
+async function lookupSymbol(q) {
+  const raw = String(q || '').trim()
+  if (!raw) return null
+  try {
+    const hit = await lookupAShareAiAgent(raw)
+    if (hit?.ok && hit.code) {
+      return { code: String(hit.code).padStart(6, '0'), name: String(hit.name || '') }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+function useAShareAutoFill(code, setCode, name, setName) {
+  const codeRef = useRef(code)
+  const nameRef = useRef(name)
+  const seq = useRef(0)
+  const touched = useRef({ code: false, name: false })
+  codeRef.current = code
+  nameRef.current = name
+
+  useEffect(() => {
+    if (!touched.current.code) return undefined
+    const q = String(code || '').trim()
+    if (!/^\d{6}$/.test(q)) return undefined
+    const my = seq.current + 1
+    seq.current = my
+    const t = window.setTimeout(async () => {
+      const hit = await lookupSymbol(q)
+      if (my !== seq.current || !hit) return
+      if (hit.name && hit.name !== nameRef.current && !/^\d{6}$/.test(hit.name)) {
+        setName(hit.name)
+      }
+    }, 280)
+    return () => window.clearTimeout(t)
+  }, [code, setName])
+
+  useEffect(() => {
+    if (!touched.current.name) return undefined
+    const q = String(name || '').trim()
+    if (q.length < 2 || !/[\u4e00-\u9fff]/.test(q)) return undefined
+    const my = seq.current + 1
+    seq.current = my
+    const t = window.setTimeout(async () => {
+      const hit = await lookupSymbol(q)
+      if (my !== seq.current || !hit) return
+      if (hit.code && hit.code !== codeRef.current) setCode(hit.code)
+      if (hit.name && hit.name !== nameRef.current) setName(hit.name)
+    }, 380)
+    return () => window.clearTimeout(t)
+  }, [name, setCode, setName])
+
+  return {
+    onCodeChange: (v) => {
+      touched.current.code = true
+      setCode(v)
+    },
+    onNameChange: (v) => {
+      touched.current.name = true
+      setName(v)
+    },
+  }
+}
 
 const AShareAiAgent = () => {
   const [meta, setMeta] = useState(null)
@@ -42,6 +108,8 @@ const AShareAiAgent = () => {
   const chartRef = useRef(null)
   const chartInst = useRef(null)
   const btSectionRef = useRef(null)
+  const taskFill = useAShareAutoFill(code, setCode, name, setName)
+  const btFill = useAShareAutoFill(btCode, setBtCode, btName, setBtName)
 
   useEffect(() => {
     if (!btLoading) {
@@ -141,11 +209,17 @@ const AShareAiAgent = () => {
   }, [btResult])
 
   const handleStart = async () => {
-    if (!code.trim()) return alert('请输入代码')
     setLoading(true)
     try {
+      const q = /^\d{6}$/.test(code.trim()) ? code.trim() : name.trim() || code.trim()
+      const hit = await lookupSymbol(q)
+      const c = (hit?.code || code).trim()
+      const n = (hit?.name || name).trim()
+      if (!c) return alert('请输入代码或名称')
+      if (hit?.code) setCode(hit.code)
+      if (hit?.name) setName(hit.name)
       await startAShareAiAgent({
-        tasks: [{ code: code.trim(), name: name.trim(), interval: klineInterval }],
+        tasks: [{ code: c, name: n, interval: klineInterval }],
       })
       alert('已启动/追加任务')
       await refresh()
@@ -159,9 +233,15 @@ const AShareAiAgent = () => {
   const handleDecide = async (push) => {
     setLoading(true)
     try {
+      const q = /^\d{6}$/.test(code.trim()) ? code.trim() : name.trim() || code.trim()
+      const hit = await lookupSymbol(q)
+      const c = (hit?.code || code).trim()
+      const n = (hit?.name || name).trim()
+      if (hit?.code) setCode(hit.code)
+      if (hit?.name) setName(hit.name)
       const res = await decideAShareAiAgent({
-        code: code.trim(),
-        name: name.trim(),
+        code: c,
+        name: n,
         interval: klineInterval,
         push,
       })
@@ -176,18 +256,22 @@ const AShareAiAgent = () => {
   }
 
   const handleBacktest = async () => {
-    const c = (btCode || '').trim()
+    const q = /^\d{6}$/.test((btCode || '').trim()) ? (btCode || '').trim() : (btName || '').trim() || (btCode || '').trim()
+    const hit = await lookupSymbol(q)
+    const c = (hit?.code || btCode || '').trim()
     if (!c) {
-      alert('请填写回测标的代码')
+      alert('请填写回测标的代码或名称')
       return
     }
+    if (hit?.code) setBtCode(hit.code)
+    if (hit?.name) setBtName(hit.name)
     setBtLoading(true)
     setBtResult(null)
     btSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     try {
       const res = await backtestAShareAiAgent({
         code: c,
-        name: (btName || '').trim(),
+        name: (hit?.name || btName || '').trim(),
         interval: btInterval,
         start: btStart,
         end: btEnd,
@@ -238,11 +322,19 @@ const AShareAiAgent = () => {
         <div className="asa-grid">
           <label>
             代码
-            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="600519" />
+            <input
+              value={code}
+              onChange={(e) => taskFill.onCodeChange(e.target.value)}
+              placeholder="600519"
+            />
           </label>
           <label>
             名称
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="贵州茅台" />
+            <input
+              value={name}
+              onChange={(e) => taskFill.onNameChange(e.target.value)}
+              placeholder="贵州茅台"
+            />
           </label>
           <label>
             周期
@@ -255,6 +347,7 @@ const AShareAiAgent = () => {
             </select>
           </label>
         </div>
+        <p className="asa-hint">输入 6 位代码会自动填名称；输入中文名称会自动填代码。</p>
         <div className="asa-actions">
           <button type="button" className="asa-btn primary" disabled={loading} onClick={handleStart}>
             启动/追加任务
@@ -407,14 +500,14 @@ const AShareAiAgent = () => {
       <section className="asa-card" ref={btSectionRef}>
         <h2>LLM 回测（最长约 1 年 · 采样约 12 次调用）</h2>
         <p className="asa-hint">
-          可单独选择回测标的（与上方实时任务互不影响）。页面默认示例是贵州茅台 600519，改成你的代码即可。采样约 12 次 LLM，通常 1～3 分钟。
+          可单独选择回测标的。回测按「空仓→买入→持仓评估卖出」配对成交，并统计收益率；期末仍持仓会按收盘价强平。
         </p>
         <div className="asa-grid">
           <label>
             回测代码
             <input
               value={btCode}
-              onChange={(e) => setBtCode(e.target.value)}
+              onChange={(e) => btFill.onCodeChange(e.target.value)}
               placeholder="如 603629"
             />
           </label>
@@ -422,7 +515,7 @@ const AShareAiAgent = () => {
             回测名称
             <input
               value={btName}
-              onChange={(e) => setBtName(e.target.value)}
+              onChange={(e) => btFill.onNameChange(e.target.value)}
               placeholder="如 利通电子"
             />
           </label>
@@ -472,18 +565,74 @@ const AShareAiAgent = () => {
               标的 {btResult.code} {btResult.name || ''} · LLM 调用 {btResult.llm_calls} 次
               {btResult.llm_fail ? `（失败 ${btResult.llm_fail}）` : ''}
               {' · '}
-              买 {(btResult.action_counts && btResult.action_counts.buy) || 0} /
+              执行 买 {(btResult.action_counts && btResult.action_counts.buy) || 0} /
               卖 {(btResult.action_counts && btResult.action_counts.sell) || 0} /
               观望 {(btResult.action_counts && btResult.action_counts.hold) || 0}
               {' · '}
-              图上标注 {(btResult.markers || []).length} 个买卖点
+              成交 {(btResult.trades || []).length} 笔
             </p>
-            {(btResult.markers || []).length === 0 && (
-              <p className="asa-hint">
-                本区间采样点均为观望/未通过硬规则，所以图上无买卖钉。下方可查看每次采样的结论摘要（属策略风格偏保守，不一定是程序坏了）。
-              </p>
+            {btResult.summary && (
+              <div className="asa-summary">
+                <div>
+                  <span>总收益率</span>
+                  <strong className={Number(btResult.summary.total_return_pct) >= 0 ? 'up' : 'down'}>
+                    {Number(btResult.summary.total_return_pct).toFixed(2)}%
+                  </strong>
+                </div>
+                <div>
+                  <span>胜率</span>
+                  <strong>{Number(btResult.summary.win_rate).toFixed(1)}%</strong>
+                </div>
+                <div>
+                  <span>平均单笔</span>
+                  <strong className={Number(btResult.summary.avg_return_pct) >= 0 ? 'up' : 'down'}>
+                    {Number(btResult.summary.avg_return_pct).toFixed(2)}%
+                  </strong>
+                </div>
+                <div>
+                  <span>赢/亏</span>
+                  <strong>
+                    {btResult.summary.wins}/{btResult.summary.losses}
+                  </strong>
+                </div>
+                <div>
+                  <span>最大单笔盈</span>
+                  <strong className="up">{Number(btResult.summary.max_win_pct).toFixed(2)}%</strong>
+                </div>
+                <div>
+                  <span>最大单笔亏</span>
+                  <strong className="down">{Number(btResult.summary.max_loss_pct).toFixed(2)}%</strong>
+                </div>
+              </div>
+            )}
+            {(btResult.trades || []).length === 0 && (
+              <p className="asa-hint">本区间未开出完整买卖对（可能一直观望）。可换日期或标的再试。</p>
             )}
             <div className="asa-chart" ref={chartRef} />
+            {(btResult.trades || []).length > 0 && (
+              <div className="asa-decisions">
+                <h3>成交明细（买→卖配对）</h3>
+                <ul>
+                  {(btResult.trades || []).map((t, i) => (
+                    <li key={i}>
+                      <strong className={Number(t.return_pct) >= 0 ? 'up' : 'down'}>
+                        {Number(t.return_pct) >= 0 ? '+' : ''}
+                        {Number(t.return_pct).toFixed(2)}%
+                      </strong>
+                      {' · '}
+                      买 {Number(t.entry_price).toFixed(2)} → 卖 {Number(t.exit_price).toFixed(2)}
+                      {' · '}
+                      持有 {t.bars_held} 根
+                      {t.exit_reason === 'force_close' ? ' · 期末强平' : ''}
+                      <br />
+                      <span className="asa-muted">开：{t.entry_thesis || '—'}</span>
+                      <br />
+                      <span className="asa-muted">平：{t.exit_thesis || '—'}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {(btResult.decisions || []).length > 0 && (
               <div className="asa-decisions">
                 <h3>采样决策摘要</h3>
@@ -491,9 +640,10 @@ const AShareAiAgent = () => {
                   {(btResult.decisions || []).slice(-12).map((x, i) => (
                     <li key={i}>
                       <strong>{String(x.action || '').toUpperCase()}</strong>
-                      {x.raw_action && x.raw_action !== x.action ? `（原始:${x.raw_action}）` : ''}
+                      {x.llm_action && x.llm_action !== x.action ? `（模型:${x.llm_action}）` : ''}
                       {' · '}
                       {x.price != null ? Number(x.price).toFixed(2) : '—'}
+                      {x.holding_before ? ' · 持仓中' : ' · 空仓'}
                       {' · '}
                       {x.thesis || '—'}
                     </li>

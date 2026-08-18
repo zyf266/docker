@@ -1,0 +1,30 @@
+{
+  "603629": {
+    "code": "603629",
+    "name": null,
+    "pe": 98.02094743,
+    "pe_static": 179.03410701,
+    "pb": 23.33589331,
+    "peg": 0.057814582204,
+    "ps": 14.54894733,
+    "roe": null,
+    "revenue_growth": null,
+    "market_cap": 52383427520.0,
+    "market_cap_yi": 523.83,
+    "industry": null,
+    "report_date": null,
+    "value_asof": "2026-08-17",
+    "raw_text": "PE(TTM):98.02094743；PB:23.33589331；PEG:0.057814582204；总市值:523.83亿；估值日期:2026-08-17；缺失:roe,revenue_growth,industry",
+    "missing": [
+      "roe",
+      "revenue_growth",
+      "industry"
+    ],
+    "sources": [
+      "eastmoney_value_em"
+    ],
+    "_ts": 1786962039.4263773,
+    "_fresh": true,
+    "close": 142.84
+  }
+}

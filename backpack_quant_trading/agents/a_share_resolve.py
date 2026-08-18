@@ -80,7 +80,9 @@ def _resolve_via_eastmoney_suggest(name: str) -> Optional[Tuple[str, str]]:
     try:
         import requests
 
-        r = requests.get(
+        sess = requests.Session()
+        sess.trust_env = False
+        r = sess.get(
             "https://searchapi.eastmoney.com/api/suggest/get",
             params={
                 "input": q,
@@ -90,6 +92,7 @@ def _resolve_via_eastmoney_suggest(name: str) -> Optional[Tuple[str, str]]:
             },
             headers={"User-Agent": "Mozilla/5.0", "Referer": "https://so.eastmoney.com/"},
             timeout=8,
+            proxies={"http": None, "https": None},
         )
         r.raise_for_status()
         data = (r.json() or {}).get("QuotationCodeTable") or {}
@@ -100,6 +103,8 @@ def _resolve_via_eastmoney_suggest(name: str) -> Optional[Tuple[str, str]]:
             nm = str(row.get("Name") or "").strip()
             if not re.fullmatch(r"\d{6}", code):
                 continue
+            if re.fullmatch(r"\d{6}", q) and code == q:
+                return code, nm or q
             if nm == q or q in nm or nm in q:
                 return code, nm or q
             if best is None:
@@ -118,8 +123,19 @@ def resolve_a_share_token(token: str) -> Optional[Tuple[str, str]]:
     m = re.search(r"\b(\d{6})\b", raw)
     if m:
         code = m.group(1)
+        cached = _CODE_TO_NAME.get(code)
+        if cached:
+            return code, cached
+        em = _resolve_via_eastmoney_suggest(code)
+        if em and em[0] == code and em[1]:
+            return em
         _ensure_name_map()
-        return code, _CODE_TO_NAME.get(code, code)
+        name = _CODE_TO_NAME.get(code) or ""
+        if name:
+            return code, name
+        if em:
+            return code, em[1]
+        return code, code
 
     if raw in _BUILTIN:
         # 内置仅作兜底；先试东方财富以免写错代码

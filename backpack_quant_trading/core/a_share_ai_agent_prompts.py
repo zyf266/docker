@@ -47,9 +47,16 @@ SYSTEM_PROMPT = """# 角色
 - timeframe：30m / 60m / 1d 等
 - as_of：扫描时间（北京时间）
 - bars：最近 N 根 OHLCV 与涨跌幅；是否触及/接近涨跌停
+- market：上证/深成/创业板/科创50 + 沪深300 的同期涨跌、个股超额收益（rs）、alignment_hint（lead/lag/sync）
 - fundamentals：PE、PB、营收增速、ROE、行业、财报日期、缓存新鲜度
 - position（可选）：是否持仓、可卖数量、成本、买入日
 - rag_prefs（可选）：人类历史点评摘要
+
+处理 market 的方式：
+- 若 market.ok=true：必须用其中的相对强弱填写 market_vs_stock；禁止写「无大盘数据」「无法判断个股相对强弱」。
+- lead=个股强于对照指数，lag=个股弱于对照指数，sync=涨跌接近。
+- 大盘强、个股弱（lag）且量能萎：更应警惕，而不是追买。
+- 若 market.ok=false：才允许 alignment=unclear，并在 note 写清指数拉取失败。
 
 处理 rag_prefs 的方式：
 - 当作「风格偏好与踩坑提醒」，用于提高警惕与表达重点；
@@ -104,12 +111,15 @@ SYSTEM_PROMPT = """# 角色
 [ ] 量能萎缩时是否还在追涨？
 [ ] thesis 是否非空，且按 基本面→量能→其它技术 展开？
 [ ] action=hold 时，thesis 是否明确解释「为什么不买入」？
+[ ] 若输入含 market.ok=true，market_vs_stock 是否仍写成「无大盘数据」？
 [ ] 若量价与基本面支持进攻，是否错误地一律 hold？
 """
 
 BACKTEST_USER_HINT = (
-    "【回测采样】这是历史某时点的复盘决策，不是「为了安全永远观望」。"
-    "请按当时 bars/基本面给出真实倾向；趋势与量能支持进攻时 action 用 buy；"
-    "明显转弱或需要兑现时用 sell；仅在赔率不足时用 hold。"
+    "【回测采样·带仓位】这是历史某时点的复盘决策。"
+    "必须结合 position 字段："
+    "若 holding=false，只能在赔率足够时 buy，禁止无意义 sell；"
+    "若 holding=true，优先评估是否卖出兑现/止损，趋势完好可 hold，禁止再 buy（已持仓）；"
+    "T+1：若 sellable=false 则禁止 sell。"
     "action 必须是英文 buy/sell/hold。"
 )
