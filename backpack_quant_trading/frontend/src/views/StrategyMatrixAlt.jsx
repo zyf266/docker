@@ -33,7 +33,7 @@ const strategies = [
     title: 'A股AI自适应策略Agent',
     code: 'AI-ASA',
     description:
-      '基本面优先 + 量能终裁的 LLM 决策 Agent：30/60分钟与日线多任务扫描，交易时段推送 OpenClaw ActionCard，支持点评学习与 LLM 回测标注。',
+      '技术面为主、基本面仅参考的 LLM 决策 Agent：监控标的默认基本面可用，重大利空才否决买点；30分钟默认有底仓可日内买卖，交易时段推送钉钉卡片。',
     status: '测试中',
     statusColor: 'bg-amber-500 text-white',
     progress: 55,
@@ -157,7 +157,7 @@ const strategies = [
     key: 'sse-510210',
     to: '/strategies/sse-510210',
     icon: '🇨🇳',
-    title: '上证指数ETH抄底策略',
+    title: '上证指数ETF抄底策略',
     code: 'ML-SSE',
     description: '寻找下跌行情的极致释放点介入进场，承接市场恐慌盘，通过量化系统做出理想状态下理性交易，在市场达成共识时平稳离场保证收益的稳定性。这个策略利用人性自身的缺点以及价值的回归完成金融标的物的重新定价。',
     status: '运行中',

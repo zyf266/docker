@@ -309,7 +309,7 @@ const AShareAiAgent = () => {
           <p className="asa-eyebrow">A-Share Adaptive Agent</p>
           <h1>A股 AI 自适应策略</h1>
           <p className="asa-sub">
-            基本面优先 · 量能为技术终裁 · T+1/涨跌停硬规则 · 交易时段扫描 · 15:00 后不推送 · OpenClaw ActionCard
+            技术面为主 · 基本面仅参考（重大利空才否决） · 30分钟默认有底仓可日内买卖 · 涨跌停硬规则 · 交易时段扫描
           </p>
         </div>
         <div className={`asa-pill${status.running ? ' on' : ''}`}>

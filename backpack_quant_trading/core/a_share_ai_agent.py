@@ -536,6 +536,32 @@ def normalize_action(raw: Any) -> str:
     return "hold"
 
 
+def default_position_for_interval(interval: str) -> Dict[str, Any]:
+    """
+    未显式传入持仓时的默认假设。
+    30 分钟：默认已有底仓且可卖，支持当日 buy/sell（卖的是底仓，不是今日刚买的仓）。
+    60 分钟 / 日线：默认空仓观望，偏波段，不假设可日内冲进冲出。
+    """
+    iv = str(interval or "30")
+    if iv == "30":
+        return {
+            "holding": True,
+            "has_base_position": True,
+            "sellable": True,
+            "bought_today": False,
+            "intraday_ok": True,
+            "note": "默认有底仓且可卖；30分钟支持日内加减仓（当日可买可卖底仓）",
+        }
+    return {
+        "holding": False,
+        "has_base_position": False,
+        "sellable": False,
+        "bought_today": False,
+        "intraday_ok": False,
+        "note": "默认空仓；60分钟/日线偏波段，禁止当日买当日卖思维",
+    }
+
+
 def apply_hard_rules(
     decision: Dict[str, Any],
     *,
@@ -559,11 +585,16 @@ def apply_hard_rules(
         d["invalid_reason"] = "跌停/接近跌停，禁止卖出信号"
 
     pos = position or {}
+    # 仅当「今日买入且明确不可卖」时拦 sell；底仓 sellable=true 时允许当日卖出
     if action == "sell" and pos.get("bought_today") and not pos.get("sellable"):
         d["action"] = "hold"
         d["valid"] = False
         d["t1_blocked"] = True
         d["invalid_reason"] = "T+1：今日买入尚不可卖"
+    if action == "sell" and not pos.get("holding") and not pos.get("sellable") and not pos.get("has_base_position"):
+        d["action"] = "hold"
+        d["valid"] = False
+        d["invalid_reason"] = "无持仓/无可卖底仓，禁止卖出信号"
 
     ensure_decision_thesis(d)
     return d
@@ -587,11 +618,11 @@ def ensure_decision_thesis(d: Dict[str, Any], *, fallback: str = "") -> Dict[str
     elif inv:
         d["thesis"] = f"本轮结论为不买入/观望：{inv}"[:400]
     elif action == "buy":
-        d["thesis"] = "本轮建议买入，但模型未返回详细 thesis；请结合基本面与量能自行复核。"
+        d["thesis"] = "本轮建议买入，但模型未返回详细 thesis；请结合量能与技术结构自行复核。"
     elif action == "sell":
         d["thesis"] = "本轮建议卖出，但模型未返回详细 thesis；请结合持仓与风控自行复核。"
     else:
-        base = "本轮建议不买入/观望：未见满足赔率的买点，或量能/基本面不足以支持进攻。"
+        base = "本轮建议不买入/观望：未见满足赔率的技术买点，或量能不足以支持进攻。"
         d["thesis"] = (f"{base} {risk0}".strip())[:400]
     return d
 
@@ -1192,6 +1223,7 @@ def decide_once(
     last_ms = int(bars[-1].get("open_time") or 0) if bars else None
     market = build_market_context(code, interval, bars, as_of_ms=last_ms, use_cache=True)
     vol_hint = compute_volume_structure(bars)
+    pos = position if position is not None else default_position_for_interval(interval)
 
     user_payload = {
         "universe": {"code": code, "name": name or code, "market": "A"},
@@ -1202,15 +1234,25 @@ def decide_once(
         "volume_hint": vol_hint,
         "fundamentals": {k: v for k, v in fund.items() if not str(k).startswith("_")},
         "fundamentals_raw": (fund.get("raw_text") or "")[:2500],
-        "position": position or {"holding": False},
+        "position": pos,
         "rag_prefs": _prefs_block(),
         "limit_hint": limit_status,
         "data_source": src,
     }
+    tf_hint = ""
+    if interval == "30":
+        tf_hint = (
+            "本轮为 30 分钟周期：默认已有底仓且 sellable=true，支持日内加减仓；"
+            "当日可 buy 也可 sell（卖的是底仓）。不要机械几天才给一次买卖信号。\n"
+        )
     user_prompt = (
         "请根据以下输入给出决策 JSON。"
-        "无论 action 是 buy/sell/hold，都必须填写可复核的 thesis（不买入也要写清为什么）。\n"
-        "若 market.ok=true，必须根据相对强弱填写 market_vs_stock（lead/lag/sync），禁止写「无大盘数据」。\n"
+        "无论 action 是 buy/sell/hold，都必须填写可复核的 thesis。\n"
+        "决策以技术面（量能→其它技术）为主；基本面仅参考。"
+        "监控标的默认基本面无重大问题：不得用 PE/PB/增速「一般或偏高」否决技术买点；"
+        "仅当有重大利空（新闻/财报暴雷/监管等）才可因基本面否决 buy。\n"
+        + tf_hint
+        + "若 market.ok=true，必须根据相对强弱填写 market_vs_stock（lead/lag/sync），禁止写「无大盘数据」。\n"
         "fundamentals 里已有数值的字段（如 PE/PB）禁止写成缺失。"
         "volume_structure 必须与 volume_hint 一致，thesis 里用中文解释量能（放量/缩量/价涨量缩），不要堆英文枚举。\n"
         + json.dumps(user_payload, ensure_ascii=False)[:14000]
@@ -1245,7 +1287,7 @@ def decide_once(
         _maybe_push_scan_result(result, push=push)
         return result
 
-    structured = apply_hard_rules(llm.get("structured") or {}, limit_status=limit_status, position=position)
+    structured = apply_hard_rules(llm.get("structured") or {}, limit_status=limit_status, position=pos)
     structured = apply_market_vs_stock(structured, market)
     structured = apply_volume_structure(structured, vol_hint)
     structured = scrub_false_missing_fundamentals(structured, fund)
@@ -1781,7 +1823,13 @@ class AShareAIAdaptiveAgent:
             if not can_push_now(now) and now.hour >= 15:
                 continue
             try:
-                res = decide_once(code=code, name=name, interval=interval, push=True)
+                res = decide_once(
+                    code=code,
+                    name=name,
+                    interval=interval,
+                    position=default_position_for_interval(interval),
+                    push=True,
+                )
                 self._last_fire[key] = bucket
                 with self._lock:
                     self.recent.insert(0, res)
