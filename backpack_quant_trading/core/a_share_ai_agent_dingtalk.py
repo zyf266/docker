@@ -104,9 +104,53 @@ def build_action_card_markdown(result: Dict[str, Any]) -> Tuple[str, str]:
         f"- **风险**：{risk_s}",
         f"- **硬规则**：{'通过' if valid else f'拦截 · {inv}'}",
         "",
-        "> 不同意结论？回复本条说明理由（含「其实可以买」），会写入 RAG/草稿；网页点「刷新并生效风格」后下一轮扫描生效。",
+        "> 纠偏：引用本条回复理由。机器人回「已收录」= 草稿成功；网页点「刷新并生效风格」后群里会再推「已生效」。",
     ]
     return title, "\n".join(lines)
+
+
+def push_style_confirmed_notice(prefs: Dict[str, Any]) -> Tuple[bool, str]:
+    """网页确认风格后，群内回执：纠偏已生效。"""
+    newly = prefs.get("newly_confirmed") or []
+    n = int(prefs.get("newly_count") or len(newly) or 0)
+    if n <= 0:
+        return False, "无新增生效条目"
+    total = len(prefs.get("style_notes") or [])
+    at = prefs.get("confirmed_at") or ""
+    lines = [
+        "### A股AI自适应 · 纠偏风格已生效",
+        f"- **本次生效**：{n} 条",
+        f"- **累计已生效**：{total} 条",
+        f"- **时间**：{at}",
+        "",
+        "**本次内容：**",
+    ]
+    for item in newly[-8]:
+        t = str((item or {}).get("text") or "").strip()
+        if not t:
+            continue
+        meta = (item or {}).get("meta") or {}
+        tag = ""
+        if meta.get("code"):
+            tag = f"`{meta.get('code')}` "
+        lines.append(f"- {tag}{t[:120]}{'…' if len(t) > 120 else ''}")
+    lines.extend(
+        [
+            "",
+            "> 下一轮扫描会把以上纠偏并入提示词。若未看到本条，请检查 Webhook 或网页「已生效」列表。",
+        ]
+    )
+    body = "\n".join(lines)
+    return send_dingtalk_action_card(
+        title="A股自适应纠偏已生效",
+        text=body,
+        single_title="打开A股AI自适应",
+        single_url=(
+            f"{os.getenv('PUBLIC_WEB_BASE', '').strip().rstrip('/')}/strategies/a-share-ai-agent"
+            if os.getenv("PUBLIC_WEB_BASE", "").strip()
+            else "https://www.dingtalk.com"
+        ),
+    )
 
 
 def send_dingtalk_action_card(

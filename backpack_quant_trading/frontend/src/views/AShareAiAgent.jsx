@@ -7,6 +7,8 @@ import {
   getAShareAiAgentMeta,
   getAShareAiAgentPrefs,
   getAShareAiAgentStatus,
+  getAShareAiAgentTrades,
+  getAShareAiAgentTradeSymbols,
   postAShareAiAgentFeedback,
   removeAShareAiAgentTask,
   startAShareAiAgent,
@@ -105,6 +107,11 @@ const AShareAiAgent = () => {
   const [btElapsed, setBtElapsed] = useState(0)
   const [btResult, setBtResult] = useState(null)
   const [lastDecide, setLastDecide] = useState(null)
+  const [tradeSymbols, setTradeSymbols] = useState([])
+  const [trades, setTrades] = useState([])
+  const [tradeFilterCode, setTradeFilterCode] = useState('')
+  const [tradeOpenToday, setTradeOpenToday] = useState(null)
+  const [tradeLoading, setTradeLoading] = useState(false)
   const chartRef = useRef(null)
   const chartInst = useRef(null)
   const btSectionRef = useRef(null)
@@ -120,6 +127,27 @@ const AShareAiAgent = () => {
     const t = setInterval(() => setBtElapsed(Math.floor((Date.now() - t0) / 1000)), 1000)
     return () => clearInterval(t)
   }, [btLoading])
+
+  const refreshTrades = useCallback(async (codeFilter) => {
+    setTradeLoading(true)
+    try {
+      const filter = codeFilter === undefined ? tradeFilterCode : codeFilter
+      const [syms, list] = await Promise.all([
+        getAShareAiAgentTradeSymbols({ limit: 80 }).catch(() => ({ items: [] })),
+        getAShareAiAgentTrades({
+          code: filter || undefined,
+          limit: 120,
+        }).catch(() => ({ items: [], open_buy_today: null })),
+      ])
+      setTradeSymbols(syms?.items || [])
+      setTrades(list?.items || [])
+      setTradeOpenToday(list?.open_buy_today || null)
+    } catch {
+      /* ignore */
+    } finally {
+      setTradeLoading(false)
+    }
+  }, [tradeFilterCode])
 
   const refresh = useCallback(async () => {
     try {
@@ -138,9 +166,10 @@ const AShareAiAgent = () => {
 
   useEffect(() => {
     void refresh()
+    void refreshTrades('')
     const t = setInterval(() => void refresh(), 20000)
     return () => clearInterval(t)
-  }, [refresh])
+  }, [refresh, refreshTrades])
 
   useEffect(() => {
     if (!btResult?.bars?.length) return undefined
@@ -248,6 +277,7 @@ const AShareAiAgent = () => {
       setLastDecide(res)
       if (!res?.ok) alert(res?.error || '决策失败')
       await refresh()
+      await refreshTrades(tradeFilterCode)
     } catch (e) {
       alert(e?.response?.data?.detail || '决策失败')
     } finally {
@@ -309,7 +339,7 @@ const AShareAiAgent = () => {
           <p className="asa-eyebrow">A-Share Adaptive Agent</p>
           <h1>A股 AI 自适应策略</h1>
           <p className="asa-sub">
-            技术面为主 · 基本面仅参考（重大利空才否决） · 30分钟默认有底仓可日内买卖 · 涨跌停硬规则 · 交易时段扫描
+            技术面为主 · 30分钟日内 T0（底仓不动、买卖配对、尾盘强平）· 买卖信号入库 · 涨跌停硬规则
           </p>
         </div>
         <div className={`asa-pill${status.running ? ' on' : ''}`}>
@@ -443,7 +473,10 @@ const AShareAiAgent = () => {
 
       <section className="asa-card">
         <h2>点评草稿 / 刷新并生效风格</h2>
-        <p className="asa-hint">钉钉 Stream 纠偏会先进 RAG 与下方草稿；点「刷新并生效风格」后才会并入下一轮扫描提示词。</p>
+        <p className="asa-hint">
+          钉钉引用信号回复后：机器人回「已收录」= 草稿成功（出现在左侧待确认）。点「刷新并生效风格」后：待确认清空、右侧已生效增加，群里再推「纠偏已生效」。
+          {prefs.confirmed?.confirmed_at ? ` 上次生效：${prefs.confirmed.confirmed_at}` : ''}
+        </p>
         <textarea
           rows={3}
           value={feedback}
@@ -468,10 +501,12 @@ const AShareAiAgent = () => {
             type="button"
             className="asa-btn primary"
             onClick={async () => {
-              if (!window.confirm('将草稿合并进正式风格偏好，并刷新提示词附言？')) return
-              await confirmAShareAiAgentPrefs()
+              if (!window.confirm('将草稿合并进正式风格偏好，并刷新提示词附言？生效后钉钉群会推一条回执。')) return
+              const res = await confirmAShareAiAgentPrefs()
               await refresh()
-              alert('已刷新并生效风格，下一轮扫描会带上这些纠偏')
+              const n = res?.confirmed?.newly_count ?? res?.confirmed?.newly_confirmed?.length ?? 0
+              const ding = res?.dingtalk?.ok ? '群回执已发送' : `群回执未发送：${res?.dingtalk?.detail || '未知'}`
+              alert(`纠偏已生效：本次 ${n} 条。${ding}。下一轮扫描会带上这些纠偏。`)
             }}
           >
             刷新并生效风格
@@ -494,6 +529,115 @@ const AShareAiAgent = () => {
               ))}
             </ul>
           </div>
+        </div>
+      </section>
+
+      </section>
+
+      <section className="asa-card">
+        <h2>交易台账看板</h2>
+        <p className="asa-hint">
+          记录所有买入/卖出信号（含 T0 忽略、尾盘强平）。30 分钟：无日内仓时首笔卖出忽略；有仓须先卖再买；14:50 后强制平今日买入。
+          {tradeOpenToday
+            ? ` 当前筛选标的今日未平买入 #${tradeOpenToday.id} @ ${tradeOpenToday.price ?? '—'}`
+            : ''}
+        </p>
+        <div className="asa-actions" style={{ flexWrap: 'wrap', gap: 8 }}>
+          <input
+            style={{ maxWidth: 140 }}
+            value={tradeFilterCode}
+            onChange={(e) => setTradeFilterCode(e.target.value)}
+            placeholder="筛选代码"
+          />
+          <button
+            type="button"
+            className="asa-btn"
+            disabled={tradeLoading}
+            onClick={() => refreshTrades(tradeFilterCode)}
+          >
+            {tradeLoading ? '加载中…' : '刷新台账'}
+          </button>
+          <button
+            type="button"
+            className="asa-btn"
+            onClick={() => {
+              setTradeFilterCode('')
+              refreshTrades('')
+            }}
+          >
+            全部标的
+          </button>
+        </div>
+        {tradeSymbols.length > 0 && (
+          <div className="asa-trade-syms">
+            {tradeSymbols.slice(0, 24).map((s) => (
+              <button
+                key={`${s.code}-${s.interval}`}
+                type="button"
+                className={`asa-chip${tradeFilterCode === s.code ? ' on' : ''}`}
+                onClick={() => {
+                  setTradeFilterCode(s.code)
+                  refreshTrades(s.code)
+                }}
+              >
+                {s.name || s.code} · 买{s.buy_n}/卖{s.sell_n}
+                {s.ignored_n ? ` · 忽略${s.ignored_n}` : ''}
+                {s.force_n ? ` · 强平${s.force_n}` : ''}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="asa-table-wrap">
+          <table className="asa-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>标的</th>
+                <th>周期</th>
+                <th>方向</th>
+                <th>状态</th>
+                <th>价格</th>
+                <th>配对</th>
+                <th>理由</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="asa-muted">
+                    暂无记录（产生买卖信号后会出现在此）
+                  </td>
+                </tr>
+              ) : (
+                trades.map((t) => (
+                  <tr key={t.id}>
+                    <td>{t.as_of || t.created_at || t.trade_date}</td>
+                    <td>
+                      {t.name || ''} {t.code}
+                    </td>
+                    <td>{t.interval === '30' ? '30m' : t.interval === '60' ? '60m' : t.interval}</td>
+                    <td className={t.side === 'buy' ? 'asa-buy' : 'asa-sell'}>
+                      {t.side === 'buy' ? '买入' : '卖出'}
+                    </td>
+                    <td>
+                      {t.status === 'executed'
+                        ? '已执行'
+                        : t.status === 'ignored'
+                          ? '已忽略'
+                          : t.status === 'force_close'
+                            ? '尾盘强平'
+                            : t.status}
+                    </td>
+                    <td>{t.price != null ? Number(t.price).toFixed(3) : '—'}</td>
+                    <td>{t.pair_id != null ? `#${t.pair_id}` : '—'}</td>
+                    <td className="asa-thesis" title={t.thesis || t.reason || ''}>
+                      {(t.reason || t.thesis || '—').slice(0, 48)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 

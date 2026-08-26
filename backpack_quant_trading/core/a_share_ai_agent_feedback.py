@@ -23,6 +23,7 @@ _A_SHARE_FEEDBACK_HINTS = (
     "不该卖",
     "可以买",
     "可以买入",
+    "可以的",
     "应该买",
     "应该买入",
     "这时可以",
@@ -31,6 +32,14 @@ _A_SHARE_FEEDBACK_HINTS = (
     "其实可以",
     "我认为可以",
     "我觉得可以",
+    "位置挺好",
+    "挺好的",
+    "板块走",
+    "走的也还行",
+    "同意",
+    "没错",
+    "说得对",
+    "认可",
     "警惕",
     "诱多",
     "诱空",
@@ -182,11 +191,13 @@ def handle_a_share_ai_dingtalk_feedback(
     draft = load_style_draft()
     pending_n = len(draft.get("pending") or [])
     code_s = code or "（未解析到代码，已按最近上下文入库）"
+    excerpt = plain[:80] + ("…" if len(plain) > 80 else "")
     lines = [
-        f"✅ 已收录你对 **A股AI自适应** {code_s} {interval or ''} 的点评（已进 RAG/草稿）。",
-        "· 无论本轮卡片是「买入」还是「不买入/观望」，你的纠偏理由都会保留。",
-        "· 请在网页点 **「刷新并生效风格」** 后，下一轮扫描会把点评并入提示词。",
-        f"· 草稿累计约 **{pending_n}** 条。",
+        f"✅ **纠偏已收录（第1步成功）** · A股AI自适应 · {code_s} {interval or ''}",
+        f"· 你的点评：{excerpt}",
+        f"· 已写入 RAG + 网页「待确认」草稿（当前约 **{pending_n}** 条）",
+        "· **尚未并入扫描提示词**。请打开策略页 → 确认「待确认」里能看到这条 → 点 **「刷新并生效风格」**",
+        "· 生效成功后：网页「已生效」会多一条，群里会再收到一条「风格已生效」回执。",
     ]
     return "\n".join(lines), {"ok": True, "code": code, "interval": interval, "pending": pending_n}
 

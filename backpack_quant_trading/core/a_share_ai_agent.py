@@ -539,18 +539,20 @@ def normalize_action(raw: Any) -> str:
 def default_position_for_interval(interval: str) -> Dict[str, Any]:
     """
     未显式传入持仓时的默认假设。
-    30 分钟：默认已有底仓且可卖，支持当日 buy/sell（卖的是底仓，不是今日刚买的仓）。
-    60 分钟 / 日线：默认空仓观望，偏波段，不假设可日内冲进冲出。
+    30 分钟：T0 + 底仓不动——默认有底仓，但只有「今日已买入未平」才可卖。
+    60 分钟 / 日线：默认空仓观望，偏波段。
     """
     iv = str(interval or "30")
     if iv == "30":
         return {
             "holding": True,
             "has_base_position": True,
-            "sellable": True,
+            "sellable": False,
             "bought_today": False,
             "intraday_ok": True,
-            "note": "默认有底仓且可卖；30分钟支持日内加减仓（当日可买可卖底仓）",
+            "intraday_open": False,
+            "can_buy": True,
+            "note": "T0：默认有底仓但底仓不动；无日内未平仓时不可卖、可买",
         }
     return {
         "holding": False,
@@ -558,6 +560,8 @@ def default_position_for_interval(interval: str) -> Dict[str, Any]:
         "sellable": False,
         "bought_today": False,
         "intraday_ok": False,
+        "intraday_open": False,
+        "can_buy": True,
         "note": "默认空仓；60分钟/日线偏波段，禁止当日买当日卖思维",
     }
 
@@ -585,8 +589,8 @@ def apply_hard_rules(
         d["invalid_reason"] = "跌停/接近跌停，禁止卖出信号"
 
     pos = position or {}
-    # 仅当「今日买入且明确不可卖」时拦 sell；底仓 sellable=true 时允许当日卖出
-    if action == "sell" and pos.get("bought_today") and not pos.get("sellable"):
+    # 经典 T+1（非日内 T0）：今日买入且不可卖
+    if action == "sell" and pos.get("bought_today") and not pos.get("sellable") and not pos.get("intraday_ok"):
         d["action"] = "hold"
         d["valid"] = False
         d["t1_blocked"] = True
@@ -702,15 +706,20 @@ def confirm_style_prefs() -> Dict[str, Any]:
     draft = load_style_draft()
     prefs = load_confirmed_prefs()
     notes = list(prefs.get("style_notes") or [])
+    newly: list = []
     for p in draft.get("pending") or []:
         t = str(p.get("text") or "").strip()
         if t:
-            notes.append({"text": t, "ts": p.get("ts"), "meta": p.get("meta")})
+            item = {"text": t, "ts": p.get("ts"), "meta": p.get("meta")}
+            notes.append(item)
+            newly.append(item)
     prefs["style_notes"] = notes[-100:]
     prefs["confirmed_at"] = _now_bj().strftime("%Y-%m-%d %H:%M:%S")
     _save_json(PREFS_PATH, prefs)
     _save_json(STYLE_DRAFT_PATH, {"pending": [], "updated_at": prefs["confirmed_at"]})
     _rebuild_style_addendum(prefs)
+    prefs["newly_confirmed"] = newly
+    prefs["newly_count"] = len(newly)
     return prefs
 
 
@@ -1223,7 +1232,21 @@ def decide_once(
     last_ms = int(bars[-1].get("open_time") or 0) if bars else None
     market = build_market_context(code, interval, bars, as_of_ms=last_ms, use_cache=True)
     vol_hint = compute_volume_structure(bars)
-    pos = position if position is not None else default_position_for_interval(interval)
+    trade_date = _now_bj().strftime("%Y-%m-%d")
+    open_buy = None
+    if position is not None:
+        pos = position
+    elif interval == "30":
+        try:
+            from backpack_quant_trading.core.a_share_ai_agent_t0 import build_t0_position, get_open_intraday_buy
+
+            pos = build_t0_position(code, interval, trade_date)
+            open_buy = get_open_intraday_buy(code, interval, trade_date)
+        except Exception as exc:
+            logger.debug("build_t0_position skip: %s", exc)
+            pos = default_position_for_interval(interval)
+    else:
+        pos = default_position_for_interval(interval)
 
     user_payload = {
         "universe": {"code": code, "name": name or code, "market": "A"},
@@ -1242,8 +1265,10 @@ def decide_once(
     tf_hint = ""
     if interval == "30":
         tf_hint = (
-            "本轮为 30 分钟周期：默认已有底仓且 sellable=true，支持日内加减仓；"
-            "当日可 buy 也可 sell（卖的是底仓）。不要机械几天才给一次买卖信号。\n"
+            "本轮为 30 分钟 T0：底仓不动。"
+            "无日内未平仓时只允许 buy、卖出将被系统忽略；"
+            "有未平日内仓时只允许 sell 平仓，禁止再买。"
+            "当天买入必须当天卖出。\n"
         )
     user_prompt = (
         "请根据以下输入给出决策 JSON。"
@@ -1287,7 +1312,19 @@ def decide_once(
         _maybe_push_scan_result(result, push=push)
         return result
 
-    structured = apply_hard_rules(llm.get("structured") or {}, limit_status=limit_status, position=pos)
+    structured = llm.get("structured") or {}
+    try:
+        from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_rules
+
+        # 先套 T0（保留 raw buy/sell 便于忽略入账），再套涨跌停等硬规则
+        structured = apply_t0_rules(
+            structured,
+            interval=interval,
+            intraday_open=bool(pos.get("intraday_open")),
+        )
+    except Exception as exc:
+        logger.debug("apply_t0_rules skip: %s", exc)
+    structured = apply_hard_rules(structured, limit_status=limit_status, position=pos)
     structured = apply_market_vs_stock(structured, market)
     structured = apply_volume_structure(structured, vol_hint)
     structured = scrub_false_missing_fundamentals(structured, fund)
@@ -1322,7 +1359,7 @@ def decide_once(
         "model": llm.get("model"),
     }
 
-    # 落盘信号
+    # 落盘信号（JSON 近史）
     try:
         hist = _load_json(SIGNALS_PATH, {"items": []})
         items = list(hist.get("items") or [])
@@ -1331,6 +1368,22 @@ def decide_once(
         _save_json(SIGNALS_PATH, hist)
     except Exception:
         pass
+
+    # 买卖信号写入数据库台账（含 T0 忽略）
+    try:
+        from backpack_quant_trading.core.a_share_ai_agent_t0 import last_bar_price, persist_decision_trades
+
+        px = last_bar_price(bars)
+        rec = persist_decision_trades(
+            result,
+            trade_date=trade_date,
+            price=px,
+            open_buy=open_buy,
+        )
+        if rec:
+            result["trade_record"] = rec
+    except Exception as exc:
+        logger.warning("persist_decision_trades failed: %s", exc)
 
     # 每轮扫描（买入/不买入/卖出）都必须推钉钉，且带分析理由
     _maybe_push_scan_result(result, push=push)
@@ -1790,10 +1843,61 @@ class AShareAIAdaptiveAgent:
                 continue
             try:
                 self._scan_tick(now)
+                self._maybe_force_close_eod(now)
             except Exception as e:
                 self.last_error = str(e)
                 logger.exception("a-share ai agent scan: %s", e)
             self._stop.wait(45)
+
+    def _maybe_force_close_eod(self, now: datetime) -> None:
+        """14:50 后对仍有未平日内仓的 30m 任务强制卖出（每轮可重入，无仓则跳过）。"""
+        if now.hour < 14 or (now.hour == 14 and now.minute < 50):
+            return
+        if now.hour >= 15:
+            return
+        day = now.strftime("%Y-%m-%d")
+        with self._lock:
+            tasks = list(self.tasks)
+        try:
+            from backpack_quant_trading.core.a_share_ai_agent_t0 import (
+                force_close_open_buy,
+                get_open_intraday_buy,
+                last_bar_price,
+            )
+        except Exception as exc:
+            logger.warning("force_close import failed: %s", exc)
+            return
+        as_of = now.strftime("%Y-%m-%d %H:%M:%S")
+        for t in tasks:
+            interval = str(t.get("interval") or "30")
+            if interval != "30":
+                continue
+            code = str(t.get("code") or "").zfill(6)
+            name = str(t.get("name") or "")
+            if not get_open_intraday_buy(code, interval, day):
+                continue
+            px = None
+            try:
+                bars, _src = fetch_klines_for_interval(code, interval, limit=5)
+                bars = drop_forming_bar(bars, interval)
+                px = last_bar_price(bars)
+            except Exception:
+                pass
+            res = force_close_open_buy(
+                code=code,
+                name=name,
+                interval=interval,
+                trade_date=day,
+                as_of=as_of,
+                price=px,
+                push=True,
+            )
+            if res:
+                with self._lock:
+                    self.recent.insert(0, res)
+                    self.recent = self.recent[:30]
+                self.last_scan_at = as_of
+                logger.info("T0 force close %s: %s", code, res.get("trade_record"))
 
     def _scan_tick(self, now: datetime) -> None:
         with self._lock:
@@ -1827,7 +1931,7 @@ class AShareAIAdaptiveAgent:
                     code=code,
                     name=name,
                     interval=interval,
-                    position=default_position_for_interval(interval),
+                    position=None,
                     push=True,
                 )
                 self._last_fire[key] = bucket

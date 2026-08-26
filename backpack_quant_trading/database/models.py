@@ -268,6 +268,32 @@ class StrategyConfig(Base):
     enabled = Column(Boolean, default=True)
 
 
+class AShareAiAgentSignal(Base):
+    """A股 AI 自适应 Agent：买卖信号台账（含 T0 忽略/尾盘强平）。"""
+    __tablename__ = 'a_share_ai_agent_signal'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trade_date = Column(String(10), nullable=False, index=True)  # YYYY-MM-DD 北京时间
+    code = Column(String(10), nullable=False, index=True)
+    name = Column(String(64), nullable=True)
+    interval = Column(String(8), nullable=False, default='30', index=True)
+    side = Column(String(8), nullable=False)  # buy / sell
+    status = Column(String(20), nullable=False, default='executed')  # executed / ignored / force_close
+    reason = Column(String(255), nullable=True)
+    price = Column(Float, nullable=True)
+    confidence = Column(Float, nullable=True)
+    thesis = Column(Text, nullable=True)
+    pair_id = Column(Integer, nullable=True, index=True)  # sell 关联 buy.id
+    source = Column(String(32), nullable=False, default='scan')  # scan / force_eod / manual
+    decision_json = Column(Text, nullable=True)
+    as_of = Column(String(32), nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index('idx_asa_code_date', 'code', 'trade_date'),
+        Index('idx_asa_code_iv_status', 'code', 'interval', 'status'),
+    )
+
 
 class DatabaseManager:
     """数据库管理器（进程内单例，避免每次请求新建 engine/连接池）。"""

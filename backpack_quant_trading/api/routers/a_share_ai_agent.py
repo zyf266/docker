@@ -244,10 +244,66 @@ def feedback(req: FeedbackRequest, user: dict = Depends(require_user)) -> Dict[s
     return {"message": "已写入偏好草稿，待人工确认"}
 
 
+@router.get("/trades/symbols")
+def trades_symbols(
+    limit: int = Query(50, ge=1, le=200),
+    user: dict = Depends(require_user),
+) -> Dict[str, Any]:
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import list_symbol_summaries
+
+    return {"items": list_symbol_summaries(limit=limit)}
+
+
+@router.get("/trades")
+def trades_list(
+    code: str = Query("", max_length=10),
+    interval: str = Query("", max_length=8),
+    trade_date: str = Query("", max_length=10),
+    date_from: str = Query("", max_length=10),
+    date_to: str = Query("", max_length=10),
+    status: str = Query("", max_length=20),
+    limit: int = Query(100, ge=1, le=500),
+    user: dict = Depends(require_user),
+) -> Dict[str, Any]:
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import get_open_intraday_buy, list_signals
+
+    code_n = str(code or "").strip()
+    if code_n.isdigit():
+        code_n = code_n.zfill(6)
+    items = list_signals(
+        code=code_n,
+        interval=str(interval or ""),
+        trade_date=str(trade_date or ""),
+        date_from=str(date_from or ""),
+        date_to=str(date_to or ""),
+        status=str(status or ""),
+        limit=limit,
+    )
+    open_buy = None
+    if code_n and (not interval or interval == "30"):
+        from backpack_quant_trading.core.a_share_ai_agent import _now_bj
+
+        open_buy = get_open_intraday_buy(code_n, interval or "30", _now_bj().strftime("%Y-%m-%d"))
+    return {"items": items, "open_buy_today": open_buy}
+
+
 @router.post("/prefs/confirm")
 def prefs_confirm(user: dict = Depends(require_user)) -> Dict[str, Any]:
     prefs_data = confirm_style_prefs()
-    return {"message": "已确认并生效", "confirmed": prefs_data}
+    ding_ok, ding_msg = False, ""
+    try:
+        from backpack_quant_trading.core.a_share_ai_agent_dingtalk import push_style_confirmed_notice
+
+        ding_ok, ding_msg = push_style_confirmed_notice(prefs_data)
+    except Exception as exc:
+        ding_msg = str(exc)
+        logger.warning("push_style_confirmed_notice failed: %s", exc)
+    n = int(prefs_data.get("newly_count") or 0)
+    return {
+        "message": f"已确认并生效（本次 {n} 条）",
+        "confirmed": prefs_data,
+        "dingtalk": {"ok": ding_ok, "detail": ding_msg},
+    }
 
 
 @router.post("/backtest")

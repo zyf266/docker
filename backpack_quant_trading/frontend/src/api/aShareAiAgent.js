@@ -11,6 +11,10 @@ export const testAShareAiAgentDingtalk = () => request.post('/a-share-ai-agent/t
 export const getAShareAiAgentPrefs = () => request.get('/a-share-ai-agent/prefs')
 export const postAShareAiAgentFeedback = (data) => request.post('/a-share-ai-agent/feedback', data)
 export const confirmAShareAiAgentPrefs = () => request.post('/a-share-ai-agent/prefs/confirm')
+export const getAShareAiAgentTrades = (params) =>
+  request.get('/a-share-ai-agent/trades', { params })
+export const getAShareAiAgentTradeSymbols = (params) =>
+  request.get('/a-share-ai-agent/trades/symbols', { params })
 export const backtestAShareAiAgent = (data) =>
   request.post('/a-share-ai-agent/backtest', data, { timeout: 600000 })
 export const lookupAShareAiAgent = (q) =>
