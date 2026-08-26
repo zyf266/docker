@@ -532,8 +532,6 @@ const AShareAiAgent = () => {
         </div>
       </section>
 
-      </section>
-
       <section className="asa-card">
         <h2>交易台账看板</h2>
         <p className="asa-hint">
