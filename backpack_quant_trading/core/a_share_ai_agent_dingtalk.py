@@ -104,7 +104,7 @@ def build_action_card_markdown(result: Dict[str, Any]) -> Tuple[str, str]:
         f"- **风险**：{risk_s}",
         f"- **硬规则**：{'通过' if valid else f'拦截 · {inv}'}",
         "",
-        "> 纠偏：引用本条回复理由。机器人回「已收录」= 草稿成功；网页点「刷新并生效风格」后群里会再推「已生效」。",
+        "> 纠偏：引用本条，并 **@群里的 Stream 机器人**（跑 dingtalk-agent 的那个，不是「自定义」Webhook）说明理由。机器人回「已收录」=成功；网页再点「刷新并生效风格」。",
     ]
     return title, "\n".join(lines)
 

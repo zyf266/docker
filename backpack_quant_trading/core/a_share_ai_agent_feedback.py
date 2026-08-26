@@ -13,7 +13,9 @@ _A_SHARE_CARD_MARKERS = (
     "A股自适应买入",
     "A股自适应卖出",
     "A股自适应观望",
+    "A股自适应不买入",
     "打开A股AI自适应",
+    "【信号】A股自适应",
 )
 
 _A_SHARE_FEEDBACK_HINTS = (
@@ -33,6 +35,8 @@ _A_SHARE_FEEDBACK_HINTS = (
     "我认为可以",
     "我觉得可以",
     "位置挺好",
+    "位置没问题",
+    "没问题",
     "挺好的",
     "板块走",
     "走的也还行",
@@ -40,6 +44,8 @@ _A_SHARE_FEEDBACK_HINTS = (
     "没错",
     "说得对",
     "认可",
+    "可以给",
+    "给分",
     "警惕",
     "诱多",
     "诱空",
@@ -63,7 +69,10 @@ _A_SHARE_FEEDBACK_HINTS = (
 
 def _replied_summary(raw: Dict[str, Any]) -> str:
     try:
-        from backpack_quant_trading.core.dingtalk_manual_score import _summarize_replied_msg
+        from backpack_quant_trading.core.dingtalk_manual_score import (
+            _collect_reply_text_blobs,
+            _summarize_replied_msg,
+        )
 
         chunks = []
         text_block = raw.get("text")
@@ -72,6 +81,10 @@ def _replied_summary(raw: Dict[str, Any]) -> str:
         for key in ("repliedMsg", "quoteMessage", "quotedMessage"):
             if isinstance(raw.get(key), dict):
                 chunks.append(_summarize_replied_msg(raw[key]) or "")
+        try:
+            chunks.extend(_collect_reply_text_blobs(raw) or [])
+        except Exception:
+            pass
         return "\n".join(x for x in chunks if x)
     except Exception:
         return ""
@@ -110,9 +123,18 @@ def is_a_share_ai_card_context(raw: Dict[str, Any], user_text: str = "") -> bool
     return False
 
 
+def _feedback_plain(user_text: str) -> str:
+    """去掉 @ 与引用抬头，只留用户自己写的点评。"""
+    plain = re.sub(r"@[^\s@　]+", " ", user_text or "", flags=re.IGNORECASE)
+    plain = re.sub(r"自定义\s*[：:].*", " ", plain)
+    plain = re.sub(r"【信号】[^\n]*", " ", plain)
+    plain = re.sub(r"A股自适应[^\n]*", " ", plain)
+    return re.sub(r"\s+", " ", plain).strip()
+
+
 def is_a_share_ai_feedback_text(text: str) -> bool:
-    plain = re.sub(r"@[^\s@　]+", " ", text or "", flags=re.IGNORECASE).strip()
-    if len(plain) < 8:
+    plain = _feedback_plain(text)
+    if len(plain) < 2:
         return False
     if any(h in plain for h in _A_SHARE_FEEDBACK_HINTS):
         return True
@@ -128,8 +150,9 @@ def should_handle_a_share_ai_feedback(user_text: str, raw: Dict[str, Any]) -> bo
     """回复 A股AI 卡片时：任意较完整点评都收录（含反驳观望、主张可买入）。"""
     if not is_a_share_ai_card_context(raw, user_text):
         return False
-    plain = re.sub(r"@[^\s@　]+", " ", user_text or "", flags=re.IGNORECASE).strip()
-    if len(plain) >= 15:
+    plain = _feedback_plain(user_text)
+    # 引用卡片后：有实质点评即收（短句如「位置没问题」也行）
+    if len(plain) >= 4:
         return True
     return is_a_share_ai_feedback_text(user_text)
 
@@ -151,14 +174,14 @@ def handle_a_share_ai_dingtalk_feedback(
         if str(ctx.get("source") or "") == "a_share_ai_agent":
             code = str(ctx.get("symbol") or "").strip()
             interval = interval or str(ctx.get("timeframe") or "")
-    # A 股代码保持 6 位数字，不 upper 成字母
     if code and code.isdigit():
         code = code.zfill(6)
     else:
         code = ""
 
-    plain = re.sub(r"@[^\s@　]+", " ", user_text or "", flags=re.IGNORECASE).strip()
-    # 同时写入偏好草稿 + Chroma/Agent 记忆（RAG），确认后才会并进 System 风格附言
+    plain = _feedback_plain(user_text) or re.sub(
+        r"@[^\s@　]+", " ", user_text or "", flags=re.IGNORECASE
+    ).strip()
     append_feedback_draft(
         plain,
         meta={

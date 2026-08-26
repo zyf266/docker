@@ -149,6 +149,26 @@ def _summarize_replied_msg(replied: Any) -> str:
             return "\n".join(p for p in parts if p)
         return str(content.get("text") or "").strip()
 
+    # ActionCard（A股AI 信号推送）：标题里常有「A股自适应买入 · 标的」
+    if msgtype in ("actioncard", "action_card") or content.get("singleTitle") or content.get("title"):
+        parts = [
+            str(content.get("title") or "").strip(),
+            str(content.get("text") or "").strip(),
+            str(content.get("singleTitle") or "").strip(),
+        ]
+        # 少数结构再包一层 actionCard
+        nested = content.get("actionCard") or content.get("action_card")
+        if isinstance(nested, dict):
+            parts.extend(
+                [
+                    str(nested.get("title") or "").strip(),
+                    str(nested.get("text") or "").strip(),
+                ]
+            )
+        joined = "\n".join(p for p in parts if p)
+        if joined.strip():
+            return joined.strip()
+
     if msgtype == "richtext" or content.get("richText"):
         rich = content.get("richText") or content.get("rich_text") or []
         chunks = []
