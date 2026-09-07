@@ -1,10 +1,30 @@
 ---
-description: 本项目沿用全局 Agent 工作流（见用户目录 ~/.cursor/rules/agent-workflow.mdc）
-alwaysApply: false
+description: 本项目沿用全局 Agent 工作流，并启用仓库 Harness（hooks + skills）
+alwaysApply: true
 ---
 
-# 工作流
+# 工作流 + Harness
 
-全局五角色 Slash 命令与 `/pipeline` 已配置在 `~/.cursor/rules/agent-workflow.mdc` 与 `~/.cursor/skills/`。
+全局五角色 Slash（`/plan` `/exec` `/review` `/debug` `/pipeline` 等）见
+`~/.cursor/rules/agent-workflow.mdc` 与 `~/.cursor/skills/`。
 
-本项目 `docs/plans/` 目录用于 `/plan` 产出计划文档。
+## 本仓库增量
+
+| 资产 | 路径 |
+|------|------|
+| Hooks | `.cursor/hooks.json`（拦热更、扫密钥、编辑跟踪、stop 验证提醒） |
+| 验收规则 | `.cursor/rules/harness-verification.mdc` |
+| 禁止热更 | `.cursor/rules/no-prod-hotfix.mdc` |
+| Skills | `.cursor/skills/tv-webhook-branch`、`deploy-prod-verify`、`a-share-ai-feedback`、`pre-pr-review` |
+
+## 编码任务开始前
+
+输出简短 **skill-forced-evaluation**（ACTIVATE/SKIP）：
+
+- verification-before-completion / harness-verification
+- 相关模块 skill（TV / A股纠偏 / deploy 验收）
+- 大改动：writing-plans 或 `/plan`
+
+## 计划文档
+
+`docs/plans/` 用于 `/plan` 产出。

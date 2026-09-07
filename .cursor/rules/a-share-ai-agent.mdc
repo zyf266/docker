@@ -1,0 +1,28 @@
+---
+description: A股 AI 自适应 Agent：T0、信号入库、钉钉纠偏
+globs: backpack_quant_trading/core/a_share_ai_agent*.py,backpack_quant_trading/api/routers/a_share_ai_agent.py,backpack_quant_trading/frontend/src/views/AShareAiAgent.*
+alwaysApply: false
+---
+
+# A股 AI Agent 模块规则
+
+## 产品语义（30 分钟 T0）
+
+- 底仓不动：无日内未平买入时 **忽略卖出**
+- 有未平日内仓时禁止再买；须先卖再买
+- 当日买入须当日平；14:50 后 `force_close`
+- 买卖信号写入表 `a_share_ai_agent_signal`；看板 `/a-share-ai-agent/trades`
+
+## 钉钉纠偏
+
+- 收录走 Stream 机器人，不是 Webhook「自定义」
+- 点评 → 草稿 → 网页「刷新并生效风格」才并入提示词
+- 相关 SOP：`.cursor/skills/a-share-ai-feedback/SKILL.md`
+
+## 改动后验证
+
+```bash
+python -m pytest backpack_quant_trading/tests/test_a_share_ai_agent_intraday.py -q
+```
+
+前端 JSX 改完必须 `npm run build`（避免多余 `</section>` 类语法错误进 CI）。

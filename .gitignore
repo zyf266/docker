@@ -13,3 +13,5 @@ backpack_quant_trading/.env.secrets
 backpack_quant_trading/data/instance_rsa/private.pem
 # Actions 本地/工作区打包产物，勿提交
 backpack-quant.tgz
+# Cursor Harness 会话状态（本地）
+.cursor/harness-state.json

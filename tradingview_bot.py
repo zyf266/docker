@@ -50,6 +50,7 @@ CONFIG = {
         "趋势信号提醒": "https://oapi.dingtalk.com/robot/send?access_token=06a3b0f3dc20e4171267c912bd8e4892c0c0992df47349355657b4a4c146f1a2",
         "做空策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=615446fec028e384703e8fb4b40cb19d92a5d8f330b7f3a411dc9e8e143d0a89",
         "山寨做多策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=78f43fd7bf178e69b642b20be1b76addf64879db3427736f78643385645fef49",
+        "山寨趋进": "https://oapi.dingtalk.com/robot/send?access_token=e4eb80eede7da4d49962359552f732a502a44aeefbe0b567bdc3f2fa1f72a74a",
         "实盘交易": "https://oapi.dingtalk.com/robot/send?access_token=5c0c5fc145b217a7a10ec0d6356ae24d9dd31b620ccb4be0251ff729e5cd0adb",
         "A股策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=a9c58612628adb78eb2fc2a741a2145d7ff487e9338433735dd53be57f124045",
     },
@@ -335,6 +336,9 @@ class TradingViewBot:
         )
         if strategy:
             parsed_data["strategy"] = strategy
+        elif alert_id:
+            # TV 仅填 id、策略名为空时，用 id 作为展示名（如「山寨趋进」）
+            parsed_data["strategy"] = alert_id
 
         tf_raw = _json_pick(
             data, "周期", "timeframe", "K线级别", "interval", "kline_interval",
@@ -609,6 +613,11 @@ class TradingViewBot:
                     webhook_url = self.config.get("dingtalk_webhook_eth_short", webhook_url)
                 elif "山寨做多策略" in strategy_str:
                     webhook_url = self.config.get("dingtalk_webhook_altcoin", webhook_url)
+                elif "山寨趋进" in strategy_str or msg_id == "山寨趋进":
+                    webhook_url = self.config["id_webhook_map"].get(
+                        "山寨趋进",
+                        self.config.get("dingtalk_webhook_altcoin", webhook_url),
+                    )
                 else:
                     btc_prefix_1 = "BTC 2小时中性短线 - 强度90开仓版 (优化)"
                     btc_prefix_2 = "BTC 2小时中性短线"

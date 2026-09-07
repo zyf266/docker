@@ -265,7 +265,12 @@ def trades_list(
     limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(require_user),
 ) -> Dict[str, Any]:
-    from backpack_quant_trading.core.a_share_ai_agent_t0 import get_open_intraday_buy, list_signals
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import (
+        enrich_signals_with_pnl,
+        get_open_intraday_buy,
+        list_signals,
+        summarize_pnl,
+    )
 
     code_n = str(code or "").strip()
     if code_n.isdigit():
@@ -279,12 +284,14 @@ def trades_list(
         status=str(status or ""),
         limit=limit,
     )
+    items = enrich_signals_with_pnl(items)
     open_buy = None
     if code_n and (not interval or interval == "30"):
         from backpack_quant_trading.core.a_share_ai_agent import _now_bj
 
         open_buy = get_open_intraday_buy(code_n, interval or "30", _now_bj().strftime("%Y-%m-%d"))
-    return {"items": items, "open_buy_today": open_buy}
+    pnl = summarize_pnl(code=code_n, interval=str(interval or ""))
+    return {"items": items, "open_buy_today": open_buy, "pnl": pnl}
 
 
 @router.post("/prefs/confirm")

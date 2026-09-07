@@ -296,6 +296,74 @@
   background: rgba(45, 212, 191, 0.12);
 }
 
+.asa-pnl-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+.asa-pnl-card {
+  min-width: 140px;
+  flex: 1;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #0f172a;
+  padding: 10px 12px;
+}
+.asa-pnl-label {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+.asa-pnl-val {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.asa-pnl-val.up,
+.asa-pnl-up,
+.asa-pnl-daycodes .up {
+  color: #f87171;
+}
+.asa-pnl-val.down,
+.asa-pnl-down,
+.asa-pnl-daycodes .down {
+  color: #4ade80;
+}
+.asa-pnl-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
+}
+.asa-pnl-daycodes ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.asa-pnl-daycodes li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+.asa-pnl-daycodes em {
+  font-style: normal;
+  color: #64748b;
+  margin-left: 4px;
+}
+.asa-rounds {
+  margin-top: 16px;
+}
+.asa-rounds h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #e2e8f0;
+}
+
 .asa-table-wrap {
   overflow-x: auto;
   margin-top: 8px;

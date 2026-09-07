@@ -1,0 +1,33 @@
+---
+description: Harness 验收：没证据不准说完成；大改动走 plan/exec
+alwaysApply: true
+---
+
+# Harness Verification
+
+## 声称「已完成 / 已修复 / 可以运行」之前
+
+必须满足（贴命令 + **实际输出**）：
+
+1. 相关测试或 import 冒烟
+2. 若改了 `frontend/`：`npm run build`
+3. 改动文件摘要 + 未验证风险
+
+禁止：「应该可以」「理论上没问题」。
+
+## 大改动入口
+
+- 跨多模块 / 新表 / T0 规则 / 正式服相关 → 先 `/plan` 或写 `docs/plans/`
+- 实现用 `/exec`；审查用 `/review` 或 skill `pre-pr-review`（实现与审查分离）
+
+## 正式服
+
+见 `no-prod-hotfix`：禁止热更；Deploy 后用 skill `deploy-prod-verify`。
+
+## Hooks
+
+本仓库 `.cursor/hooks.json`：
+
+- 拦截生产热更 shell
+- 提示 prompt 中疑似密钥
+- 编辑后跟踪待验标签；stop 时提醒验证

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -435,3 +435,228 @@ def last_bar_price(bars: Optional[List[Dict[str, Any]]]) -> Optional[float]:
         return float(bars[-1].get("close") or 0) or None
     except (TypeError, ValueError, IndexError):
         return None
+
+
+def _safe_float(v: Any) -> Optional[float]:
+    try:
+        if v is None:
+            return None
+        x = float(v)
+        return x if x == x else None
+    except (TypeError, ValueError):
+        return None
+
+
+def calc_round_pnl(buy_price: Any, sell_price: Any) -> Dict[str, Optional[float]]:
+    """单笔（买+卖）盈亏：点差 + 收益率%。"""
+    bp = _safe_float(buy_price)
+    sp = _safe_float(sell_price)
+    if bp is None or sp is None or bp <= 0:
+        return {"pnl_abs": None, "pnl_pct": None}
+    pnl_abs = round(sp - bp, 4)
+    pnl_pct = round((sp / bp - 1.0) * 100.0, 4)
+    return {"pnl_abs": pnl_abs, "pnl_pct": pnl_pct}
+
+
+def build_closed_rounds_from_rows(rows: List[Any]) -> List[Dict[str, Any]]:
+    """
+    一笔买入 + 一笔卖出（pair_id=buy.id）= 一笔成交。
+    rows 为 ORM 或含 id/side/status/pair_id/price 的 dict。
+    """
+    by_id: Dict[int, Any] = {}
+    for r in rows:
+        rid = int(getattr(r, "id", None) or (r.get("id") if isinstance(r, dict) else 0) or 0)
+        if rid:
+            by_id[rid] = r
+
+    def _g(obj: Any, key: str, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    rounds: List[Dict[str, Any]] = []
+    for r in rows:
+        side = str(_g(r, "side") or "").lower()
+        status = str(_g(r, "status") or "")
+        if side != "sell" or status not in ("executed", "force_close"):
+            continue
+        pair_id = _g(r, "pair_id")
+        if pair_id is None:
+            continue
+        try:
+            buy = by_id.get(int(pair_id))
+        except (TypeError, ValueError):
+            buy = None
+        if not buy:
+            continue
+        buy_price = _g(buy, "price")
+        sell_price = _g(r, "price")
+        pnl = calc_round_pnl(buy_price, sell_price)
+        rounds.append(
+            {
+                "sell_id": int(_g(r, "id") or 0),
+                "buy_id": int(pair_id),
+                "code": str(_g(r, "code") or _g(buy, "code") or ""),
+                "name": str(_g(r, "name") or _g(buy, "name") or ""),
+                "interval": str(_g(r, "interval") or _g(buy, "interval") or ""),
+                "trade_date": str(_g(r, "trade_date") or ""),
+                "buy_date": str(_g(buy, "trade_date") or ""),
+                "buy_price": _safe_float(buy_price),
+                "sell_price": _safe_float(sell_price),
+                "pnl_abs": pnl["pnl_abs"],
+                "pnl_pct": pnl["pnl_pct"],
+                "status": status,
+                "reason": _g(r, "reason"),
+                "as_of": _g(r, "as_of") or _g(r, "created_at"),
+            }
+        )
+    rounds.sort(key=lambda x: (x.get("trade_date") or "", x.get("sell_id") or 0), reverse=True)
+    return rounds
+
+
+def _agg_rounds(rounds: List[Dict[str, Any]]) -> Dict[str, Any]:
+    n = 0
+    win_n = 0
+    sum_abs = 0.0
+    sum_pct = 0.0
+    for r in rounds:
+        if r.get("pnl_pct") is None:
+            continue
+        n += 1
+        sum_abs += float(r.get("pnl_abs") or 0)
+        sum_pct += float(r["pnl_pct"])
+        if float(r["pnl_pct"]) > 0:
+            win_n += 1
+    return {
+        "n": n,
+        "win_n": win_n,
+        "win_rate_pct": round(win_n / n * 100.0, 2) if n else 0.0,
+        "pnl_abs_sum": round(sum_abs, 4),
+        "pnl_pct_sum": round(sum_pct, 4),
+        "pnl_pct_avg": round(sum_pct / n, 4) if n else 0.0,
+    }
+
+
+def summarize_pnl(
+    *,
+    code: str = "",
+    interval: str = "",
+    as_of: Optional[date] = None,
+    limit_rows: int = 3000,
+) -> Dict[str, Any]:
+    """台账盈亏：单笔回合 + 单日单票 + 近7/30天（按卖出日）。"""
+    from backpack_quant_trading.database.models import AShareAiAgentSignal, DatabaseManager
+
+    today = as_of or date.today()
+    d7 = (today - timedelta(days=6)).isoformat()
+    d30 = (today - timedelta(days=29)).isoformat()
+    today_s = today.isoformat()
+
+    db = DatabaseManager()
+    try:
+        db.create_tables()
+    except Exception:
+        pass
+    session = db.get_session()
+    try:
+        q = session.query(AShareAiAgentSignal)
+        if code:
+            q = q.filter(AShareAiAgentSignal.code == str(code).zfill(6))
+        if interval:
+            q = q.filter(AShareAiAgentSignal.interval == str(interval))
+        # 拉足够买卖腿以便 pair 对得上
+        rows = q.order_by(AShareAiAgentSignal.id.desc()).limit(max(100, min(int(limit_rows or 3000), 8000))).all()
+        rounds = build_closed_rounds_from_rows(rows)
+
+        day_by_code: Dict[str, Dict[str, Any]] = {}
+        for r in rounds:
+            if r.get("trade_date") != today_s:
+                continue
+            if r.get("pnl_pct") is None:
+                continue
+            c = r["code"]
+            bucket = day_by_code.setdefault(
+                c,
+                {
+                    "code": c,
+                    "name": r.get("name") or c,
+                    "n": 0,
+                    "pnl_abs_sum": 0.0,
+                    "pnl_pct_sum": 0.0,
+                },
+            )
+            bucket["n"] += 1
+            bucket["pnl_abs_sum"] = round(bucket["pnl_abs_sum"] + float(r["pnl_abs"] or 0), 4)
+            bucket["pnl_pct_sum"] = round(bucket["pnl_pct_sum"] + float(r["pnl_pct"]), 4)
+            bucket["name"] = r.get("name") or bucket["name"]
+
+        day_list = sorted(day_by_code.values(), key=lambda x: x["pnl_pct_sum"], reverse=True)
+        r7 = [r for r in rounds if (r.get("trade_date") or "") >= d7]
+        r30 = [r for r in rounds if (r.get("trade_date") or "") >= d30]
+
+        return {
+            "as_of": today_s,
+            "rounds": rounds[:80],
+            "today_by_code": day_list,
+            "today": _agg_rounds([r for r in rounds if r.get("trade_date") == today_s]),
+            "d7": _agg_rounds(r7),
+            "d30": _agg_rounds(r30),
+            "all": _agg_rounds(rounds),
+        }
+    finally:
+        session.close()
+
+
+def enrich_signals_with_pnl(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """给卖出腿挂上配对买入价与单笔盈亏（就地拷贝）。"""
+    if not items:
+        return items
+    buy_ids = []
+    for it in items:
+        if str(it.get("side") or "").lower() != "sell":
+            continue
+        if it.get("status") not in ("executed", "force_close"):
+            continue
+        if it.get("pair_id") is None:
+            continue
+        try:
+            buy_ids.append(int(it["pair_id"]))
+        except (TypeError, ValueError):
+            pass
+    buy_ids = list({i for i in buy_ids if i})
+    buys: Dict[int, Dict[str, Any]] = {}
+    if buy_ids:
+        from backpack_quant_trading.database.models import AShareAiAgentSignal, DatabaseManager
+
+        db = DatabaseManager()
+        session = db.get_session()
+        try:
+            for row in session.query(AShareAiAgentSignal).filter(AShareAiAgentSignal.id.in_(buy_ids)).all():
+                buys[int(row.id)] = _row_to_dict(row)
+        finally:
+            session.close()
+        # 同批 items 里已有的 buy 也可补全
+        for it in items:
+            if str(it.get("side") or "").lower() == "buy" and it.get("id") is not None:
+                buys.setdefault(int(it["id"]), it)
+
+    out: List[Dict[str, Any]] = []
+    for it in items:
+        row = dict(it)
+        if (
+            str(row.get("side") or "").lower() == "sell"
+            and row.get("status") in ("executed", "force_close")
+            and row.get("pair_id") is not None
+        ):
+            try:
+                bid = int(row["pair_id"])
+            except (TypeError, ValueError):
+                bid = None
+            buy = buys.get(bid) if bid is not None else None
+            if buy:
+                pnl = calc_round_pnl(buy.get("price"), row.get("price"))
+                row["buy_price"] = _safe_float(buy.get("price"))
+                row["pnl_abs"] = pnl["pnl_abs"]
+                row["pnl_pct"] = pnl["pnl_pct"]
+        out.append(row)
+    return out

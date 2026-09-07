@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "python .cursor/hooks/block_prod_hotfix.py",
+        "failClosed": true
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "python .cursor/hooks/scan_prompt_secrets.py",
+        "matcher": "UserPromptSubmit"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "python .cursor/hooks/track_file_edit.py"
+      }
+    ],
+    "stop": [
+      {
+        "command": "python .cursor/hooks/stop_verification.py",
+        "loop_limit": 1
+      }
+    ]
+  }
+}

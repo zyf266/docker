@@ -48,6 +48,35 @@ def test_t0_allow_buy_when_flat():
     assert d["action"] == "buy"
 
 
+def test_calc_round_pnl_and_closed_rounds():
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import (
+        build_closed_rounds_from_rows,
+        calc_round_pnl,
+    )
+
+    pnl = calc_round_pnl(10.0, 11.0)
+    assert pnl["pnl_abs"] == 1.0
+    assert abs(pnl["pnl_pct"] - 10.0) < 1e-6
+
+    rows = [
+        {"id": 1, "code": "000716", "name": "黑芝麻", "interval": "30", "side": "buy",
+         "status": "executed", "price": 5.52, "trade_date": "2026-09-04", "pair_id": None},
+        {"id": 2, "code": "000716", "name": "黑芝麻", "interval": "30", "side": "sell",
+         "status": "executed", "price": 5.67, "trade_date": "2026-09-07", "pair_id": 1},
+        {"id": 3, "code": "002262", "name": "恩华药业", "interval": "30", "side": "buy",
+         "status": "executed", "price": 22.0, "trade_date": "2026-09-04", "pair_id": None},
+        {"id": 4, "code": "002262", "name": "恩华药业", "interval": "30", "side": "sell",
+         "status": "executed", "price": 22.73, "trade_date": "2026-09-04", "pair_id": 3},
+        {"id": 5, "code": "000716", "name": "黑芝麻", "interval": "60", "side": "buy",
+         "status": "executed", "price": 5.67, "trade_date": "2026-09-07", "pair_id": None},
+    ]
+    rounds = build_closed_rounds_from_rows(rows)
+    assert len(rounds) == 2
+    by_code = {r["code"]: r for r in rounds}
+    assert abs(by_code["000716"]["pnl_pct"] - ((5.67 / 5.52 - 1) * 100)) < 1e-3
+    assert abs(by_code["002262"]["pnl_pct"] - ((22.73 / 22.0 - 1) * 100)) < 1e-3
+
+
 def test_hard_rules_block_sell_when_empty_swing():
     d = apply_hard_rules(
         {"action": "sell", "thesis": "空仓卖"},

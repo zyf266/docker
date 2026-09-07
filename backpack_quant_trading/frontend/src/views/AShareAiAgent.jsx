@@ -109,6 +109,7 @@ const AShareAiAgent = () => {
   const [lastDecide, setLastDecide] = useState(null)
   const [tradeSymbols, setTradeSymbols] = useState([])
   const [trades, setTrades] = useState([])
+  const [tradePnl, setTradePnl] = useState(null)
   const [tradeFilterCode, setTradeFilterCode] = useState('')
   const [tradeOpenToday, setTradeOpenToday] = useState(null)
   const [tradeLoading, setTradeLoading] = useState(false)
@@ -141,6 +142,7 @@ const AShareAiAgent = () => {
       ])
       setTradeSymbols(syms?.items || [])
       setTrades(list?.items || [])
+      setTradePnl(list?.pnl || null)
       setTradeOpenToday(list?.open_buy_today || null)
     } catch {
       /* ignore */
@@ -535,11 +537,63 @@ const AShareAiAgent = () => {
       <section className="asa-card">
         <h2>交易台账看板</h2>
         <p className="asa-hint">
-          记录所有买入/卖出信号（含 T0 忽略、尾盘强平）。30 分钟：无日内仓时首笔卖出忽略；有仓须先卖再买；14:50 后强制平今日买入。
+          记录所有买入/卖出信号（含 T0 忽略、尾盘强平）。一笔买入 + 一笔卖出（配对）计为一笔成交，盈亏按卖出价相对买入价。
+          30 分钟：无日内仓时首笔卖出忽略；有仓须先卖再买；14:50 后强制平今日买入。
           {tradeOpenToday
             ? ` 当前筛选标的今日未平买入 #${tradeOpenToday.id} @ ${tradeOpenToday.price ?? '—'}`
             : ''}
         </p>
+        {tradePnl && (
+          <div className="asa-pnl-summary">
+            <div className="asa-pnl-card">
+              <div className="asa-pnl-label">今日（筛选范围）</div>
+              <div className={`asa-pnl-val ${(tradePnl.today?.pnl_pct_sum || 0) >= 0 ? 'up' : 'down'}`}>
+                {(tradePnl.today?.pnl_pct_sum || 0) >= 0 ? '+' : ''}
+                {Number(tradePnl.today?.pnl_pct_sum || 0).toFixed(2)}%
+              </div>
+              <div className="asa-pnl-sub">
+                {tradePnl.today?.n || 0} 笔 · 胜率 {Number(tradePnl.today?.win_rate_pct || 0).toFixed(0)}%
+              </div>
+            </div>
+            <div className="asa-pnl-card">
+              <div className="asa-pnl-label">近 7 日</div>
+              <div className={`asa-pnl-val ${(tradePnl.d7?.pnl_pct_sum || 0) >= 0 ? 'up' : 'down'}`}>
+                {(tradePnl.d7?.pnl_pct_sum || 0) >= 0 ? '+' : ''}
+                {Number(tradePnl.d7?.pnl_pct_sum || 0).toFixed(2)}%
+              </div>
+              <div className="asa-pnl-sub">
+                {tradePnl.d7?.n || 0} 笔 · 均 {Number(tradePnl.d7?.pnl_pct_avg || 0).toFixed(2)}%
+              </div>
+            </div>
+            <div className="asa-pnl-card">
+              <div className="asa-pnl-label">近 30 日</div>
+              <div className={`asa-pnl-val ${(tradePnl.d30?.pnl_pct_sum || 0) >= 0 ? 'up' : 'down'}`}>
+                {(tradePnl.d30?.pnl_pct_sum || 0) >= 0 ? '+' : ''}
+                {Number(tradePnl.d30?.pnl_pct_sum || 0).toFixed(2)}%
+              </div>
+              <div className="asa-pnl-sub">
+                {tradePnl.d30?.n || 0} 笔 · 均 {Number(tradePnl.d30?.pnl_pct_avg || 0).toFixed(2)}%
+              </div>
+            </div>
+            {(tradePnl.today_by_code || []).length > 0 && (
+              <div className="asa-pnl-card asa-pnl-daycodes">
+                <div className="asa-pnl-label">今日单票</div>
+                <ul>
+                  {tradePnl.today_by_code.slice(0, 8).map((x) => (
+                    <li key={x.code}>
+                      <span>{x.name || x.code}</span>
+                      <span className={(x.pnl_pct_sum || 0) >= 0 ? 'up' : 'down'}>
+                        {(x.pnl_pct_sum || 0) >= 0 ? '+' : ''}
+                        {Number(x.pnl_pct_sum || 0).toFixed(2)}%
+                        <em>·{x.n}笔</em>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         <div className="asa-actions" style={{ flexWrap: 'wrap', gap: 8 }}>
           <input
             style={{ maxWidth: 140 }}
@@ -596,13 +650,14 @@ const AShareAiAgent = () => {
                 <th>状态</th>
                 <th>价格</th>
                 <th>配对</th>
+                <th>单笔盈亏</th>
                 <th>理由</th>
               </tr>
             </thead>
             <tbody>
               {trades.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="asa-muted">
+                  <td colSpan={9} className="asa-muted">
                     暂无记录（产生买卖信号后会出现在此）
                   </td>
                 </tr>
@@ -628,6 +683,20 @@ const AShareAiAgent = () => {
                     </td>
                     <td>{t.price != null ? Number(t.price).toFixed(3) : '—'}</td>
                     <td>{t.pair_id != null ? `#${t.pair_id}` : '—'}</td>
+                    <td
+                      className={
+                        t.pnl_pct == null ? '' : Number(t.pnl_pct) >= 0 ? 'asa-pnl-up' : 'asa-pnl-down'
+                      }
+                      title={
+                        t.buy_price != null && t.pnl_abs != null
+                          ? `买 ${Number(t.buy_price).toFixed(3)} → 卖 ${Number(t.price).toFixed(3)} · 点差 ${Number(t.pnl_abs).toFixed(3)}`
+                          : ''
+                      }
+                    >
+                      {t.pnl_pct == null
+                        ? '—'
+                        : `${Number(t.pnl_pct) >= 0 ? '+' : ''}${Number(t.pnl_pct).toFixed(2)}%`}
+                    </td>
                     <td className="asa-thesis" title={t.thesis || t.reason || ''}>
                       {(t.reason || t.thesis || '—').slice(0, 48)}
                     </td>
@@ -637,6 +706,45 @@ const AShareAiAgent = () => {
             </tbody>
           </table>
         </div>
+        {tradePnl?.rounds?.length > 0 && (
+          <div className="asa-rounds">
+            <h3>成交配对（买+卖）</h3>
+            <div className="asa-table-wrap">
+              <table className="asa-table">
+                <thead>
+                  <tr>
+                    <th>卖出日</th>
+                    <th>标的</th>
+                    <th>买入价</th>
+                    <th>卖出价</th>
+                    <th>盈亏</th>
+                    <th>配对</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradePnl.rounds.slice(0, 30).map((r) => (
+                    <tr key={r.sell_id}>
+                      <td>{r.trade_date}</td>
+                      <td>
+                        {r.name || ''} {r.code}
+                      </td>
+                      <td>{r.buy_price != null ? Number(r.buy_price).toFixed(3) : '—'}</td>
+                      <td>{r.sell_price != null ? Number(r.sell_price).toFixed(3) : '—'}</td>
+                      <td className={Number(r.pnl_pct || 0) >= 0 ? 'asa-pnl-up' : 'asa-pnl-down'}>
+                        {r.pnl_pct == null
+                          ? '—'
+                          : `${Number(r.pnl_pct) >= 0 ? '+' : ''}${Number(r.pnl_pct).toFixed(2)}%`}
+                      </td>
+                      <td>
+                        #{r.buy_id}→#{r.sell_id}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="asa-card" ref={btSectionRef}>

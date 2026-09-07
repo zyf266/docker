@@ -1,0 +1,27 @@
+---
+description: TradingView Bot：ID→钉钉群路由与解析约定
+globs: tradingview_bot.py
+alwaysApply: false
+---
+
+# tradingview_bot 规则
+
+## 路由
+
+- 主键：`CONFIG["id_webhook_map"][id]`（优先级最高）
+- `策略名称` 为空时用 `id` 作展示名
+- 端口默认 **5001**；与 Docker `webhook:8005` 交易路径分离
+
+## 新增策略分支
+
+按 `.cursor/skills/tv-webhook-branch/SKILL.md` 全流程；禁止只加 map 不验证。
+
+## 自测
+
+- 本机：`http://127.0.0.1:5001/webhook`
+- 公网 HTTPS 自签：`curl -k`
+- 正式服改代码：Deploy 或重启宿主机 bot，**禁止** docker cp 热更
+
+## 密钥
+
+Webhook token 可留在本文件（历史惯例），但勿复制进 docs/面试题库。

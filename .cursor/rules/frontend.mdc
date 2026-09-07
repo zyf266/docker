@@ -1,0 +1,12 @@
+---
+description: 前端构建与 JSX 完整性
+globs: backpack_quant_trading/frontend/src/**/*.{jsx,tsx,js,css}
+alwaysApply: false
+---
+
+# 前端模块规则
+
+- 改 `AShareAiAgent.jsx` 等视图后，声称完成前必须 `npm run build`
+- 注意 JSX 标签配对（多余 `</section>` 会导致 esbuild 报 Expected ")"）
+- 跟随现有 `asa-*` 样式；不要引入无关设计系统
+- API 封装放 `frontend/src/api/`，axios 拦截器已返回 `res.data`
