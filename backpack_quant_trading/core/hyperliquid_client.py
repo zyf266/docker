@@ -257,6 +257,9 @@ class HyperliquidAPIClient:
         """
         if not self.address:
             return []
+        # HL 要求 dex 为字符串；None 会序列化成 null → 422，并被上层误判为无持仓
+        if dex is None:
+            dex = ""
         user_state = await self.post_info({"type": "clearinghouseState", "user": self.address, "dex": dex})
         if user_state is None or not isinstance(user_state, dict):
             logger.debug(f"get_positions(dex='{dex}'): clearinghouseState 返回空或非 dict，视为无持仓")

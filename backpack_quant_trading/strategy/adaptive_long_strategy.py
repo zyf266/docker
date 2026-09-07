@@ -295,7 +295,8 @@ class AdaptiveLongStrategy:
                     dex_name, _, _, _ = await self.client.find_asset_dex(symbol)
                 except Exception:
                     dex_name = await self.client.get_asset_dex(symbol)
-            positions = await self.client.get_positions(symbol=symbol, dex=dex_name or None)
+            # Perps 的 dex 是空字符串；勿把空串转成 None，否则 HL info API 对 dex=null 返回 422，误判无仓
+            positions = await self.client.get_positions(symbol=symbol, dex=dex_name or "")
             if not positions:
                 return False
             pos = positions[0]
