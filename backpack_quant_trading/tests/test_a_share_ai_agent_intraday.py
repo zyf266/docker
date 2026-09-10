@@ -112,3 +112,143 @@ def test_hard_rules_allow_sell_when_t0_open():
     )
     assert d["action"] == "sell"
     assert d["valid"] is True
+
+
+def test_quality_gate_blocks_shrink_buy():
+    from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
+
+    d = apply_quality_buy_gates(
+        {
+            "action": "buy",
+            "confidence": 0.8,
+            "thesis": "想买",
+            "volume_structure": {"state": "shrink", "trap_risk": "none"},
+        }
+    )
+    assert d["action"] == "hold"
+    assert d["quality_gate"] == "shrink"
+    assert d["valid"] is False
+
+
+def test_quality_gate_blocks_bull_trap_buy():
+    from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
+
+    d = apply_quality_buy_gates(
+        {
+            "action": "buy",
+            "confidence": 0.9,
+            "thesis": "突破",
+            "volume_structure": {"state": "neutral", "trap_risk": "bull_trap"},
+        }
+    )
+    assert d["action"] == "hold"
+    assert d["quality_gate"] == "bull_trap"
+
+
+def test_quality_gate_blocks_low_confidence_buy():
+    from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
+
+    d = apply_quality_buy_gates(
+        {
+            "action": "buy",
+            "confidence": 0.4,
+            "thesis": "勉强",
+            "volume_structure": {"state": "expand", "trap_risk": "none"},
+        }
+    )
+    assert d["action"] == "hold"
+    assert d["quality_gate"] == "low_confidence"
+
+
+def test_quality_gate_allows_expand_buy():
+    from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
+
+    d = apply_quality_buy_gates(
+        {
+            "action": "buy",
+            "confidence": 0.7,
+            "thesis": "放量突破",
+            "volume_structure": {"state": "expand", "trap_risk": "none"},
+        }
+    )
+    assert d["action"] == "buy"
+
+
+def test_t0_pnl_exit_take_profit():
+    from datetime import datetime
+
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
+
+    d = apply_t0_pnl_exits(
+        {"action": "hold", "thesis": "再等等"},
+        interval="30",
+        open_buy={"id": 1, "price": 10.0},
+        last_price=10.09,  # +0.9%
+        now=datetime(2026, 9, 10, 11, 0, 0),
+    )
+    assert d["action"] == "sell"
+    assert d["t0_exit_override"] == "t0_tp"
+
+
+def test_t0_pnl_exit_stop_loss():
+    from datetime import datetime
+
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
+
+    d = apply_t0_pnl_exits(
+        {"action": "hold", "thesis": "扛住"},
+        interval="30",
+        open_buy={"id": 1, "price": 10.0},
+        last_price=9.95,  # -0.5%
+        now=datetime(2026, 9, 10, 11, 0, 0),
+    )
+    assert d["action"] == "sell"
+    assert d["t0_exit_override"] == "t0_sl"
+
+
+def test_t0_pnl_exit_afternoon_flat():
+    from datetime import datetime
+
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
+
+    d = apply_t0_pnl_exits(
+        {"action": "hold", "thesis": "拖到尾盘"},
+        interval="30",
+        open_buy={"id": 1, "price": 10.0},
+        last_price=10.01,  # +0.1% < 0.15%
+        now=datetime(2026, 9, 10, 14, 35, 0),
+    )
+    assert d["action"] == "sell"
+    assert d["t0_exit_override"] == "t0_time"
+
+
+def test_t0_pnl_exit_no_open_keeps_buy():
+    from datetime import datetime
+
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
+
+    d = apply_t0_pnl_exits(
+        {"action": "buy", "thesis": "开仓"},
+        interval="30",
+        open_buy=None,
+        last_price=10.0,
+        now=datetime(2026, 9, 10, 14, 40, 0),
+    )
+    assert d["action"] == "buy"
+    assert not d.get("t0_exit_override")
+
+
+def test_t0_pnl_exit_ignores_non_30():
+    from datetime import datetime
+
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
+
+    d = apply_t0_pnl_exits(
+        {"action": "hold", "thesis": "波段"},
+        interval="60",
+        open_buy={"id": 1, "price": 10.0},
+        last_price=10.2,
+        now=datetime(2026, 9, 10, 14, 40, 0),
+    )
+    assert d["action"] == "hold"
+    assert not d.get("t0_exit_override")

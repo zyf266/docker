@@ -16,9 +16,80 @@ logger = logging.getLogger(__name__)
 
 T0_INTERVAL = "30"
 
+# 程序化出场（仅 30m 有未平日内仓时）：止损 ≥ 止盈 ≥ 午后近乎持平
+T0_TAKE_PROFIT_PCT = 0.008  # +0.8%
+T0_STOP_LOSS_PCT = 0.0045  # -0.45%
+T0_AFTERNOON_FLAT_PCT = 0.0015  # 浮盈不足 0.15%
+T0_AFTERNOON_HOUR = 14
+T0_AFTERNOON_MINUTE = 30
+
 
 def is_t0_interval(interval: str) -> bool:
     return str(interval or "") == T0_INTERVAL
+
+
+def apply_t0_pnl_exits(
+    decision: Dict[str, Any],
+    *,
+    interval: str,
+    open_buy: Optional[Dict[str, Any]],
+    last_price: Optional[float],
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """有未平日内仓时，按浮盈/浮亏/午后时间强制 sell（覆盖 LLM hold）。"""
+    d = dict(decision or {})
+    if not is_t0_interval(interval):
+        return d
+    if not open_buy:
+        return d
+    try:
+        entry = float(open_buy.get("price") or 0)
+        last = float(last_price or 0)
+    except (TypeError, ValueError):
+        return d
+    if entry <= 0 or last <= 0:
+        return d
+
+    pnl_pct = (last / entry) - 1.0
+    override = None
+    note = ""
+    if pnl_pct <= -T0_STOP_LOSS_PCT:
+        override = "t0_sl"
+        note = f"T0止损：浮亏 {pnl_pct * 100:.2f}% ≤ -{T0_STOP_LOSS_PCT * 100:.2f}%"
+    elif pnl_pct >= T0_TAKE_PROFIT_PCT:
+        override = "t0_tp"
+        note = f"T0止盈：浮盈 {pnl_pct * 100:.2f}% ≥ +{T0_TAKE_PROFIT_PCT * 100:.2f}%"
+    else:
+        ts = now or datetime.now()
+        if (ts.hour > T0_AFTERNOON_HOUR) or (
+            ts.hour == T0_AFTERNOON_HOUR and ts.minute >= T0_AFTERNOON_MINUTE
+        ):
+            if pnl_pct < T0_AFTERNOON_FLAT_PCT:
+                override = "t0_time"
+                note = (
+                    f"T0午后时间止损：≥14:30 且浮盈 {pnl_pct * 100:.2f}% "
+                    f"< {T0_AFTERNOON_FLAT_PCT * 100:.2f}%，避免拖到尾盘强平"
+                )
+
+    if not override:
+        return d
+
+    d["action"] = "sell"
+    d["valid"] = True
+    d["t0_exit_override"] = override
+    d["t0_exit_pnl_pct"] = round(pnl_pct * 100.0, 4)
+    d["invalid_reason"] = None
+    risks = list(d.get("risk_notes") or [])
+    if override not in risks:
+        risks.append(override)
+    d["risk_notes"] = risks
+    thesis = str(d.get("thesis") or "").strip()
+    prefix = f"【{note}】"
+    if not thesis.startswith("【"):
+        d["thesis"] = (prefix + (" " + thesis if thesis else "")).strip()
+    elif note not in thesis:
+        d["thesis"] = prefix + " " + thesis
+    return d
 
 
 def _row_to_dict(row: Any) -> Dict[str, Any]:
@@ -254,6 +325,10 @@ def persist_decision_trades(
 
     if final == "sell":
         pair_id = (open_buy or {}).get("id")
+        ov = str(d.get("t0_exit_override") or "").strip()
+        sell_reason = "scan_sell"
+        if ov and ov not in thesis:
+            thesis = (f"【{ov}】 " + thesis).strip()
         return record_signal(
             code=code,
             name=name,
@@ -265,7 +340,7 @@ def persist_decision_trades(
             price=price,
             confidence=conf_f,
             thesis=thesis,
-            reason="scan_sell",
+            reason=sell_reason,
             pair_id=int(pair_id) if pair_id else None,
             source="scan",
             decision=d,

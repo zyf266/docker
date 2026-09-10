@@ -1,6 +1,11 @@
 {
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      {
+        "command": "python .cursor/hooks/session_inject_dev_memory.py"
+      }
+    ],
     "beforeShellExecution": [
       {
         "command": "python .cursor/hooks/block_prod_hotfix.py",

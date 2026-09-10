@@ -62,6 +62,12 @@ def main() -> None:
         # must be readable English (no mojibake markers)
         assert "\ufffd" not in msg
 
+    # sessionStart inject: empty/fail-open OK; with data may return additional_context
+    r = run_hook("session_inject_dev_memory.py", {})
+    assert isinstance(r, dict)
+    if r.get("additional_context"):
+        assert isinstance(r["additional_context"], str)
+
     print("harness_hooks_ok")
 
 

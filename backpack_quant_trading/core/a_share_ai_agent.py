@@ -1087,6 +1087,54 @@ def apply_volume_structure(decision: Dict[str, Any], computed: Dict[str, Any]) -
     return d
 
 
+BUY_CONFIDENCE_FLOOR = 0.55
+
+
+def apply_quality_buy_gates(decision: Dict[str, Any]) -> Dict[str, Any]:
+    """买点质量闸门：缩量/诱多/低置信度的 buy 改 hold（不改变已有 sell）。"""
+    d = dict(decision or {})
+    action = normalize_action(d.get("action"))
+    d["action"] = action
+    if action != "buy":
+        return d
+
+    vs = d.get("volume_structure") if isinstance(d.get("volume_structure"), dict) else {}
+    state = str(vs.get("state") or "").lower()
+    trap = str(vs.get("trap_risk") or "").lower()
+
+    if state == "shrink":
+        d["action"] = "hold"
+        d["valid"] = False
+        d["quality_gate"] = "shrink"
+        d["invalid_reason"] = "量能缩量，禁止买入（quality_gate）"
+        ensure_decision_thesis(d)
+        return d
+    if trap == "bull_trap":
+        d["action"] = "hold"
+        d["valid"] = False
+        d["quality_gate"] = "bull_trap"
+        d["invalid_reason"] = "价涨量缩诱多风险，禁止买入（quality_gate）"
+        ensure_decision_thesis(d)
+        return d
+
+    conf_raw = d.get("confidence")
+    try:
+        conf = float(conf_raw) if conf_raw is not None else None
+    except (TypeError, ValueError):
+        conf = None
+    if conf is not None and conf < BUY_CONFIDENCE_FLOOR:
+        d["action"] = "hold"
+        d["valid"] = False
+        d["quality_gate"] = "low_confidence"
+        d["invalid_reason"] = (
+            f"置信度 {conf:.2f} 低于门槛 {BUY_CONFIDENCE_FLOOR:.2f}，禁止买入（quality_gate）"
+        )
+        ensure_decision_thesis(d)
+        return d
+
+    return d
+
+
 def format_volume_cn(vol: Dict[str, Any]) -> str:
     if not isinstance(vol, dict):
         return "—"
@@ -1327,6 +1375,22 @@ def decide_once(
     structured = apply_hard_rules(structured, limit_status=limit_status, position=pos)
     structured = apply_market_vs_stock(structured, market)
     structured = apply_volume_structure(structured, vol_hint)
+    structured = apply_quality_buy_gates(structured)
+    try:
+        from backpack_quant_trading.core.a_share_ai_agent_t0 import (
+            apply_t0_pnl_exits,
+            last_bar_price as _t0_last_px,
+        )
+
+        structured = apply_t0_pnl_exits(
+            structured,
+            interval=interval,
+            open_buy=open_buy,
+            last_price=_t0_last_px(bars),
+            now=datetime.now(),
+        )
+    except Exception as exc:
+        logger.debug("apply_t0_pnl_exits skip: %s", exc)
     structured = scrub_false_missing_fundamentals(structured, fund)
     fund_snap = {
         "pe": fund.get("pe"),

@@ -1,0 +1,15 @@
+---
+description: Cursor 本地开发记忆：任务开始检索，重要结论写入向量库
+alwaysApply: true
+---
+
+# Dev Memory（Cursor 侧）
+
+跨对话上下文靠本地 Chroma，不靠单次窗口。
+
+1. **编码任务开始前**：调用 MCP `dev-memory` 的 `memory_search`（或 CLI），再动手。
+2. **用户要求记住 / 难查 bug 已修 / 架构结论 / 未完成任务**：`memory_upsert`（kind 用 decision|bugfix|convention|task）。
+3. **禁止**把密钥、私钥、`.env`、access_token 写入记忆。
+4. 硬护栏仍以 Rules 为准（如禁止生产热更）；记忆只是软检索补充。
+
+Skill：`.cursor/skills/dev-memory/SKILL.md`

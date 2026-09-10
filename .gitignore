@@ -15,3 +15,5 @@ backpack_quant_trading/data/instance_rsa/private.pem
 backpack-quant.tgz
 # Cursor Harness 会话状态（本地）
 .cursor/harness-state.json
+# Cursor 开发记忆向量库（本地 Chroma，勿提交）
+.cursor/dev-memory/

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "dev-memory": {
+      "command": "python",
+      "args": [".cursor/memory_lib/mcp_server.py"],
+      "env": {
+        "CURSOR_MEMORY_EMBEDDING": "hash"
+      }
+    }
+  }
+}
