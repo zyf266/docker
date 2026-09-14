@@ -30,6 +30,71 @@ def is_t0_interval(interval: str) -> bool:
     return str(interval or "") in T0_INTERVALS
 
 
+def bar_bucket(interval: str, when: datetime) -> str:
+    """与扫描调度一致的 K 线桶键。"""
+    if str(interval) == "D":
+        return when.strftime("%Y-%m-%d")
+    try:
+        mins = int(interval)
+    except (TypeError, ValueError):
+        mins = 60
+    if mins <= 0:
+        mins = 60
+    m = (when.minute // mins) * mins
+    return when.strftime(f"%Y-%m-%d {when.hour:02d}:{m:02d}")
+
+
+def _parse_as_of(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    s = str(value).strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(s[:19], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def apply_t0_min_hold(
+    decision: Dict[str, Any],
+    *,
+    interval: str,
+    open_buy: Optional[Dict[str, Any]],
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """同一根 K 线内刚买入，禁止 LLM/扫描立刻卖出（程序化止损仍可在 pnl_exits 覆盖）。"""
+    from backpack_quant_trading.core.a_share_ai_agent import normalize_action
+
+    d = dict(decision or {})
+    if not is_t0_interval(interval):
+        return d
+    if not open_buy:
+        return d
+    if d.get("t0_exit_override"):
+        return d
+    action = normalize_action(d.get("action"))
+    if action != "sell":
+        return d
+    ts = now or datetime.now()
+    buy_ts = _parse_as_of(open_buy.get("as_of")) or _parse_as_of(open_buy.get("created_at"))
+    if buy_ts is None:
+        return d
+    if bar_bucket(interval, buy_ts) != bar_bucket(interval, ts):
+        return d
+    d["action"] = "hold"
+    d["valid"] = False
+    d["t0_ignored"] = True
+    d["t0_min_hold"] = True
+    d["t0_raw_action"] = d.get("t0_raw_action") or "sell"
+    d["invalid_reason"] = "T0：同一根K线内刚买入，至少持有到下一根收盘再评估卖出"
+    return d
+
+
 def apply_t0_pnl_exits(
     decision: Dict[str, Any],
     *,
@@ -58,20 +123,30 @@ def apply_t0_pnl_exits(
     if pnl_pct <= -T0_STOP_LOSS_PCT:
         override = "t0_sl"
         note = f"T0止损：浮亏 {pnl_pct * 100:.2f}% ≤ -{T0_STOP_LOSS_PCT * 100:.2f}%"
-    elif pnl_pct >= T0_TAKE_PROFIT_PCT:
-        override = "t0_tp"
-        note = f"T0止盈：浮盈 {pnl_pct * 100:.2f}% ≥ +{T0_TAKE_PROFIT_PCT * 100:.2f}%"
     else:
-        ts = now or datetime.now()
-        if (ts.hour > T0_AFTERNOON_HOUR) or (
-            ts.hour == T0_AFTERNOON_HOUR and ts.minute >= T0_AFTERNOON_MINUTE
-        ):
-            if pnl_pct < T0_AFTERNOON_FLAT_PCT:
-                override = "t0_time"
-                note = (
-                    f"T0午后时间止损：≥14:30 且浮盈 {pnl_pct * 100:.2f}% "
-                    f"< {T0_AFTERNOON_FLAT_PCT * 100:.2f}%，避免拖到尾盘强平"
-                )
+        # 同一根 K 内刚开仓：不做止盈/午后平（避免秒平）；止损仍生效
+        buy_ts = _parse_as_of((open_buy or {}).get("as_of")) or _parse_as_of(
+            (open_buy or {}).get("created_at")
+        )
+        same_bar = bool(
+            buy_ts and bar_bucket(interval, buy_ts) == bar_bucket(interval, now or datetime.now())
+        )
+        if same_bar:
+            return d
+        if pnl_pct >= T0_TAKE_PROFIT_PCT:
+            override = "t0_tp"
+            note = f"T0止盈：浮盈 {pnl_pct * 100:.2f}% ≥ +{T0_TAKE_PROFIT_PCT * 100:.2f}%"
+        else:
+            ts = now or datetime.now()
+            if (ts.hour > T0_AFTERNOON_HOUR) or (
+                ts.hour == T0_AFTERNOON_HOUR and ts.minute >= T0_AFTERNOON_MINUTE
+            ):
+                if pnl_pct < T0_AFTERNOON_FLAT_PCT:
+                    override = "t0_time"
+                    note = (
+                        f"T0午后时间止损：≥14:30 且浮盈 {pnl_pct * 100:.2f}% "
+                        f"< {T0_AFTERNOON_FLAT_PCT * 100:.2f}%，避免拖到尾盘强平"
+                    )
 
     if not override:
         return d

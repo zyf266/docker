@@ -341,3 +341,77 @@ def test_t0_pnl_exit_ignores_non_t0():
     )
     assert d["action"] == "hold"
     assert not d.get("t0_exit_override")
+
+
+def test_t0_min_hold_blocks_same_bar_sell():
+    from datetime import datetime
+
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_min_hold
+
+    d = apply_t0_min_hold(
+        {"action": "sell", "thesis": "刚买就卖", "t0_raw_action": "sell"},
+        interval="5",
+        open_buy={"id": 1, "price": 10.0, "as_of": "2026-09-14 10:58:08"},
+        now=datetime(2026, 9, 14, 10, 58, 33),
+    )
+    assert d["action"] == "hold"
+    assert d.get("t0_min_hold") is True
+    assert d.get("t0_ignored") is True
+
+
+def test_t0_min_hold_allows_next_bar_sell():
+    from datetime import datetime
+
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_min_hold
+
+    d = apply_t0_min_hold(
+        {"action": "sell", "thesis": "下一根兑现"},
+        interval="5",
+        open_buy={"id": 1, "price": 10.0, "as_of": "2026-09-14 10:58:08"},
+        now=datetime(2026, 9, 14, 11, 4, 50),
+    )
+    assert d["action"] == "sell"
+    assert not d.get("t0_min_hold")
+
+
+def test_claim_scan_bucket_once():
+    from backpack_quant_trading.core.a_share_ai_agent import claim_scan_bucket, release_scan_bucket
+
+    key = "__test_claim__|5"
+    bucket = "2099-01-01 00:00"
+    release_scan_bucket(key, bucket)
+    assert claim_scan_bucket(key, bucket) is True
+    assert claim_scan_bucket(key, bucket) is False
+    release_scan_bucket(key, bucket)
+    assert claim_scan_bucket(key, bucket) is True
+    release_scan_bucket(key, bucket)
+
+
+def test_hold_does_not_push_dingtalk(monkeypatch):
+    from backpack_quant_trading.core import a_share_ai_agent as m
+
+    called = {"n": 0}
+
+    def _fake_push(_result):
+        called["n"] += 1
+        return True, "ok"
+
+    monkeypatch.setattr(m, "can_push_now", lambda *a, **k: True)
+    monkeypatch.setattr(
+        "backpack_quant_trading.core.a_share_ai_agent_dingtalk.push_signal_action_card",
+        _fake_push,
+        raising=False,
+    )
+    # patch import path used inside function
+    import backpack_quant_trading.core.a_share_ai_agent_dingtalk as ding
+
+    monkeypatch.setattr(ding, "push_signal_action_card", _fake_push)
+
+    hold_res = {"decision": {"action": "hold", "thesis": "观望"}}
+    m._maybe_push_scan_result(hold_res, push=True)
+    assert called["n"] == 0
+    assert hold_res.get("dingtalk_skipped") is True
+
+    buy_res = {"decision": {"action": "buy", "thesis": "抄底"}}
+    m._maybe_push_scan_result(buy_res, push=True)
+    assert called["n"] == 1

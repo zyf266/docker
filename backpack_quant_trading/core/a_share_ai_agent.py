@@ -37,6 +37,7 @@ PREFS_PATH = DATA_DIR / "a_share_ai_agent_prefs.json"
 SIGNALS_PATH = DATA_DIR / "a_share_ai_agent_signals.json"
 STYLE_DRAFT_PATH = DATA_DIR / "a_share_ai_agent_style_draft.json"
 STYLE_ADDENDUM_PATH = DATA_DIR / "a_share_ai_agent_style_addendum.txt"
+LAST_FIRE_PATH = DATA_DIR / "a_share_ai_agent_last_fire.json"
 
 INTERVALS_ALLOWED = ("5", "15", "30", "60", "D")
 RSI_OVERBOUGHT = 70.0
@@ -48,6 +49,7 @@ FUND_EMPTY_TTL_SEC = 10 * 60
 _instance_lock = threading.Lock()
 _instance: Optional["AShareAIAdaptiveAgent"] = None
 _user_stopped = False
+_last_fire_file_lock = threading.Lock()
 
 
 def get_agent_instance() -> Optional["AShareAIAdaptiveAgent"]:
@@ -99,6 +101,37 @@ def _load_json(path: Path, default: Any) -> Any:
 def _save_json(path: Path, data: Any) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def claim_scan_bucket(key: str, bucket: str) -> bool:
+    """同一 code|interval 在同一根 K 只扫一次（先占桶再 decide，防并发秒平）。"""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with _last_fire_file_lock:
+        data = _load_json(LAST_FIRE_PATH, {"buckets": {}})
+        buckets = data.get("buckets") if isinstance(data.get("buckets"), dict) else {}
+        if buckets.get(key) == bucket:
+            return False
+        buckets[key] = bucket
+        if len(buckets) > 2000:
+            buckets = dict(list(buckets.items())[-1500:])
+        _save_json(
+            LAST_FIRE_PATH,
+            {
+                "buckets": buckets,
+                "updated_at": _now_bj().strftime("%Y-%m-%d %H:%M:%S"),
+            },
+        )
+        return True
+
+
+def release_scan_bucket(key: str, bucket: str) -> None:
+    """占桶后硬失败时可释放，允许本桶重试。"""
+    with _last_fire_file_lock:
+        data = _load_json(LAST_FIRE_PATH, {"buckets": {}})
+        buckets = data.get("buckets") if isinstance(data.get("buckets"), dict) else {}
+        if buckets.get(key) == bucket:
+            buckets.pop(key, None)
+            _save_json(LAST_FIRE_PATH, {"buckets": buckets})
 
 
 def load_fundamentals_cache() -> Dict[str, Any]:
@@ -1457,6 +1490,17 @@ def decide_once(
         structured, interval=interval, indicators=indicators
     )
     try:
+        from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_min_hold
+
+        structured = apply_t0_min_hold(
+            structured,
+            interval=interval,
+            open_buy=open_buy,
+            now=datetime.now(),
+        )
+    except Exception as exc:
+        logger.debug("apply_t0_min_hold skip: %s", exc)
+    try:
         from backpack_quant_trading.core.a_share_ai_agent_t0 import (
             apply_t0_pnl_exits,
             last_bar_price as _t0_last_px,
@@ -1537,7 +1581,7 @@ def decide_once(
     except Exception as exc:
         logger.warning("persist_decision_trades failed: %s", exc)
 
-    # 每轮扫描（买入/不买入/卖出）都必须推钉钉，且带分析理由
+    # 仅买入/卖出推钉钉；观望(hold)不推
     _maybe_push_scan_result(result, push=push)
     return result
 
@@ -1548,8 +1592,15 @@ def _maybe_push_scan_result(result: Dict[str, Any], *, push: bool) -> None:
     d = result.get("decision")
     if not isinstance(d, dict):
         result["decision"] = ensure_decision_thesis({"action": "hold", "thesis": ""})
+        d = result["decision"]
     else:
         ensure_decision_thesis(d)
+    action = normalize_action(d.get("action"))
+    if action not in ("buy", "sell"):
+        result["dingtalk_ok"] = False
+        result["dingtalk_msg"] = "hold 不推送钉钉"
+        result["dingtalk_skipped"] = True
+        return
     if can_push_now():
         try:
             from backpack_quant_trading.core.a_share_ai_agent_dingtalk import push_signal_action_card
@@ -1991,7 +2042,7 @@ class AShareAIAdaptiveAgent:
 
     @staticmethod
     def _near_bar_close(interval: str, now: datetime) -> bool:
-        """分钟线接近本根收盘的最后 2 分钟（60m 仍用 :55+）。"""
+        """分钟线仅在本根收盘前最后 1 分钟触发（60m 仍用 :55+）。"""
         if interval == "60":
             return now.minute >= 55
         try:
@@ -2001,7 +2052,7 @@ class AShareAIAdaptiveAgent:
         if mins <= 0:
             return True
         rem = now.minute % mins
-        return rem >= mins - 2
+        return rem == mins - 1
 
     def _loop(self) -> None:
         while not self._stop.is_set():
@@ -2086,8 +2137,14 @@ class AShareAIAdaptiveAgent:
                     continue
             elif not self._near_bar_close(interval, now):
                 continue
-            if self._last_fire.get(key) == bucket:
-                continue
+            # 内存 + 文件双重占桶：必须在 decide 之前，避免并发二次扫描秒平
+            with self._lock:
+                if self._last_fire.get(key) == bucket:
+                    continue
+                if not claim_scan_bucket(key, bucket):
+                    self._last_fire[key] = bucket
+                    continue
+                self._last_fire[key] = bucket
             # 过 15:00 不扫推
             if not can_push_now(now) and now.hour >= 15:
                 continue
@@ -2099,15 +2156,25 @@ class AShareAIAdaptiveAgent:
                     position=None,
                     push=True,
                 )
-                self._last_fire[key] = bucket
                 with self._lock:
                     self.recent.insert(0, res)
                     self.recent = self.recent[:40]
                 if not res.get("ok"):
                     self.last_error = str(res.get("error") or "")
+                    # K线不足等可释放占桶，便于本根重试；LLM 失败也释放
+                    err = str(res.get("error") or "")
+                    if "K线不足" in err or "LLM" in err or "模型" in err:
+                        release_scan_bucket(key, bucket)
+                        with self._lock:
+                            if self._last_fire.get(key) == bucket:
+                                self._last_fire.pop(key, None)
             except Exception as e:
                 self.last_error = str(e)
                 logger.warning("decide_once %s: %s", key, e)
+                release_scan_bucket(key, bucket)
+                with self._lock:
+                    if self._last_fire.get(key) == bucket:
+                        self._last_fire.pop(key, None)
 
 
 def restore_agent_from_db_if_needed() -> Optional[AShareAIAdaptiveAgent]:
