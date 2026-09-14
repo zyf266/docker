@@ -263,52 +263,25 @@ def test_dingtalk_card_omits_legacy_sections():
     assert "Stream" not in md
 
 
-def test_t0_pnl_exit_take_profit():
+def test_t0_pnl_exits_disabled_noop():
     from datetime import datetime
 
-    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
-
-    d = apply_t0_pnl_exits(
-        {"action": "hold", "thesis": "再等等"},
-        interval="15",
-        open_buy={"id": 1, "price": 10.0},
-        last_price=10.09,  # +0.9%
-        now=datetime(2026, 9, 10, 11, 0, 0),
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import (
+        T0_PNL_EXITS_ENABLED,
+        apply_t0_pnl_exits,
     )
-    assert d["action"] == "sell"
-    assert d["t0_exit_override"] == "t0_tp"
 
-
-def test_t0_pnl_exit_stop_loss():
-    from datetime import datetime
-
-    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
-
-    d = apply_t0_pnl_exits(
-        {"action": "hold", "thesis": "扛住"},
-        interval="5",
-        open_buy={"id": 1, "price": 10.0},
-        last_price=9.95,  # -0.5%
-        now=datetime(2026, 9, 10, 11, 0, 0),
-    )
-    assert d["action"] == "sell"
-    assert d["t0_exit_override"] == "t0_sl"
-
-
-def test_t0_pnl_exit_afternoon_flat():
-    from datetime import datetime
-
-    from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
-
-    d = apply_t0_pnl_exits(
-        {"action": "hold", "thesis": "拖到尾盘"},
-        interval="30",
-        open_buy={"id": 1, "price": 10.0},
-        last_price=10.01,  # +0.1% < 0.15%
-        now=datetime(2026, 9, 10, 14, 35, 0),
-    )
-    assert d["action"] == "sell"
-    assert d["t0_exit_override"] == "t0_time"
+    assert T0_PNL_EXITS_ENABLED is False
+    for last, label in ((10.09, "tp"), (9.95, "sl"), (10.01, "time")):
+        d = apply_t0_pnl_exits(
+            {"action": "hold", "thesis": "模型观望"},
+            interval="15",
+            open_buy={"id": 1, "price": 10.0, "as_of": "2026-09-10 10:00:00"},
+            last_price=last,
+            now=datetime(2026, 9, 10, 14, 35, 0),
+        )
+        assert d["action"] == "hold", label
+        assert not d.get("t0_exit_override"), label
 
 
 def test_t0_pnl_exit_no_open_keeps_buy():

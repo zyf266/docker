@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 T0_INTERVAL = "15"
 T0_INTERVALS = frozenset({"5", "15", "30"})
 
-# 程序化出场（T0 有未平日内仓时）：止损 ≥ 止盈 ≥ 午后近乎持平
-T0_TAKE_PROFIT_PCT = 0.008  # +0.8%
+# 程序化止盈/止损/午后平仓：已关闭，买卖仅由模型决策（尾盘强平仍保留）
+T0_PNL_EXITS_ENABLED = False
+T0_TAKE_PROFIT_PCT = 0.008  # +0.8%（关闭时不生效）
 T0_STOP_LOSS_PCT = 0.0045  # -0.45%
 T0_AFTERNOON_FLAT_PCT = 0.0015  # 浮盈不足 0.15%
 T0_AFTERNOON_HOUR = 14
@@ -103,8 +104,13 @@ def apply_t0_pnl_exits(
     last_price: Optional[float],
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
-    """有未平日内仓时，按浮盈/浮亏/午后时间强制 sell（覆盖 LLM hold）。"""
+    """有未平日内仓时，按浮盈/浮亏/午后时间强制 sell（覆盖 LLM hold）。
+
+    当前 T0_PNL_EXITS_ENABLED=False：直接原样返回，不做程序化止盈止损。
+    """
     d = dict(decision or {})
+    if not T0_PNL_EXITS_ENABLED:
+        return d
     if not is_t0_interval(interval):
         return d
     if not open_buy:
