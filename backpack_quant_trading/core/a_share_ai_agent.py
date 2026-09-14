@@ -23,6 +23,7 @@ from backpack_quant_trading.core.a_share_monitor import (
     _a_share_symbol_prefix,
     _direct_session,
     _in_a_share_session,
+    calc_rsi,
     drop_forming_bar,
     fetch_index_klines,
     fetch_klines_for_interval,
@@ -37,7 +38,9 @@ SIGNALS_PATH = DATA_DIR / "a_share_ai_agent_signals.json"
 STYLE_DRAFT_PATH = DATA_DIR / "a_share_ai_agent_style_draft.json"
 STYLE_ADDENDUM_PATH = DATA_DIR / "a_share_ai_agent_style_addendum.txt"
 
-INTERVALS_ALLOWED = ("30", "60", "D")
+INTERVALS_ALLOWED = ("5", "15", "30", "60", "D")
+RSI_OVERBOUGHT = 70.0
+RSI_OVERSOLD = 30.0
 FUND_TTL_SEC = 24 * 3600
 FUND_PARTIAL_TTL_SEC = 20 * 60
 FUND_EMPTY_TTL_SEC = 10 * 60
@@ -539,11 +542,13 @@ def normalize_action(raw: Any) -> str:
 def default_position_for_interval(interval: str) -> Dict[str, Any]:
     """
     未显式传入持仓时的默认假设。
-    30 分钟：T0 + 底仓不动——默认有底仓，但只有「今日已买入未平」才可卖。
+    5/15/30 分钟：T0 + 底仓不动——默认有底仓，但只有「今日已买入未平」才可卖。
     60 分钟 / 日线：默认空仓观望，偏波段。
     """
-    iv = str(interval or "30")
-    if iv == "30":
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import is_t0_interval
+
+    iv = str(interval or "15")
+    if is_t0_interval(iv):
         return {
             "holding": True,
             "has_base_position": True,
@@ -552,7 +557,7 @@ def default_position_for_interval(interval: str) -> Dict[str, Any]:
             "intraday_ok": True,
             "intraday_open": False,
             "can_buy": True,
-            "note": "T0：默认有底仓但底仓不动；无日内未平仓时不可卖、可买",
+            "note": "T0 做T：默认有底仓但底仓不动；无日内未平仓时不可卖、可买",
         }
     return {
         "holding": False,
@@ -622,11 +627,11 @@ def ensure_decision_thesis(d: Dict[str, Any], *, fallback: str = "") -> Dict[str
     elif inv:
         d["thesis"] = f"本轮结论为不买入/观望：{inv}"[:400]
     elif action == "buy":
-        d["thesis"] = "本轮建议买入，但模型未返回详细 thesis；请结合量能与技术结构自行复核。"
+        d["thesis"] = "本轮建议买入，但模型未返回详细 thesis；请结合 RSI 超卖/抄底结构自行复核。"
     elif action == "sell":
-        d["thesis"] = "本轮建议卖出，但模型未返回详细 thesis；请结合持仓与风控自行复核。"
+        d["thesis"] = "本轮建议卖出，但模型未返回详细 thesis；请结合 RSI 超买与日内仓风控自行复核。"
     else:
-        base = "本轮建议不买入/观望：未见满足赔率的技术买点，或量能不足以支持进攻。"
+        base = "本轮建议不买入/观望：未见明确 RSI 超卖抄底或兑现条件。"
         d["thesis"] = (f"{base} {risk0}".strip())[:400]
     return d
 
@@ -1090,32 +1095,101 @@ def apply_volume_structure(decision: Dict[str, Any], computed: Dict[str, Any]) -
 BUY_CONFIDENCE_FLOOR = 0.55
 
 
-def apply_quality_buy_gates(decision: Dict[str, Any]) -> Dict[str, Any]:
-    """买点质量闸门：缩量/诱多/低置信度的 buy 改 hold（不改变已有 sell）。"""
+def _last_finite(vals: List[float]) -> Optional[float]:
+    for x in reversed(vals or []):
+        try:
+            fx = float(x)
+        except (TypeError, ValueError):
+            continue
+        if fx == fx:  # not NaN
+            return round(fx, 2)
+    return None
+
+
+def compute_rsi_indicators(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """从 K 线收盘价计算 RSI6/RSI14 与区带。"""
+    closes: List[float] = []
+    for b in bars or []:
+        try:
+            closes.append(float(b.get("close")))
+        except (TypeError, ValueError):
+            continue
+    rsi6 = calc_rsi(closes, 6) if closes else []
+    rsi14 = calc_rsi(closes, 14) if closes else []
+    r6 = _last_finite(rsi6)
+    r14 = _last_finite(rsi14)
+    zone = "neutral"
+    ref = r14 if r14 is not None else r6
+    if ref is not None:
+        if ref <= RSI_OVERSOLD:
+            zone = "oversold"
+        elif ref >= RSI_OVERBOUGHT:
+            zone = "overbought"
+    return {
+        "rsi6": r6,
+        "rsi14": r14,
+        "zone": zone,
+        "oversold_below": RSI_OVERSOLD,
+        "overbought_above": RSI_OVERBOUGHT,
+    }
+
+
+def apply_quality_buy_gates(
+    decision: Dict[str, Any],
+    *,
+    interval: str = "",
+    indicators: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """买点质量闸门。
+
+    - T0（5/15/30）：不做缩量/诱多否决；拦截 RSI 高位追涨与低置信度。
+    - 波段（60/D）：保留缩量/诱多/低置信度闸门。
+    """
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import is_t0_interval
+
     d = dict(decision or {})
     action = normalize_action(d.get("action"))
     d["action"] = action
     if action != "buy":
         return d
 
-    vs = d.get("volume_structure") if isinstance(d.get("volume_structure"), dict) else {}
-    state = str(vs.get("state") or "").lower()
-    trap = str(vs.get("trap_risk") or "").lower()
+    ind = indicators if isinstance(indicators, dict) else {}
+    rsi_ref = ind.get("rsi14")
+    if rsi_ref is None:
+        rsi_ref = ind.get("rsi6")
+    try:
+        rsi_v = float(rsi_ref) if rsi_ref is not None else None
+    except (TypeError, ValueError):
+        rsi_v = None
 
-    if state == "shrink":
-        d["action"] = "hold"
-        d["valid"] = False
-        d["quality_gate"] = "shrink"
-        d["invalid_reason"] = "量能缩量，禁止买入（quality_gate）"
-        ensure_decision_thesis(d)
-        return d
-    if trap == "bull_trap":
-        d["action"] = "hold"
-        d["valid"] = False
-        d["quality_gate"] = "bull_trap"
-        d["invalid_reason"] = "价涨量缩诱多风险，禁止买入（quality_gate）"
-        ensure_decision_thesis(d)
-        return d
+    if is_t0_interval(interval):
+        if rsi_v is not None and rsi_v >= RSI_OVERBOUGHT:
+            d["action"] = "hold"
+            d["valid"] = False
+            d["quality_gate"] = "rsi_overbought"
+            d["invalid_reason"] = (
+                f"RSI {rsi_v:.1f} ≥ {RSI_OVERBOUGHT:.0f}，禁止高位追涨买入（quality_gate）"
+            )
+            ensure_decision_thesis(d)
+            return d
+    else:
+        vs = d.get("volume_structure") if isinstance(d.get("volume_structure"), dict) else {}
+        state = str(vs.get("state") or "").lower()
+        trap = str(vs.get("trap_risk") or "").lower()
+        if state == "shrink":
+            d["action"] = "hold"
+            d["valid"] = False
+            d["quality_gate"] = "shrink"
+            d["invalid_reason"] = "量能缩量，禁止买入（quality_gate）"
+            ensure_decision_thesis(d)
+            return d
+        if trap == "bull_trap":
+            d["action"] = "hold"
+            d["valid"] = False
+            d["quality_gate"] = "bull_trap"
+            d["invalid_reason"] = "价涨量缩诱多风险，禁止买入（quality_gate）"
+            ensure_decision_thesis(d)
+            return d
 
     conf_raw = d.get("confidence")
     try:
@@ -1238,12 +1312,12 @@ def decide_once(
     *,
     code: str,
     name: str = "",
-    interval: str = "30",
+    interval: str = "15",
     position: Optional[Dict[str, Any]] = None,
     push: bool = False,
 ) -> Dict[str, Any]:
     code = str(code or "").strip().zfill(6)
-    interval = str(interval or "30")
+    interval = str(interval or "15")
     if interval not in INTERVALS_ALLOWED:
         raise ValueError(f"不支持的周期: {interval}")
 
@@ -1275,16 +1349,21 @@ def decide_once(
         _maybe_push_scan_result(result, push=push)
         return result
 
-    fund = get_fundamentals(code)
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import is_t0_interval
+
+    fund: Dict[str, Any] = {}
+    if not is_t0_interval(interval):
+        fund = get_fundamentals(code)
     limit_status = _bar_limit_status(bars, code)
     last_ms = int(bars[-1].get("open_time") or 0) if bars else None
     market = build_market_context(code, interval, bars, as_of_ms=last_ms, use_cache=True)
     vol_hint = compute_volume_structure(bars)
+    indicators = compute_rsi_indicators(bars)
     trade_date = _now_bj().strftime("%Y-%m-%d")
     open_buy = None
     if position is not None:
         pos = position
-    elif interval == "30":
+    elif is_t0_interval(interval):
         try:
             from backpack_quant_trading.core.a_share_ai_agent_t0 import build_t0_position, get_open_intraday_buy
 
@@ -1296,38 +1375,36 @@ def decide_once(
     else:
         pos = default_position_for_interval(interval)
 
-    user_payload = {
+    user_payload: Dict[str, Any] = {
         "universe": {"code": code, "name": name or code, "market": "A"},
         "timeframe": interval,
         "as_of": as_of,
         "bars": _summarize_bars(bars),
-        "market": _market_for_llm(market),
-        "volume_hint": vol_hint,
-        "fundamentals": {k: v for k, v in fund.items() if not str(k).startswith("_")},
-        "fundamentals_raw": (fund.get("raw_text") or "")[:2500],
+        "indicators": indicators,
         "position": pos,
         "rag_prefs": _prefs_block(),
         "limit_hint": limit_status,
         "data_source": src,
     }
+    if not is_t0_interval(interval):
+        user_payload["market"] = _market_for_llm(market)
+        user_payload["volume_hint"] = vol_hint
+        user_payload["fundamentals"] = {k: v for k, v in fund.items() if not str(k).startswith("_")}
+        user_payload["fundamentals_raw"] = (fund.get("raw_text") or "")[:2500]
+
     tf_hint = ""
-    if interval == "30":
+    if is_t0_interval(interval):
         tf_hint = (
-            "本轮为 30 分钟 T0：底仓不动。"
+            f"本轮为 {INTERVAL_LABEL.get(interval, interval)} T0 做T：底仓不动。"
+            "主看 RSI 超买超卖与抄底；不要用估值/量能当主因。"
             "无日内未平仓时只允许 buy、卖出将被系统忽略；"
             "有未平日内仓时只允许 sell 平仓，禁止再买。"
             "当天买入必须当天卖出。\n"
         )
     user_prompt = (
         "请根据以下输入给出决策 JSON。"
-        "无论 action 是 buy/sell/hold，都必须填写可复核的 thesis。\n"
-        "决策以技术面（量能→其它技术）为主；基本面仅参考。"
-        "监控标的默认基本面无重大问题：不得用 PE/PB/增速「一般或偏高」否决技术买点；"
-        "仅当有重大利空（新闻/财报暴雷/监管等）才可因基本面否决 buy。\n"
+        "无论 action 是 buy/sell/hold，都必须填写可复核的 thesis（RSI→抄底或兑现→仓位）。\n"
         + tf_hint
-        + "若 market.ok=true，必须根据相对强弱填写 market_vs_stock（lead/lag/sync），禁止写「无大盘数据」。\n"
-        "fundamentals 里已有数值的字段（如 PE/PB）禁止写成缺失。"
-        "volume_structure 必须与 volume_hint 一致，thesis 里用中文解释量能（放量/缩量/价涨量缩），不要堆英文枚举。\n"
         + json.dumps(user_payload, ensure_ascii=False)[:14000]
     )
 
@@ -1373,9 +1450,12 @@ def decide_once(
     except Exception as exc:
         logger.debug("apply_t0_rules skip: %s", exc)
     structured = apply_hard_rules(structured, limit_status=limit_status, position=pos)
-    structured = apply_market_vs_stock(structured, market)
-    structured = apply_volume_structure(structured, vol_hint)
-    structured = apply_quality_buy_gates(structured)
+    if not is_t0_interval(interval):
+        structured = apply_market_vs_stock(structured, market)
+        structured = apply_volume_structure(structured, vol_hint)
+    structured = apply_quality_buy_gates(
+        structured, interval=interval, indicators=indicators
+    )
     try:
         from backpack_quant_trading.core.a_share_ai_agent_t0 import (
             apply_t0_pnl_exits,
@@ -1391,18 +1471,22 @@ def decide_once(
         )
     except Exception as exc:
         logger.debug("apply_t0_pnl_exits skip: %s", exc)
-    structured = scrub_false_missing_fundamentals(structured, fund)
-    fund_snap = {
-        "pe": fund.get("pe"),
-        "pb": fund.get("pb"),
-        "roe": fund.get("roe"),
-        "revenue_growth": fund.get("revenue_growth"),
-        "market_cap_yi": fund.get("market_cap_yi"),
-        "industry": fund.get("industry"),
-        "report_date": fund.get("report_date"),
-        "missing": fund.get("missing") or [],
-        "brief": fundamentals_brief(fund),
-    }
+    if fund:
+        structured = scrub_false_missing_fundamentals(structured, fund)
+    fund_snap = None
+    if fund:
+        fund_snap = {
+            "pe": fund.get("pe"),
+            "pb": fund.get("pb"),
+            "roe": fund.get("roe"),
+            "revenue_growth": fund.get("revenue_growth"),
+            "market_cap_yi": fund.get("market_cap_yi"),
+            "industry": fund.get("industry"),
+            "report_date": fund.get("report_date"),
+            "missing": fund.get("missing") or [],
+            "brief": fundamentals_brief(fund),
+        }
+    pos_note = str((pos or {}).get("note") or "")
     result = {
         "ok": True,
         "code": code,
@@ -1411,6 +1495,8 @@ def decide_once(
         "interval_label": INTERVAL_LABEL.get(interval, interval),
         "as_of": as_of,
         "data_source": src,
+        "indicators": indicators,
+        "position_note": pos_note,
         "fundamentals": fund_snap,
         "market": {
             "ok": bool(market.get("ok")),
@@ -1418,7 +1504,9 @@ def decide_once(
             "alignment_hint": market.get("alignment_hint"),
             "vs_primary": market.get("vs_primary"),
             "note": market.get("note"),
-        },
+        }
+        if not is_t0_interval(interval)
+        else None,
         "decision": structured,
         "model": llm.get("model"),
     }
@@ -1892,12 +1980,28 @@ class AShareAIAdaptiveAgent:
     def _bucket(self, interval: str, now: datetime) -> str:
         if interval == "D":
             return now.strftime("%Y-%m-%d")
-        # 30/60：按整点桶
-        h = now.hour
-        m = 0 if interval == "60" else (0 if now.minute < 30 else 30)
-        if interval == "30":
-            return now.strftime(f"%Y-%m-%d {h:02d}:{m:02d}")
-        return now.strftime(f"%Y-%m-%d {h:02d}:00")
+        try:
+            mins = int(interval)
+        except ValueError:
+            mins = 60
+        if mins <= 0:
+            mins = 60
+        m = (now.minute // mins) * mins
+        return now.strftime(f"%Y-%m-%d {now.hour:02d}:{m:02d}")
+
+    @staticmethod
+    def _near_bar_close(interval: str, now: datetime) -> bool:
+        """分钟线接近本根收盘的最后 2 分钟（60m 仍用 :55+）。"""
+        if interval == "60":
+            return now.minute >= 55
+        try:
+            mins = int(interval)
+        except ValueError:
+            return True
+        if mins <= 0:
+            return True
+        rem = now.minute % mins
+        return rem >= mins - 2
 
     def _loop(self) -> None:
         while not self._stop.is_set():
@@ -1914,7 +2018,7 @@ class AShareAIAdaptiveAgent:
             self._stop.wait(45)
 
     def _maybe_force_close_eod(self, now: datetime) -> None:
-        """14:50 后对仍有未平日内仓的 30m 任务强制卖出（每轮可重入，无仓则跳过）。"""
+        """14:50 后对仍有未平日内仓的 T0 任务强制卖出（每轮可重入，无仓则跳过）。"""
         if now.hour < 14 or (now.hour == 14 and now.minute < 50):
             return
         if now.hour >= 15:
@@ -1926,6 +2030,7 @@ class AShareAIAdaptiveAgent:
             from backpack_quant_trading.core.a_share_ai_agent_t0 import (
                 force_close_open_buy,
                 get_open_intraday_buy,
+                is_t0_interval,
                 last_bar_price,
             )
         except Exception as exc:
@@ -1933,8 +2038,8 @@ class AShareAIAdaptiveAgent:
             return
         as_of = now.strftime("%Y-%m-%d %H:%M:%S")
         for t in tasks:
-            interval = str(t.get("interval") or "30")
-            if interval != "30":
+            interval = str(t.get("interval") or "15")
+            if not is_t0_interval(interval):
                 continue
             code = str(t.get("code") or "").zfill(6)
             name = str(t.get("name") or "")
@@ -1971,7 +2076,7 @@ class AShareAIAdaptiveAgent:
         self.last_scan_at = now.strftime("%Y-%m-%d %H:%M:%S")
         for t in tasks:
             code = str(t.get("code") or "").zfill(6)
-            interval = str(t.get("interval") or "30")
+            interval = str(t.get("interval") or "15")
             name = str(t.get("name") or "")
             key = f"{code}|{interval}"
             bucket = self._bucket(interval, now)
@@ -1979,12 +2084,8 @@ class AShareAIAdaptiveAgent:
             if interval == "D":
                 if now.hour < 14 or (now.hour == 14 and now.minute < 50):
                     continue
-            else:
-                # 30m: :28-:29 / :58-:59；60m: :55-:59
-                if interval == "30" and now.minute not in (28, 29, 58, 59):
-                    continue
-                if interval == "60" and now.minute < 55:
-                    continue
+            elif not self._near_bar_close(interval, now):
+                continue
             if self._last_fire.get(key) == bucket:
                 continue
             # 过 15:00 不扫推

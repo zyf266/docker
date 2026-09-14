@@ -19,6 +19,8 @@ import {
 import './AShareAiAgent.css'
 
 const INTERVALS = [
+  { id: '5', label: '5分钟' },
+  { id: '15', label: '15分钟' },
   { id: '30', label: '30分钟' },
   { id: '60', label: '60分钟' },
   { id: 'D', label: '日线' },
@@ -94,7 +96,7 @@ const AShareAiAgent = () => {
   const [status, setStatus] = useState({ running: false, tasks: [], recent: [] })
   const [code, setCode] = useState('600519')
   const [name, setName] = useState('贵州茅台')
-  const [klineInterval, setKlineInterval] = useState('30')
+  const [klineInterval, setKlineInterval] = useState('15')
   const [loading, setLoading] = useState(false)
   const [prefs, setPrefs] = useState({ confirmed: {}, draft: {} })
   const [feedback, setFeedback] = useState('')
@@ -341,7 +343,7 @@ const AShareAiAgent = () => {
           <p className="asa-eyebrow">A-Share Adaptive Agent</p>
           <h1>A股 AI 自适应策略</h1>
           <p className="asa-sub">
-            技术面为主 · 30分钟日内 T0（底仓不动、买卖配对、尾盘强平）· 买卖信号入库 · 涨跌停硬规则
+            底仓 + 日内做 T · 5/15/30 分钟 · RSI 超买超卖与抄底 · 买卖配对 · 尾盘强平 · 涨跌停硬规则
           </p>
         </div>
         <div className={`asa-pill${status.running ? ' on' : ''}`}>
@@ -483,7 +485,7 @@ const AShareAiAgent = () => {
           rows={3}
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
-          placeholder="例：量能萎缩时不应因 MACD 金叉买入，警惕诱多…"
+          placeholder="例：RSI 超卖时应敢于抄底，不要一味等趋势金叉…"
         />
         <div className="asa-actions">
           <button
@@ -538,7 +540,7 @@ const AShareAiAgent = () => {
         <h2>交易台账看板</h2>
         <p className="asa-hint">
           记录所有买入/卖出信号（含 T0 忽略、尾盘强平）。一笔买入 + 一笔卖出（配对）计为一笔成交，盈亏按卖出价相对买入价。
-          30 分钟：无日内仓时首笔卖出忽略；有仓须先卖再买；14:50 后强制平今日买入。
+          5/15/30 分钟做 T：无日内仓时首笔卖出忽略；有仓须先卖再买；14:50 后强制平今日买入。主看 RSI，强调抄底而非一味追趋势。
           {tradeOpenToday
             ? ` 当前筛选标的今日未平买入 #${tradeOpenToday.id} @ ${tradeOpenToday.price ?? '—'}`
             : ''}
@@ -668,7 +670,10 @@ const AShareAiAgent = () => {
                     <td>
                       {t.name || ''} {t.code}
                     </td>
-                    <td>{t.interval === '30' ? '30m' : t.interval === '60' ? '60m' : t.interval}</td>
+                    <td>
+                      {INTERVALS.find((x) => x.id === t.interval)?.label
+                        || (t.interval === 'D' ? '日线' : `${t.interval}m`)}
+                    </td>
                     <td className={t.side === 'buy' ? 'asa-buy' : 'asa-sell'}>
                       {t.side === 'buy' ? '买入' : '卖出'}
                     </td>

@@ -39,7 +39,7 @@ class StartRequest(BaseModel):
 class DecideRequest(BaseModel):
     code: str
     name: str = ""
-    interval: str = "30"
+    interval: str = "15"
     push: bool = False
 
 
@@ -65,11 +65,20 @@ class BacktestRequest(BaseModel):
 
 @router.get("/meta")
 def meta(user: dict = Depends(require_user)) -> Dict[str, Any]:
+    labels = {
+        "5": "5分钟",
+        "15": "15分钟",
+        "30": "30分钟",
+        "60": "60分钟",
+        "D": "日线",
+    }
     return {
-        "intervals": [{"id": i, "label": {"30": "30分钟", "60": "60分钟", "D": "日线"}[i]} for i in INTERVALS_ALLOWED],
+        "intervals": [{"id": i, "label": labels.get(i, i)} for i in INTERVALS_ALLOWED],
         "webhook_configured": bool(resolve_agent_webhook()),
         "push_cutoff": "15:00",
         "fundamentals_ttl_hours": 24,
+        "t0_intervals": ["5", "15", "30"],
+        "default_interval": "15",
     }
 
 
@@ -286,10 +295,12 @@ def trades_list(
     )
     items = enrich_signals_with_pnl(items)
     open_buy = None
-    if code_n and (not interval or interval == "30"):
+    from backpack_quant_trading.core.a_share_ai_agent_t0 import is_t0_interval
+
+    if code_n and is_t0_interval(str(interval or "")):
         from backpack_quant_trading.core.a_share_ai_agent import _now_bj
 
-        open_buy = get_open_intraday_buy(code_n, interval or "30", _now_bj().strftime("%Y-%m-%d"))
+        open_buy = get_open_intraday_buy(code_n, str(interval), _now_bj().strftime("%Y-%m-%d"))
     pnl = summarize_pnl(code=code_n, interval=str(interval or ""))
     return {"items": items, "open_buy_today": open_buy, "pnl": pnl}
 

@@ -1,6 +1,6 @@
 """A股 AI Agent — 日内 T0 规则与信号台账。
 
-规则（仅 30 分钟周期）：
+规则（5 / 15 / 30 分钟周期）：
 1. 底仓不动：当日尚无「已执行买入」时，卖出信号一律忽略。
 2. 买卖配对：有未平日内仓时禁止再买；必须先卖出后才能再买。
 3. 当日买入当日平：未平仓在尾盘强制卖出。
@@ -14,9 +14,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-T0_INTERVAL = "30"
+# 兼容旧引用：默认展示/回退周期
+T0_INTERVAL = "15"
+T0_INTERVALS = frozenset({"5", "15", "30"})
 
-# 程序化出场（仅 30m 有未平日内仓时）：止损 ≥ 止盈 ≥ 午后近乎持平
+# 程序化出场（T0 有未平日内仓时）：止损 ≥ 止盈 ≥ 午后近乎持平
 T0_TAKE_PROFIT_PCT = 0.008  # +0.8%
 T0_STOP_LOSS_PCT = 0.0045  # -0.45%
 T0_AFTERNOON_FLAT_PCT = 0.0015  # 浮盈不足 0.15%
@@ -25,7 +27,7 @@ T0_AFTERNOON_MINUTE = 30
 
 
 def is_t0_interval(interval: str) -> bool:
-    return str(interval or "") == T0_INTERVAL
+    return str(interval or "") in T0_INTERVALS
 
 
 def apply_t0_pnl_exits(

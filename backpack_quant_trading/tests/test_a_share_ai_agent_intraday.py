@@ -2,17 +2,26 @@
 from __future__ import annotations
 
 from backpack_quant_trading.core.a_share_ai_agent import apply_hard_rules, default_position_for_interval
-from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_rules
+from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_rules, is_t0_interval
 
 
-def test_default_position_30_t0_base_not_sellable():
-    p = default_position_for_interval("30")
-    assert p["holding"] is True
-    assert p["has_base_position"] is True
-    assert p["sellable"] is False
-    assert p["intraday_open"] is False
-    assert p["can_buy"] is True
-    assert p["intraday_ok"] is True
+def test_is_t0_interval_covers_5_15_30():
+    assert is_t0_interval("5")
+    assert is_t0_interval("15")
+    assert is_t0_interval("30")
+    assert not is_t0_interval("60")
+    assert not is_t0_interval("D")
+
+
+def test_default_position_t0_base_not_sellable():
+    for iv in ("5", "15", "30"):
+        p = default_position_for_interval(iv)
+        assert p["holding"] is True
+        assert p["has_base_position"] is True
+        assert p["sellable"] is False
+        assert p["intraday_open"] is False
+        assert p["can_buy"] is True
+        assert p["intraday_ok"] is True
 
 
 def test_default_position_60_empty():
@@ -23,28 +32,29 @@ def test_default_position_60_empty():
 
 
 def test_t0_ignore_first_sell_without_open():
-    d = apply_t0_rules({"action": "sell", "thesis": "想卖底仓"}, interval="30", intraday_open=False)
-    assert d["action"] == "hold"
-    assert d["t0_ignored"] is True
-    assert d["t0_raw_action"] == "sell"
-    assert "底仓" in str(d.get("invalid_reason") or "")
+    for iv in ("5", "15", "30"):
+        d = apply_t0_rules({"action": "sell", "thesis": "想卖底仓"}, interval=iv, intraday_open=False)
+        assert d["action"] == "hold"
+        assert d["t0_ignored"] is True
+        assert d["t0_raw_action"] == "sell"
+        assert "底仓" in str(d.get("invalid_reason") or "")
 
 
 def test_t0_block_second_buy_while_open():
-    d = apply_t0_rules({"action": "buy", "thesis": "再买"}, interval="30", intraday_open=True)
+    d = apply_t0_rules({"action": "buy", "thesis": "再买"}, interval="15", intraday_open=True)
     assert d["action"] == "hold"
     assert d["t0_ignored"] is True
     assert d["t0_raw_action"] == "buy"
 
 
 def test_t0_allow_sell_when_open():
-    d = apply_t0_rules({"action": "sell", "thesis": "平仓"}, interval="30", intraday_open=True)
+    d = apply_t0_rules({"action": "sell", "thesis": "平仓"}, interval="5", intraday_open=True)
     assert d["action"] == "sell"
     assert not d.get("t0_ignored")
 
 
 def test_t0_allow_buy_when_flat():
-    d = apply_t0_rules({"action": "buy", "thesis": "开仓"}, interval="30", intraday_open=False)
+    d = apply_t0_rules({"action": "buy", "thesis": "开仓"}, interval="15", intraday_open=False)
     assert d["action"] == "buy"
 
 
@@ -114,7 +124,7 @@ def test_hard_rules_allow_sell_when_t0_open():
     assert d["valid"] is True
 
 
-def test_quality_gate_blocks_shrink_buy():
+def test_quality_gate_swing_blocks_shrink_buy():
     from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
 
     d = apply_quality_buy_gates(
@@ -123,14 +133,47 @@ def test_quality_gate_blocks_shrink_buy():
             "confidence": 0.8,
             "thesis": "想买",
             "volume_structure": {"state": "shrink", "trap_risk": "none"},
-        }
+        },
+        interval="60",
     )
     assert d["action"] == "hold"
     assert d["quality_gate"] == "shrink"
     assert d["valid"] is False
 
 
-def test_quality_gate_blocks_bull_trap_buy():
+def test_quality_gate_t0_allows_shrink_buy():
+    from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
+
+    d = apply_quality_buy_gates(
+        {
+            "action": "buy",
+            "confidence": 0.8,
+            "thesis": "超卖抄底",
+            "volume_structure": {"state": "shrink", "trap_risk": "none"},
+        },
+        interval="15",
+        indicators={"rsi14": 28.0, "zone": "oversold"},
+    )
+    assert d["action"] == "buy"
+
+
+def test_quality_gate_t0_blocks_rsi_overbought_chase():
+    from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
+
+    d = apply_quality_buy_gates(
+        {
+            "action": "buy",
+            "confidence": 0.9,
+            "thesis": "追涨",
+        },
+        interval="5",
+        indicators={"rsi14": 75.0, "zone": "overbought"},
+    )
+    assert d["action"] == "hold"
+    assert d["quality_gate"] == "rsi_overbought"
+
+
+def test_quality_gate_blocks_bull_trap_buy_swing():
     from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
 
     d = apply_quality_buy_gates(
@@ -139,7 +182,8 @@ def test_quality_gate_blocks_bull_trap_buy():
             "confidence": 0.9,
             "thesis": "突破",
             "volume_structure": {"state": "neutral", "trap_risk": "bull_trap"},
-        }
+        },
+        interval="D",
     )
     assert d["action"] == "hold"
     assert d["quality_gate"] == "bull_trap"
@@ -154,13 +198,15 @@ def test_quality_gate_blocks_low_confidence_buy():
             "confidence": 0.4,
             "thesis": "勉强",
             "volume_structure": {"state": "expand", "trap_risk": "none"},
-        }
+        },
+        interval="15",
+        indicators={"rsi14": 35.0},
     )
     assert d["action"] == "hold"
     assert d["quality_gate"] == "low_confidence"
 
 
-def test_quality_gate_allows_expand_buy():
+def test_quality_gate_allows_expand_buy_swing():
     from backpack_quant_trading.core.a_share_ai_agent import apply_quality_buy_gates
 
     d = apply_quality_buy_gates(
@@ -169,9 +215,52 @@ def test_quality_gate_allows_expand_buy():
             "confidence": 0.7,
             "thesis": "放量突破",
             "volume_structure": {"state": "expand", "trap_risk": "none"},
-        }
+        },
+        interval="60",
     )
     assert d["action"] == "buy"
+
+
+def test_compute_rsi_indicators_zone():
+    from backpack_quant_trading.core.a_share_ai_agent import compute_rsi_indicators
+
+    # 先跌后稳，制造偏低 RSI
+    closes = [100 - i * 0.8 for i in range(40)] + [68 + i * 0.1 for i in range(10)]
+    bars = [{"close": c} for c in closes]
+    ind = compute_rsi_indicators(bars)
+    assert ind["rsi14"] is not None
+    assert ind["zone"] in ("oversold", "neutral", "overbought")
+
+
+def test_dingtalk_card_omits_legacy_sections():
+    from backpack_quant_trading.core.a_share_ai_agent_dingtalk import build_action_card_markdown
+
+    title, md = build_action_card_markdown(
+        {
+            "code": "600519",
+            "name": "贵州茅台",
+            "interval": "15",
+            "interval_label": "15分钟",
+            "as_of": "2026-09-14 10:00:00",
+            "indicators": {"rsi14": 28.5, "rsi6": 25.0, "zone": "oversold"},
+            "position_note": "T0：无日内仓可买",
+            "decision": {
+                "action": "buy",
+                "confidence": 0.72,
+                "thesis": "RSI14 超卖拐头，适合抄底做T",
+                "rsi_note": "超卖区",
+                "risk_notes": ["注意反抽失败"],
+            },
+        }
+    )
+    assert "做T" in title or "买入" in title
+    assert "RSI" in md
+    assert "分析理由" in md
+    assert "基本面" not in md
+    assert "量能" not in md
+    assert "大盘vs" not in md
+    assert "硬规则" not in md
+    assert "Stream" not in md
 
 
 def test_t0_pnl_exit_take_profit():
@@ -181,7 +270,7 @@ def test_t0_pnl_exit_take_profit():
 
     d = apply_t0_pnl_exits(
         {"action": "hold", "thesis": "再等等"},
-        interval="30",
+        interval="15",
         open_buy={"id": 1, "price": 10.0},
         last_price=10.09,  # +0.9%
         now=datetime(2026, 9, 10, 11, 0, 0),
@@ -197,7 +286,7 @@ def test_t0_pnl_exit_stop_loss():
 
     d = apply_t0_pnl_exits(
         {"action": "hold", "thesis": "扛住"},
-        interval="30",
+        interval="5",
         open_buy={"id": 1, "price": 10.0},
         last_price=9.95,  # -0.5%
         now=datetime(2026, 9, 10, 11, 0, 0),
@@ -229,7 +318,7 @@ def test_t0_pnl_exit_no_open_keeps_buy():
 
     d = apply_t0_pnl_exits(
         {"action": "buy", "thesis": "开仓"},
-        interval="30",
+        interval="15",
         open_buy=None,
         last_price=10.0,
         now=datetime(2026, 9, 10, 14, 40, 0),
@@ -238,7 +327,7 @@ def test_t0_pnl_exit_no_open_keeps_buy():
     assert not d.get("t0_exit_override")
 
 
-def test_t0_pnl_exit_ignores_non_30():
+def test_t0_pnl_exit_ignores_non_t0():
     from datetime import datetime
 
     from backpack_quant_trading.core.a_share_ai_agent_t0 import apply_t0_pnl_exits
