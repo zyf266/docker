@@ -133,6 +133,8 @@ class AdaptiveLongStrategy:
         self._tp_oid_lower: Optional[str] = None
         self._tp_oid_same: Optional[str] = None
         self._sync_count: int = 0   # 持仓同步计数器
+        # 仅本策略 _open_long 成功后为 True；手动仓/交易所残留仓不得挂 SL/TP
+        self._strategy_owned: bool = False
         # 本账户上已通过开多信号建仓的 K 线级别（用于：同周期重复 buy 忽略，不同周期可加仓）
         self.position_entry_tfs: set = set()
 
@@ -187,15 +189,27 @@ class AdaptiveLongStrategy:
         logger.info(f"   等待 TradingView Webhook 信号...")
         logger.info("=" * 60)
 
-        # 重启/恢复后：若交易所已有多仓但内存未挂上 SL/TP，补同步并补挂条件单
+        # 重启后：只探测是否已有仓并打日志，绝不补挂 SL/TP。
+        # 否则会给手动开的仓挂上止盈止损，并在旧条件单仍在时重复挂单。
         if self.symbol_filter:
             try:
-                synced = await self._sync_long_position_from_exchange(self.symbol_filter)
-                if synced and self.position == "LONG" and (not self._sl_oid or not self._tp_oid):
-                    logger.info("🩹 检测到已有多仓且缺 SL/TP，补挂交易所条件单")
-                    await self._place_exchange_tpsl()
+                dex = ""
+                if self.exchange == "hyperliquid":
+                    try:
+                        dex, _, _, _ = await self.client.find_asset_dex(self.symbol_filter)
+                    except Exception:
+                        dex = await self.client.get_asset_dex(self.symbol_filter)
+                positions = await self.client.get_positions(
+                    symbol=self.symbol_filter, dex=dex or ""
+                )
+                has = any(abs(float(p.get("size", 0) or 0)) > 0 for p in (positions or []))
+                if has:
+                    logger.info(
+                        f"ℹ️ 启动时交易所已有 {self.symbol_filter} 多仓："
+                        f"不接管、不补挂 SL/TP（仅本策略开仓后才挂）"
+                    )
             except Exception as e:
-                logger.warning(f"启动时同步/补挂 SL/TP 失败: {e}")
+                logger.warning(f"启动时探测持仓失败（可忽略）: {e}")
 
         risk_task = asyncio.create_task(self._risk_loop())
         def _on_done(t: asyncio.Task):
@@ -315,7 +329,8 @@ class AdaptiveLongStrategy:
             if not self.tp_price and self.entry_price:
                 self.tp_price = self.entry_price * (1 + self.take_profit_pct)
             logger.info(
-                f"🔄 已从交易所同步多仓: {symbol} 数量={size:.6f} 入场≈{self.entry_price:.4f}（内存状态已对齐）"
+                f"🔄 已从交易所同步多仓: {symbol} 数量={size:.6f} 入场≈{self.entry_price:.4f}"
+                f"（仅对齐内存，不视为策略开仓、不补挂 SL/TP）"
             )
             return True
         except Exception as e:
@@ -340,14 +355,44 @@ class AdaptiveLongStrategy:
         self.pending_ai_sr_levels = None
         self._closing             = False
         self._opening             = False
+        self._strategy_owned      = False
         self.position_entry_tfs   = set()
 
     # ─── 交易所 SL/TP 挂单（仅 Hyperliquid）─────────────
+    async def _cancel_symbol_reduce_orders(self):
+        """挂新 SL/TP 前清掉该币种已有 reduce-only / 条件单，避免重复挂单。"""
+        if not self.symbol:
+            return
+        try:
+            if self.exchange == "binance":
+                await self.client.cancel_all_orders(symbol=self.symbol)
+                logger.info(f"🧹 挂 SL/TP 前已清理 {self.symbol} 全部挂单")
+                return
+            if self.exchange == "hyperliquid" and hasattr(self.client, "get_open_orders"):
+                orders = await self.client.get_open_orders(symbol=self.symbol)
+                for o in orders or []:
+                    if not o.get("reduce_only"):
+                        continue
+                    oid = o.get("oid")
+                    if oid is None:
+                        continue
+                    try:
+                        await self.client.cancel_order_async(self.symbol, order_id=str(oid))
+                        logger.info(f"🧹 已撤销旧 reduce-only 单 oid={oid}")
+                    except Exception as e:
+                        logger.warning(f"撤销旧单失败 oid={oid}: {e}")
+        except Exception as e:
+            logger.warning(f"挂单前清理旧条件单失败（继续挂新单）: {e}")
+
     async def _place_exchange_tpsl(self):
-        """开仓后在 Hyperliquid 直接挂止损/止盈触发单"""
+        """开仓后在交易所挂止损/止盈触发单（仅策略自开仓）。"""
+        if not getattr(self, "_strategy_owned", False):
+            logger.info("⏭️ 非策略开仓持仓，跳过挂 SL/TP")
+            return
         if not self.position_size or not self.sl_price or not self.tp_price:
             logger.warning("⚠️ 挂 TP/SL 单条件不足（size/sl/tp 未就绪）")
             return
+        await self._cancel_symbol_reduce_orders()
         try:
             if self.exchange == "hyperliquid":
                 sl_res = await self.client.place_tpsl_order(
@@ -504,6 +549,8 @@ class AdaptiveLongStrategy:
         for name, px in targets:
             logger.info(f"   止盈目标: {name} {px:.4f}")
         logger.info("=" * 60)
+
+        await self._cancel_symbol_reduce_orders()
 
         sl_res = await self.client.place_tpsl_order(
             symbol=self.symbol,
@@ -672,6 +719,7 @@ class AdaptiveLongStrategy:
             self.break_even_activated = False
             self._closing      = False
             self._sync_count   = 0
+            self._strategy_owned = True
 
             plan = self.pending_ai_sr_levels
             placed_ai_sr = False
@@ -857,6 +905,9 @@ class AdaptiveLongStrategy:
             await asyncio.sleep(5)
 
     async def _check_risk(self):
+        # 手动仓/仅同步进内存的仓：不做保本/锁利重挂，也不软件止盈止损
+        if not getattr(self, "_strategy_owned", False):
+            return
         ep = self.entry_price
         if not ep:
             return

@@ -89,6 +89,18 @@ const Trading = () => {
 
   const isDualFreq = form.strategy === 'dual_freq_trend'
 
+  // 数值框：删空保持空白，不要 Number('') → 0
+  const setNumField = (name) => (e) => {
+    const raw = e.target.value
+    setForm((prev) => ({ ...prev, [name]: raw === '' ? '' : raw }))
+  }
+  const numVal = (v) => (v === '' || v === null || v === undefined ? '' : v)
+  const toNum = (v, fallback = 0) => {
+    if (v === '' || v === null || v === undefined) return fallback
+    const n = Number(v)
+    return Number.isFinite(n) ? n : fallback
+  }
+
   const setField = (name, value) => {
     setForm((prev) => ({ ...prev, [name]: value }))
     if (name === 'strategy' && value === 'dual_freq_trend') {
@@ -199,25 +211,25 @@ const Trading = () => {
           exchange: form.platform,
           coin,
           timeframe_filter: isLong ? (form.adaptive_long_timeframe || undefined) : (form.adaptive_short_timeframe || undefined),
-          margin_amount: isLong ? form.adaptive_long_margin : form.adaptive_short_margin,
-          leverage: isLong ? form.adaptive_long_leverage : form.adaptive_short_leverage,
+          margin_amount: isLong ? toNum(form.adaptive_long_margin, 20) : toNum(form.adaptive_short_margin, 20),
+          leverage: isLong ? toNum(form.adaptive_long_leverage, 50) : toNum(form.adaptive_short_leverage, 50),
           margin_type: isBinance ? (form.binance_margin_type || 'ISOLATED') : undefined,
-          stop_loss_pct: form.hype_stop_loss / 100,
-          take_profit_pct: form.hype_take_profit / 100,
-          break_even_pct: form.hype_break_even / 100,
+          stop_loss_pct: toNum(form.hype_stop_loss, 3) / 100,
+          take_profit_pct: toNum(form.hype_take_profit, 6) / 100,
+          break_even_pct: toNum(form.hype_break_even, 3) / 100,
           lock_profit_pct: isLong
-            ? (form.adaptive_long_lock_profit > 0 ? form.adaptive_long_lock_profit / 100 : 0)
-            : (form.adaptive_short_lock_profit > 0 ? form.adaptive_short_lock_profit / 100 : 0),
+            ? (toNum(form.adaptive_long_lock_profit, 0) > 0 ? toNum(form.adaptive_long_lock_profit, 0) / 100 : 0)
+            : (toNum(form.adaptive_short_lock_profit, 0) > 0 ? toNum(form.adaptive_short_lock_profit, 0) / 100 : 0),
           lock_profit_sl_pct: isLong
-            ? (form.adaptive_long_lock_profit > 0 ? form.adaptive_long_lock_profit_sl / 100 : 0)
-            : (form.adaptive_short_lock_profit > 0 ? form.adaptive_short_lock_profit_sl / 100 : 0),
+            ? (toNum(form.adaptive_long_lock_profit, 0) > 0 ? toNum(form.adaptive_long_lock_profit_sl, 0) / 100 : 0)
+            : (toNum(form.adaptive_short_lock_profit, 0) > 0 ? toNum(form.adaptive_short_lock_profit_sl, 0) / 100 : 0),
           private_key: (!isBinance) ? (form.private_key || undefined) : undefined,
           api_key: isBinance ? (form.api_key || undefined) : undefined,
           api_secret: isBinance ? (form.api_secret || undefined) : undefined,
-          account_index: isLighter ? (isLong ? form.adaptive_long_account_index : form.adaptive_short_account_index) : undefined,
+          account_index: isLighter ? (isLong ? toNum(form.adaptive_long_account_index, 0) : toNum(form.adaptive_short_account_index, 0)) : undefined,
           api_key_index: isLighter ? (isLong ? form.adaptive_long_api_key_index : form.adaptive_short_api_key_index) : undefined,
           ...(isLong ? {
-            min_ai_score_for_trade: Math.max(0, Number(form.adaptive_long_min_ai_score) || 0),
+            min_ai_score_for_trade: Math.max(0, toNum(form.adaptive_long_min_ai_score, 0)),
             allow_repeat_open: !!form.adaptive_long_allow_repeat_open,
             use_ai_sr_tpsl: !!form.adaptive_long_use_ai_sr_tpsl,
           } : {}),
@@ -247,11 +259,11 @@ const Trading = () => {
         try {
           const symbol = form.symbol.split('/')[0].split('_')[0] || 'ETH'
           const res = await startHypeStrategy(symbol, form.private_key, {
-            stop_loss_pct: form.hype_stop_loss / 100,
-            take_profit_pct: form.hype_take_profit / 100,
-            break_even_pct: form.hype_break_even / 100,
-            margin_amount: form.size,
-            leverage: form.leverage,
+            stop_loss_pct: toNum(form.hype_stop_loss, 3) / 100,
+            take_profit_pct: toNum(form.hype_take_profit, 6) / 100,
+            break_even_pct: toNum(form.hype_break_even, 3) / 100,
+            margin_amount: toNum(form.size, 20),
+            leverage: toNum(form.leverage, 50),
           })
           alert(res.message || 'HYPE做空策略启动成功')
           setShowModal(false); await refresh(); await refreshHypeStatus()
@@ -276,20 +288,20 @@ const Trading = () => {
           private_key:       (!isBinance) ? (form.private_key || undefined) : undefined,
           api_key:           isBinance ? form.api_key : undefined,
           api_secret:        isBinance ? form.api_secret : undefined,
-          account_index:     isLighter ? form.adaptive_long_account_index : undefined,
+          account_index:     isLighter ? toNum(form.adaptive_long_account_index, 0) : undefined,
           api_key_index:     isLighter ? form.adaptive_long_api_key_index : undefined,
           timeframe_filter:  form.adaptive_long_timeframe || undefined,
-          lock_profit_pct:   form.adaptive_long_lock_profit > 0 ? form.adaptive_long_lock_profit / 100 : undefined,
-          lock_profit_sl_pct: form.adaptive_long_lock_profit > 0 ? form.adaptive_long_lock_profit_sl / 100 : undefined,
-          margin_amount:     form.adaptive_long_margin,
-          leverage:          form.adaptive_long_leverage,
+          lock_profit_pct:   toNum(form.adaptive_long_lock_profit, 0) > 0 ? toNum(form.adaptive_long_lock_profit, 0) / 100 : undefined,
+          lock_profit_sl_pct: toNum(form.adaptive_long_lock_profit, 0) > 0 ? toNum(form.adaptive_long_lock_profit_sl, 0) / 100 : undefined,
+          margin_amount:     toNum(form.adaptive_long_margin, 20),
+          leverage:          toNum(form.adaptive_long_leverage, 50),
           margin_type:       isBinance ? (form.binance_margin_type || 'ISOLATED') : undefined,
-          min_ai_score_for_trade: Math.max(0, Number(form.adaptive_long_min_ai_score) || 0),
+          min_ai_score_for_trade: Math.max(0, toNum(form.adaptive_long_min_ai_score, 0)),
           allow_repeat_open: !!form.adaptive_long_allow_repeat_open,
           use_ai_sr_tpsl: !!form.adaptive_long_use_ai_sr_tpsl,
-          stop_loss_pct:     form.hype_stop_loss / 100,
-          take_profit_pct:   form.hype_take_profit / 100,
-          break_even_pct:    form.hype_break_even / 100,
+          stop_loss_pct:     toNum(form.hype_stop_loss, 3) / 100,
+          take_profit_pct:   toNum(form.hype_take_profit, 6) / 100,
+          break_even_pct:    toNum(form.hype_break_even, 3) / 100,
         })
         alert(res.message || `${coin}做多策略启动成功`)
         setShowModal(false); await refresh()
@@ -313,17 +325,17 @@ const Trading = () => {
           private_key:       (!isBinance) ? (form.private_key || undefined) : undefined,
           api_key:           isBinance ? form.api_key : undefined,
           api_secret:        isBinance ? form.api_secret : undefined,
-          account_index:     isLighter ? form.adaptive_short_account_index : undefined,
+          account_index:     isLighter ? toNum(form.adaptive_short_account_index, 0) : undefined,
           api_key_index:     isLighter ? form.adaptive_short_api_key_index : undefined,
           timeframe_filter:  form.adaptive_short_timeframe || undefined,
-          lock_profit_pct:   form.adaptive_short_lock_profit > 0 ? form.adaptive_short_lock_profit / 100 : undefined,
-          lock_profit_sl_pct: form.adaptive_short_lock_profit > 0 ? form.adaptive_short_lock_profit_sl / 100 : undefined,
-          margin_amount:     form.adaptive_short_margin,
-          leverage:          form.adaptive_short_leverage,
+          lock_profit_pct:   toNum(form.adaptive_short_lock_profit, 0) > 0 ? toNum(form.adaptive_short_lock_profit, 0) / 100 : undefined,
+          lock_profit_sl_pct: toNum(form.adaptive_short_lock_profit, 0) > 0 ? toNum(form.adaptive_short_lock_profit_sl, 0) / 100 : undefined,
+          margin_amount:     toNum(form.adaptive_short_margin, 20),
+          leverage:          toNum(form.adaptive_short_leverage, 50),
           margin_type:       isBinance ? (form.binance_margin_type || 'ISOLATED') : undefined,
-          stop_loss_pct:     form.hype_stop_loss / 100,
-          take_profit_pct:   form.hype_take_profit / 100,
-          break_even_pct:    form.hype_break_even / 100,
+          stop_loss_pct:     toNum(form.hype_stop_loss, 3) / 100,
+          take_profit_pct:   toNum(form.hype_take_profit, 6) / 100,
+          break_even_pct:    toNum(form.hype_break_even, 3) / 100,
         })
         alert(res.message || `${coin}做空策略启动成功`)
         setShowModal(false); await refresh()
@@ -387,11 +399,11 @@ const Trading = () => {
           private_key:      isCEX ? undefined : form.private_key,
           api_key:          isCEX ? form.api_key : undefined,
           api_secret:       isCEX ? form.api_secret : undefined,
-          margin_amount:    form.size,
-          leverage:         form.leverage,
-          stop_loss_pct:    form.hype_stop_loss / 100,
-          take_profit_pct:  form.hype_take_profit / 100,
-          price_filter_min: form.eth_price_filter,
+          margin_amount:    toNum(form.size, 20),
+          leverage:         toNum(form.leverage, 50),
+          stop_loss_pct:    toNum(form.hype_stop_loss, 3) / 100,
+          take_profit_pct:  toNum(form.hype_take_profit, 6) / 100,
+          price_filter_min: toNum(form.eth_price_filter, 2000),
         })
         alert(res.message || 'ETH趋势做空策略启动成功')
         setShowModal(false); await refresh()
@@ -832,30 +844,30 @@ const Trading = () => {
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>保证金 (USD)</label>
-                      <input type="number" min={1} step={1} value={form.size} onChange={(e) => setField('size', Number(e.target.value))} />
+                      <input type="number" min={1} step={1} value={numVal(form.size)} onChange={setNumField('size')} />
                       <small style={{color:'#888',fontSize:'12px'}}>开仓保证金金额</small>
                     </div>
                     <div className="form-item">
                       <label>杠杆倍数</label>
-                      <input type="number" min={1} max={100} step={1} value={form.leverage} onChange={(e) => setField('leverage', Number(e.target.value))} />
+                      <input type="number" min={1} max={100} step={1} value={numVal(form.leverage)} onChange={setNumField('leverage')} />
                       <small style={{color:'#888',fontSize:'12px'}}>实际仓位 = 保证金 × 杠杆</small>
                     </div>
                   </div>
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>止损比例 (%)</label>
-                      <input type="number" min={0.1} max={50} step={0.1} value={form.hype_stop_loss} onChange={(e) => setField('hype_stop_loss', Number(e.target.value))} />
+                      <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_stop_loss)} onChange={setNumField('hype_stop_loss')} />
                       <small style={{color:'#888',fontSize:'12px'}}>价格涨超入场价此比例时止损（做空）</small>
                     </div>
                     <div className="form-item">
                       <label>止盈比例 (%)</label>
-                      <input type="number" min={0.1} max={50} step={0.1} value={form.hype_take_profit} onChange={(e) => setField('hype_take_profit', Number(e.target.value))} />
+                      <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_take_profit)} onChange={setNumField('hype_take_profit')} />
                       <small style={{color:'#888',fontSize:'12px'}}>价格跌超入场价此比例时止盈（做空）</small>
                     </div>
                   </div>
                   <div className="form-item" style={{marginTop: '12px'}}>
                     <label>保本触发比例 (%)</label>
-                    <input type="number" min={0.1} max={50} step={0.1} value={form.hype_break_even} onChange={(e) => setField('hype_break_even', Number(e.target.value))} />
+                    <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_break_even)} onChange={setNumField('hype_break_even')} />
                     <small style={{color:'#888',fontSize:'12px'}}>盈利达到此比例时，止损移动到入场价（保本）</small>
                   </div>
                 </div>
@@ -898,8 +910,8 @@ const Trading = () => {
                       min={0}
                       max={100}
                       step={1}
-                      value={form.adaptive_long_min_ai_score}
-                      onChange={(e) => setField('adaptive_long_min_ai_score', Number(e.target.value))}
+                      value={numVal(form.adaptive_long_min_ai_score)}
+                      onChange={setNumField('adaptive_long_min_ai_score')}
                       placeholder="0"
                     />
                     <small style={{color:'#888',fontSize:'12px'}}>
@@ -953,7 +965,7 @@ const Trading = () => {
                       </div>
                       <div className="form-item" style={{marginTop:'8px'}}>
                         <label>Account Index  <small style={{color:'#aaa'}}>可选，默认自动识别</small></label>
-                        <input type="number" min={0} step={1} value={form.adaptive_long_account_index} onChange={(e) => setField('adaptive_long_account_index', Number(e.target.value))} />
+                        <input type="number" min={0} step={1} value={numVal(form.adaptive_long_account_index)} onChange={setNumField('adaptive_long_account_index')} />
                         <small style={{color:'#888',fontSize:'12px'}}>若余额为 0，请到 Lighter 平台确认你的 Account Index 填入</small>
                       </div>
                     </>
@@ -967,12 +979,12 @@ const Trading = () => {
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>保证金 (USD)</label>
-                      <input type="number" min={0.1} step={0.1} value={form.adaptive_long_margin} onChange={(e) => setField('adaptive_long_margin', Number(e.target.value))} />
+                      <input type="number" min={0.1} step={0.1} value={numVal(form.adaptive_long_margin)} onChange={setNumField('adaptive_long_margin')} />
                       <small style={{color:'#888',fontSize:'12px'}}>开仓保证金金额（仅本策略启动请求使用）</small>
                     </div>
                     <div className="form-item">
                       <label>杠杆倍数</label>
-                      <input type="number" min={1} max={100} step={1} value={form.adaptive_long_leverage} onChange={(e) => setField('adaptive_long_leverage', Number(e.target.value))} />
+                      <input type="number" min={1} max={100} step={1} value={numVal(form.adaptive_long_leverage)} onChange={setNumField('adaptive_long_leverage')} />
                       <small style={{color:'#888',fontSize:'12px'}}>实际仓位 = 保证金 × 杠杆</small>
                     </div>
                   </div>
@@ -989,29 +1001,29 @@ const Trading = () => {
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>止损比例 (%)</label>
-                      <input type="number" min={0.1} max={50} step={0.1} value={form.hype_stop_loss} onChange={(e) => setField('hype_stop_loss', Number(e.target.value))} />
+                      <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_stop_loss)} onChange={setNumField('hype_stop_loss')} />
                       <small style={{color:'#888',fontSize:'12px'}}>价格跌破入场价此比例时止损（做多）</small>
                     </div>
                     <div className="form-item">
                       <label>止盈比例 (%)</label>
-                      <input type="number" min={0.1} max={50} step={0.1} value={form.hype_take_profit} onChange={(e) => setField('hype_take_profit', Number(e.target.value))} />
+                      <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_take_profit)} onChange={setNumField('hype_take_profit')} />
                       <small style={{color:'#888',fontSize:'12px'}}>价格涨超入场价此比例时止盈（做多）</small>
                     </div>
                   </div>
                   <div className="form-item" style={{marginTop: '12px'}}>
                     <label>保本触发比例 (%)</label>
-                    <input type="number" min={0.1} max={50} step={0.1} value={form.hype_break_even} onChange={(e) => setField('hype_break_even', Number(e.target.value))} />
+                    <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_break_even)} onChange={setNumField('hype_break_even')} />
                     <small style={{color:'#888',fontSize:'12px'}}>盈利达到此比例时，止损上移至入场价（保本）</small>
                   </div>
                   <div className="form-item" style={{marginTop: '12px'}}>
                     <label>锁利触发比例 (%)  <small style={{color:'#aaa'}}>可选</small></label>
-                    <input type="number" min={0} max={50} step={0.1} value={form.adaptive_long_lock_profit} onChange={(e) => setField('adaptive_long_lock_profit', Number(e.target.value))} placeholder="0=不启用" />
+                    <input type="number" min={0} max={50} step={0.1} value={numVal(form.adaptive_long_lock_profit)} onChange={setNumField('adaptive_long_lock_profit')} placeholder="0=不启用" />
                     <small style={{color:'#888',fontSize:'12px'}}>盈利达到此比例后，将 SL 上移锁住部分利润；0 表示不启用</small>
                   </div>
                   {form.adaptive_long_lock_profit > 0 && (
                     <div className="form-item" style={{marginTop: '12px'}}>
                       <label>锁利 SL 比例 (%)</label>
-                      <input type="number" min={0} max={50} step={0.1} value={form.adaptive_long_lock_profit_sl} onChange={(e) => setField('adaptive_long_lock_profit_sl', Number(e.target.value))} />
+                      <input type="number" min={0} max={50} step={0.1} value={numVal(form.adaptive_long_lock_profit_sl)} onChange={setNumField('adaptive_long_lock_profit_sl')} />
                       <small style={{color:'#888',fontSize:'12px'}}>锁利触发后，SL = 入场价 × (1 + 此比例)，如 1.5 即入场价的 +1.5%</small>
                     </div>
                   )}
@@ -1043,8 +1055,8 @@ const Trading = () => {
                           type="number"
                           min={1}
                           step={1}
-                          value={form.auto_close_account_index}
-                          onChange={(e) => setField('auto_close_account_index', Number(e.target.value))}
+                          value={numVal(form.auto_close_account_index)}
+                          onChange={setNumField('auto_close_account_index')}
                           placeholder="如 723233"
                         />
                         <small style={{color:'#888',fontSize:'12px'}}>
@@ -1057,8 +1069,8 @@ const Trading = () => {
                           type="number"
                           min={0}
                           step={1}
-                          value={form.auto_close_api_key_index}
-                          onChange={(e) => setField('auto_close_api_key_index', Number(e.target.value))}
+                          value={numVal(form.auto_close_api_key_index)}
+                          onChange={setNumField('auto_close_api_key_index')}
                         />
                         <small style={{color:'#888',fontSize:'12px'}}>默认 2；与 Lighter API Key 的索引一致</small>
                       </div>
@@ -1117,7 +1129,7 @@ const Trading = () => {
                       </div>
                       <div className="form-item" style={{marginTop:'8px'}}>
                         <label>Account Index  <small style={{color:'#aaa'}}>可选，默认自动识别</small></label>
-                        <input type="number" min={0} step={1} value={form.adaptive_short_account_index} onChange={(e) => setField('adaptive_short_account_index', Number(e.target.value))} />
+                        <input type="number" min={0} step={1} value={numVal(form.adaptive_short_account_index)} onChange={setNumField('adaptive_short_account_index')} />
                         <small style={{color:'#888',fontSize:'12px'}}>若余额为 0，请到 Lighter 平台确认你的 Account Index 填入</small>
                       </div>
                     </>
@@ -1131,12 +1143,12 @@ const Trading = () => {
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>保证金 (USD)</label>
-                      <input type="number" min={0.1} step={0.1} value={form.adaptive_short_margin} onChange={(e) => setField('adaptive_short_margin', Number(e.target.value))} />
+                      <input type="number" min={0.1} step={0.1} value={numVal(form.adaptive_short_margin)} onChange={setNumField('adaptive_short_margin')} />
                       <small style={{color:'#888',fontSize:'12px'}}>开仓保证金金额（仅本策略启动请求使用）</small>
                     </div>
                     <div className="form-item">
                       <label>杠杆倍数</label>
-                      <input type="number" min={1} max={100} step={1} value={form.adaptive_short_leverage} onChange={(e) => setField('adaptive_short_leverage', Number(e.target.value))} />
+                      <input type="number" min={1} max={100} step={1} value={numVal(form.adaptive_short_leverage)} onChange={setNumField('adaptive_short_leverage')} />
                       <small style={{color:'#888',fontSize:'12px'}}>实际仓位 = 保证金 × 杠杆</small>
                     </div>
                   </div>
@@ -1153,29 +1165,29 @@ const Trading = () => {
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>止损比例 (%)</label>
-                      <input type="number" min={0.1} max={50} step={0.1} value={form.hype_stop_loss} onChange={(e) => setField('hype_stop_loss', Number(e.target.value))} />
+                      <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_stop_loss)} onChange={setNumField('hype_stop_loss')} />
                       <small style={{color:'#888',fontSize:'12px'}}>价格涨超入场价此比例时止损（做空）</small>
                     </div>
                     <div className="form-item">
                       <label>止盈比例 (%)</label>
-                      <input type="number" min={0.1} max={50} step={0.1} value={form.hype_take_profit} onChange={(e) => setField('hype_take_profit', Number(e.target.value))} />
+                      <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_take_profit)} onChange={setNumField('hype_take_profit')} />
                       <small style={{color:'#888',fontSize:'12px'}}>价格跌超入场价此比例时止盈（做空）</small>
                     </div>
                   </div>
                   <div className="form-item" style={{marginTop: '12px'}}>
                     <label>保本触发比例 (%)</label>
-                    <input type="number" min={0.1} max={50} step={0.1} value={form.hype_break_even} onChange={(e) => setField('hype_break_even', Number(e.target.value))} />
+                    <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_break_even)} onChange={setNumField('hype_break_even')} />
                     <small style={{color:'#888',fontSize:'12px'}}>盈利达到此比例时，止损下移至入场价（保本）</small>
                   </div>
                   <div className="form-item" style={{marginTop: '12px'}}>
                     <label>锁利触发比例 (%)  <small style={{color:'#aaa'}}>可选</small></label>
-                    <input type="number" min={0} max={50} step={0.1} value={form.adaptive_short_lock_profit} onChange={(e) => setField('adaptive_short_lock_profit', Number(e.target.value))} placeholder="0=不启用" />
+                    <input type="number" min={0} max={50} step={0.1} value={numVal(form.adaptive_short_lock_profit)} onChange={setNumField('adaptive_short_lock_profit')} placeholder="0=不启用" />
                     <small style={{color:'#888',fontSize:'12px'}}>盈利达到此比例后，将 SL 下移锁住部分利润；0 表示不启用</small>
                   </div>
                   {form.adaptive_short_lock_profit > 0 && (
                     <div className="form-item" style={{marginTop: '12px'}}>
                       <label>锁利 SL 比例 (%)</label>
-                      <input type="number" min={0} max={50} step={0.1} value={form.adaptive_short_lock_profit_sl} onChange={(e) => setField('adaptive_short_lock_profit_sl', Number(e.target.value))} />
+                      <input type="number" min={0} max={50} step={0.1} value={numVal(form.adaptive_short_lock_profit_sl)} onChange={setNumField('adaptive_short_lock_profit_sl')} />
                       <small style={{color:'#888',fontSize:'12px'}}>锁利触发后，SL = 入场价 × (1 - 此比例)，如 1.5 即入场价的 -1.5%</small>
                     </div>
                   )}
@@ -1193,30 +1205,30 @@ const Trading = () => {
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>保证金 (USD)</label>
-                      <input type="number" min={1} step={1} value={form.size} onChange={(e) => setField('size', Number(e.target.value))} />
+                      <input type="number" min={1} step={1} value={numVal(form.size)} onChange={setNumField('size')} />
                       <small style={{color:'#888',fontSize:'12px'}}>开仓保证金金额</small>
                     </div>
                     <div className="form-item">
                       <label>杠杆倍数</label>
-                      <input type="number" min={1} max={100} step={1} value={form.leverage} onChange={(e) => setField('leverage', Number(e.target.value))} />
+                      <input type="number" min={1} max={100} step={1} value={numVal(form.leverage)} onChange={setNumField('leverage')} />
                       <small style={{color:'#888',fontSize:'12px'}}>实际仓位 = 保证金 × 杠杆</small>
                     </div>
                   </div>
                   <div className="modal-row-2" style={{marginTop: '12px'}}>
                     <div className="form-item">
                       <label>止损比例 (%)</label>
-                      <input type="number" min={0.1} max={50} step={0.1} value={form.hype_stop_loss} onChange={(e) => setField('hype_stop_loss', Number(e.target.value))} />
+                      <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_stop_loss)} onChange={setNumField('hype_stop_loss')} />
                       <small style={{color:'#888',fontSize:'12px'}}>价格涨超此比例时止损（做空）</small>
                     </div>
                     <div className="form-item">
                       <label>止盈比例 (%)</label>
-                      <input type="number" min={0.1} max={50} step={0.1} value={form.hype_take_profit} onChange={(e) => setField('hype_take_profit', Number(e.target.value))} />
+                      <input type="number" min={0.1} max={50} step={0.1} value={numVal(form.hype_take_profit)} onChange={setNumField('hype_take_profit')} />
                       <small style={{color:'#888',fontSize:'12px'}}>价格跌超此比例时止盈（做空）</small>
                     </div>
                   </div>
                   <div className="form-item" style={{marginTop: '12px'}}>
                     <label>价格下限 (USD)</label>
-                    <input type="number" min={0} step={100} value={form.eth_price_filter} onChange={(e) => setField('eth_price_filter', Number(e.target.value))} />
+                    <input type="number" min={0} step={100} value={numVal(form.eth_price_filter)} onChange={setNumField('eth_price_filter')} />
                     <small style={{color:'#888',fontSize:'12px'}}>ETH 价格低于此值时不开空单（0 = 不限制）</small>
                   </div>
                 </div>
@@ -1243,8 +1255,8 @@ const Trading = () => {
                     <input
                       type="number"
                       min={1}
-                      value={form.size}
-                      onChange={(e) => setField('size', Number(e.target.value))}
+                      value={numVal(form.size)}
+                      onChange={setNumField('size')}
                     />
                   </div>
                 </div>
@@ -1255,8 +1267,8 @@ const Trading = () => {
                       type="number"
                       min={1}
                       max={100}
-                      value={form.leverage}
-                      onChange={(e) => setField('leverage', Number(e.target.value))}
+                      value={numVal(form.leverage)}
+                      onChange={setNumField('leverage')}
                     />
                   </div>
                   <div className="form-item">
@@ -1266,8 +1278,8 @@ const Trading = () => {
                       min={0}
                       max={isDualFreq ? 300 : 100}
                       step={0.1}
-                      value={form.take_profit}
-                      onChange={(e) => setField('take_profit', Number(e.target.value))}
+                      value={numVal(form.take_profit)}
+                      onChange={setNumField('take_profit')}
                     />
                   </div>
                 </div>
@@ -1278,8 +1290,8 @@ const Trading = () => {
                     min={0}
                     max={isDualFreq ? 200 : 100}
                     step={0.1}
-                    value={form.stop_loss}
-                    onChange={(e) => setField('stop_loss', Number(e.target.value))}
+                    value={numVal(form.stop_loss)}
+                    onChange={setNumField('stop_loss')}
                   />
                 </div>
                 </div>
