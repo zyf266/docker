@@ -21,7 +21,27 @@ const splitLines = (s) =>
     .map((x) => x.trim())
     .filter(Boolean)
 
-const DEFAULT_SOURCE_KEYS = ['jin10', 'ths', 'eastmoney', 'sina', 'futu', 'yahoo']
+const DEFAULT_SOURCE_KEYS = [
+  'jin10',
+  'ths',
+  'eastmoney',
+  'sina',
+  'futu',
+  'yahoo',
+  'wublock',
+  'bwenews',
+]
+
+const FALLBACK_LABELS = {
+  jin10: '金十数据',
+  ths: '同花顺',
+  eastmoney: '东方财富',
+  sina: '新浪财经',
+  futu: '富途牛牛',
+  yahoo: '雅虎财经',
+  wublock: '吴说区块链',
+  bwenews: '方程式新闻',
+}
 
 const StockNewsAlert = () => {
   const [watchText, setWatchText] = useState('')
@@ -146,7 +166,7 @@ const StockNewsAlert = () => {
     })
   }
 
-  const labelFor = (key) => sourceLabels[key] || key
+  const labelFor = (key) => sourceLabels[key] || FALLBACK_LABELS[key] || key
 
   const formatPollStats = (stats) => {
     if (!stats || typeof stats !== 'object') return ''
@@ -308,7 +328,7 @@ const StockNewsAlert = () => {
   return (
     <AisPageShell
       title="自选重大快讯（多源聚合）"
-      subtitle="聚合金十、同花顺、东方财富、新浪、富途等公开快讯接口；命中自选关键词且符合「重要快讯」规则时钉钉推送。数据仅供个人研究备忘，接口可能变更，不构成投资建议。钉钉须使用 POST 完整 Webhook。"
+      subtitle="聚合金十、同花顺、东方财富、新浪、富途、雅虎，以及吴说区块链、方程式新闻等公开快讯；命中自选/源专属关键词后钉钉推送。吴说与方程式默认监控 AAVE/UNI/LINK/HYPE/NEAR/ZEC/TAO/ONDO/ENA。数据仅供个人研究备忘，不构成投资建议。"
     >
       <section className="qpt-panel">
         <h2>数据源（勾选参与监控与预览）</h2>
@@ -326,7 +346,8 @@ const StockNewsAlert = () => {
           ))}
         </div>
         <div className="qpt-hint">
-          至少保留一个数据源；保存配置后「探测全部」与预览会按勾选生效。雅虎财经会按下方「自选关键词」逐条搜索（如 NVDA），不再使用通用 finance 流。
+          至少保留一个数据源；保存配置后「探测全部」与预览会按勾选生效。雅虎财经会按下方「自选关键词」逐条搜索。
+          <strong>吴说区块链 / 方程式新闻</strong> 使用源专属关键词（默认 AAVE、UNI、LINK、HYPE、NEAR、ZEC、TAO、ONDO、ENA），命中即推，不受「仅重要快讯 / 影响面」限制。
         </div>
       </section>
 

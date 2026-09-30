@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -19,6 +20,7 @@ from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 import requests
 
 from backpack_quant_trading.core.stock_news_feeds import (
+    DEFAULT_CRYPTO_SOURCE_KEYWORDS,
     DEFAULT_JIN10_APP_ID,
     SOURCE_LABELS,
     _normalize_yahoo_search_queries,
@@ -90,6 +92,7 @@ def _data_dir() -> Path:
 
 
 def _default_config() -> Dict[str, Any]:
+    crypto_kws = list(DEFAULT_CRYPTO_SOURCE_KEYWORDS)
     return {
         "running": False,
         "watch_names": [],
@@ -100,8 +103,57 @@ def _default_config() -> Dict[str, Any]:
         "only_extra_impact_keywords": False,
         "extra_impact_keywords": [],
         "jin10_x_app_id": DEFAULT_JIN10_APP_ID,
-        "news_sources": ["jin10", "ths", "eastmoney", "sina", "futu", "yahoo"],
+        "news_sources": [
+            "jin10",
+            "ths",
+            "eastmoney",
+            "sina",
+            "futu",
+            "yahoo",
+            "wublock",
+            "bwenews",
+        ],
+        # 按源覆盖自选关键词；有配置时该源只用这些词，不受全局 watch_names / 影响面限制
+        "source_keywords": {
+            "wublock": crypto_kws,
+            "bwenews": crypto_kws,
+        },
     }
+
+
+def normalize_source_keywords(cfg: Dict[str, Any]) -> Dict[str, List[str]]:
+    """source_keywords: { feed_key: [kw, ...] }"""
+    raw = cfg.get("source_keywords")
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, List[str]] = {}
+    for k, v in raw.items():
+        key = str(k).strip().lower()
+        if not key:
+            continue
+        if isinstance(v, str):
+            parts = [x.strip() for x in re.split(r"[\n,，;；]+", v) if x.strip()]
+        elif isinstance(v, list):
+            parts = [str(x).strip() for x in v if str(x).strip()]
+        else:
+            continue
+        if parts:
+            out[key] = parts
+    return out
+
+
+def watch_names_for_item(cfg: Dict[str, Any], item: Dict[str, Any], global_watch: List[str]) -> List[str]:
+    """有源专属关键词时仅用专属词；否则用全局自选。"""
+    sk = normalize_source_keywords(cfg)
+    fk = str(item.get("feed_key") or "").strip().lower()
+    if fk and fk in sk:
+        return sk[fk]
+    return list(global_watch or [])
+
+
+def source_uses_dedicated_keywords(cfg: Dict[str, Any], feed_key: str) -> bool:
+    sk = normalize_source_keywords(cfg)
+    return bool(sk.get(str(feed_key or "").strip().lower()))
 
 
 def resolve_dingtalk_webhook(cfg: Dict[str, Any]) -> str:
@@ -136,6 +188,15 @@ def load_config() -> Dict[str, Any]:
         if env_wh:
             base["dingtalk_webhook"] = env_wh
     base["jin10_x_app_id"] = resolve_jin10_app_id(base)
+    # 缺省补齐吴说/方程式币种关键词；不强制改写用户已勾选的 news_sources
+    sk = base.get("source_keywords")
+    if not isinstance(sk, dict):
+        sk = {}
+    crypto_kws = list(DEFAULT_CRYPTO_SOURCE_KEYWORDS)
+    for fk in ("wublock", "bwenews"):
+        if fk not in sk or not sk.get(fk):
+            sk[fk] = list(crypto_kws)
+    base["source_keywords"] = sk
     return base
 
 
@@ -661,12 +722,15 @@ class StockNewsAlertService:
             if item_already_pushed(pushed, item):
                 stats["skipped_pushed"] += 1
                 continue
-            if not matches_watch(item["text"], watch, item):
+            if not matches_watch(item["text"], watch_names_for_item(cfg, item, watch), item):
                 stats["skipped_no_watch"] += 1
                 continue
             imp = int(item.get("important") or 0)
             strict_impact = bool(cfg.get("only_extra_impact_keywords"))
-            if not is_material_news(
+            # 吴说/方程式等源：命中专属币种关键词即可推送，不强制「评级/目标价」影响面
+            if source_uses_dedicated_keywords(cfg, str(item.get("feed_key") or "")):
+                pass
+            elif not is_material_news(
                 item["text"],
                 imp,
                 kws,
@@ -834,11 +898,22 @@ def build_monitor_pool(cfg: Dict[str, Any], *, running: bool) -> List[Dict[str, 
     watch = [str(x).strip() for x in watch if str(x).strip()]
     if is_watch_all_us_stocks(watch):
         watch = ["全美股"]
-    if not watch:
-        return []
 
     enabled = normalize_enabled_sources(cfg)
     source_labels = [SOURCE_LABELS.get(k, k) for k in enabled]
+    sk_map = normalize_source_keywords(cfg)
+    # 源专属关键词也进监控池（标注所属源）
+    crypto_pool_rows: List[Tuple[str, List[str]]] = []
+    for fk, kws in sk_map.items():
+        if fk not in enabled:
+            continue
+        label = SOURCE_LABELS.get(fk, fk)
+        for kw in kws:
+            crypto_pool_rows.append((kw, [label]))
+
+    if not watch and not crypto_pool_rows:
+        return []
+
     extra = cfg.get("extra_impact_keywords") or []
     if isinstance(extra, str):
         extra = [extra]
@@ -855,12 +930,16 @@ def build_monitor_pool(cfg: Dict[str, Any], *, running: bool) -> List[Dict[str, 
         history = []
 
     pool: List[Dict[str, Any]] = []
+    seen_kw: Set[str] = set()
     for kw in watch:
+        key = kw.casefold()
+        if key in seen_kw:
+            continue
+        seen_kw.add(key)
         pool.append(
             {
                 "keyword": kw,
-                "sources": enabled,
-                "source_labels": source_labels,
+                "sources": source_labels,
                 "poll_interval_sec": poll,
                 "only_material": only_material,
                 "only_extra_impact_keywords": only_extra,
@@ -870,6 +949,27 @@ def build_monitor_pool(cfg: Dict[str, Any], *, running: bool) -> List[Dict[str, 
                     history,
                     impact_keywords=_impact_keyword_list(cfg),
                     only_material=only_material,
+                ),
+            }
+        )
+    for kw, labels in crypto_pool_rows:
+        key = f"src:{kw.casefold()}:{','.join(labels)}"
+        if key in seen_kw:
+            continue
+        seen_kw.add(key)
+        pool.append(
+            {
+                "keyword": kw,
+                "sources": labels,
+                "poll_interval_sec": poll,
+                "only_material": False,
+                "only_extra_impact_keywords": False,
+                "extra_impact_keywords": [],
+                "last_push": _last_push_for_keyword(
+                    kw,
+                    history,
+                    impact_keywords=None,
+                    only_material=False,
                 ),
             }
         )

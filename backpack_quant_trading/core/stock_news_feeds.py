@@ -24,7 +24,16 @@ from backpack_quant_trading.core.stock_news_keyword_i18n import (
 
 logger = logging.getLogger(__name__)
 
-ALL_SOURCE_KEYS: Tuple[str, ...] = ("jin10", "ths", "eastmoney", "sina", "futu", "yahoo")
+ALL_SOURCE_KEYS: Tuple[str, ...] = (
+    "jin10",
+    "ths",
+    "eastmoney",
+    "sina",
+    "futu",
+    "yahoo",
+    "wublock",
+    "bwenews",
+)
 SOURCE_LABELS: Dict[str, str] = {
     "jin10": "金十数据",
     "ths": "同花顺",
@@ -32,7 +41,26 @@ SOURCE_LABELS: Dict[str, str] = {
     "sina": "新浪财经",
     "futu": "富途牛牛",
     "yahoo": "雅虎财经",
+    "wublock": "吴说区块链",
+    "bwenews": "方程式新闻",
 }
+
+# 加密媒体 RSS（公开订阅，仅供个人研究）
+WUBLOCK_RSS_URL = os.environ.get("WUBLOCK_RSS_URL") or "https://www.wublock123.com/rss"
+BWENEWS_RSS_URL = os.environ.get("BWENEWS_RSS_URL") or "https://rss-public.bwe-ws.com"
+
+# 吴说 / 方程式 默认监控币种关键词（可被配置 source_keywords 覆盖）
+DEFAULT_CRYPTO_SOURCE_KEYWORDS: Tuple[str, ...] = (
+    "AAVE",
+    "UNI",
+    "LINK",
+    "HYPE",
+    "NEAR",
+    "ZEC",
+    "TAO",
+    "ONDO",
+    "ENA",
+)
 
 YAHOO_SEARCH_BASES: Tuple[str, ...] = (
     "https://query1.finance.yahoo.com/v1/finance/search",
@@ -817,6 +845,114 @@ def _fetch_yahoo(
     return [], "雅虎无数据"
 
 
+def _rss_localname(tag: str) -> str:
+    if not tag:
+        return ""
+    if "}" in tag:
+        return tag.rsplit("}", 1)[-1]
+    return tag
+
+
+def _rss_child_text(el: ET.Element, names: Tuple[str, ...]) -> str:
+    want = {n.casefold() for n in names}
+    for child in list(el):
+        if _rss_localname(child.tag).casefold() in want:
+            return (child.text or "").strip()
+    return ""
+
+
+def _fetch_rss_source(
+    feed_key: str,
+    url: str,
+    *,
+    timeout: float = 12.0,
+    limit: int = 80,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """通用 RSS/Atom 拉取，统一为 stock_news 条目结构。"""
+    try:
+        with _session() as sess:
+            r = sess.get(
+                url,
+                headers={
+                    **_ua_headers(),
+                    "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+                },
+                timeout=timeout,
+            )
+        if r.status_code != 200:
+            return [], f"HTTP {r.status_code}"
+        root = ET.fromstring(r.content)
+    except ET.ParseError as exc:
+        return [], f"XML 解析失败: {exc}"
+    except Exception as exc:
+        return [], str(exc)
+
+    nodes: List[ET.Element] = []
+    for el in root.iter():
+        ln = _rss_localname(el.tag).casefold()
+        if ln in ("item", "entry"):
+            nodes.append(el)
+    if not nodes:
+        return [], "RSS 无条目"
+
+    label = SOURCE_LABELS.get(feed_key, feed_key)
+    out: List[Dict[str, Any]] = []
+    for el in nodes[: max(1, min(int(limit or 80), 200))]:
+        title = _strip_html(
+            _rss_child_text(el, ("title",))
+            or ""
+        )
+        if not title:
+            continue
+        desc = _strip_html(
+            _rss_child_text(el, ("description", "summary", "content"))
+        )
+        link = _rss_child_text(el, ("link", "id"))
+        # Atom <link href="..."/>
+        if not link:
+            for child in list(el):
+                if _rss_localname(child.tag).casefold() == "link":
+                    href = (child.attrib.get("href") or "").strip()
+                    if href:
+                        link = href
+                        break
+        pub_raw = _rss_child_text(
+            el, ("pubDate", "published", "updated", "date")
+        )
+        pub_ts = _parse_pub_ts(pub_raw)
+        if pub_ts is not None:
+            tm = datetime.fromtimestamp(pub_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            tm = pub_raw or ""
+        text = title if not desc or desc == title else f"{title} {desc}"
+        guid = _rss_child_text(el, ("guid", "id")) or link or text[:80]
+        row: Dict[str, Any] = {
+            "dedupe_id": _stable_dedupe_id(feed_key, tm or guid, text),
+            "feed_key": feed_key,
+            "feed": label,
+            "time": tm,
+            "text": text,
+            # 加密源无「重磅」标记；命中源专属关键词即可推送（alert 层跳过影响面过滤）
+            "important": 1,
+            "url": link,
+            "related_tickers": [],
+        }
+        if pub_ts is not None:
+            row["published_ts"] = pub_ts
+        out.append(row)
+    if not out:
+        return [], "RSS 无有效标题"
+    return out, None
+
+
+def _fetch_wublock(timeout: float) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    return _fetch_rss_source("wublock", WUBLOCK_RSS_URL, timeout=timeout)
+
+
+def _fetch_bwenews(timeout: float) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    return _fetch_rss_source("bwenews", BWENEWS_RSS_URL, timeout=timeout)
+
+
 def fetch_unified_for_source(
     key: str,
     *,
@@ -849,6 +985,10 @@ def fetch_unified_for_source(
             search_queries=yahoo_search_queries,
             broad_us=yahoo_broad_us,
         )
+    if key == "wublock":
+        return _fetch_wublock(timeout)
+    if key == "bwenews":
+        return _fetch_bwenews(timeout)
     return [], "未知数据源"
 
 

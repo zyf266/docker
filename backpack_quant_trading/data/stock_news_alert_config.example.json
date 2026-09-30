@@ -7,5 +7,18 @@
   "only_material": true,
   "only_extra_impact_keywords": false,
   "extra_impact_keywords": [],
-  "news_sources": ["jin10", "ths", "eastmoney", "sina", "futu", "yahoo"]
+  "news_sources": [
+    "jin10",
+    "ths",
+    "eastmoney",
+    "sina",
+    "futu",
+    "yahoo",
+    "wublock",
+    "bwenews"
+  ],
+  "source_keywords": {
+    "wublock": ["AAVE", "UNI", "LINK", "HYPE", "NEAR", "ZEC", "TAO", "ONDO", "ENA"],
+    "bwenews": ["AAVE", "UNI", "LINK", "HYPE", "NEAR", "ZEC", "TAO", "ONDO", "ENA"]
+  }
 }
