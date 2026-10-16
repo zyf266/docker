@@ -1,29 +1,29 @@
 {
-  "updated_at": "2026-08-17 07:35:05",
+  "updated_at": "2026-10-16 07:35:03",
   "quotes": {
     "002837": {
-      "close": 58.69,
-      "trade_date": "2026-08-17",
+      "close": 44.7,
+      "trade_date": "2026-10-16",
       "source": "sina_daily"
     },
     "159570": {
-      "close": 1.437,
-      "trade_date": "2026-08-17",
+      "close": 1.365,
+      "trade_date": "2026-10-16",
       "source": "sina_daily"
     },
     "300308": {
-      "close": 1001.03,
-      "trade_date": "2026-08-17",
+      "close": 670.0,
+      "trade_date": "2026-10-16",
       "source": "sina_daily"
     },
     "603986": {
-      "close": 444.0,
-      "trade_date": "2026-08-17",
+      "close": 281.86,
+      "trade_date": "2026-10-16",
       "source": "sina_daily"
     },
     "688146": {
-      "close": 310.11,
-      "trade_date": "2026-08-17",
+      "close": 154.92,
+      "trade_date": "2026-10-16",
       "source": "sina_daily"
     }
   }

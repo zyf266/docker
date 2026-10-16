@@ -883,6 +883,15 @@ def main() -> None:
                 signal_data = {"raw_message": raw_data}
 
             parsed_data = bot.parse_tradingview_message(signal_data)
+            trend_fields = parsed_data.get("trend_fields") if isinstance(parsed_data, dict) else None
+            if trend_fields:
+                try:
+                    from backpack_quant_trading.core.ma_label_board import save_trend_fields
+
+                    saved_id = save_trend_fields(trend_fields)
+                    print(f"💾 标签看板已保存 id={saved_id} symbol={trend_fields.get('symbol')} interval={trend_fields.get('interval')}")
+                except Exception as save_exc:
+                    print(f"❌ 标签看板保存失败: {save_exc}")
 
             if isinstance(signal_data, dict):
                 from backpack_quant_trading.core.crypto_signal_scorer import (

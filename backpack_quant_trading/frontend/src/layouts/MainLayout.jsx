@@ -36,6 +36,7 @@ const navItems = [
   // 暂时隐藏：AI 实验室（仅隐藏入口，不影响路由）
   { type: 'item', to: '/currency-monitor', icon: Bell, label: '币种监视' },
   { type: 'item', to: '/crypto-signal-hub', icon: TrendingUp, label: '加密信号AI评分' },
+  { type: 'item', to: '/ma-label-board', icon: BarChart2, label: '标签看板' },
   { type: 'item', to: '/agent-memory', icon: Brain, label: 'Agent 记忆' },
   { type: 'item', to: '/stock-news-alert', icon: Newspaper, label: '自选多源快讯' },
   // 暂时隐藏：Polymarket概率（仅隐藏入口，不影响路由）
@@ -51,6 +52,7 @@ const pageTitles = {
   '/grid-trading': '网格交易',
   '/currency-monitor': '币种监视',
   '/crypto-signal-hub': '加密信号AI评分',
+  '/ma-label-board': '标签看板',
   '/agent-memory': 'Agent 记忆',
   '/stock-news-alert': '自选多源快讯',
   '/polymarket-alert': 'Polymarket 概率提醒',

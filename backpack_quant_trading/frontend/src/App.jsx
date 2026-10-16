@@ -30,6 +30,7 @@ import UsWeeklyReport from './views/UsWeeklyReport'
 import StockNewsAlert from './views/StockNewsAlert'
 import PolymarketAlert from './views/PolymarketAlert'
 import CryptoSignalHub from './views/CryptoSignalHub'
+import MaLabelBoard from './views/MaLabelBoard'
 import AgentMemory from './views/AgentMemory'
 import StudyCenter from './views/StudyCenter'
 import StudyChapterExam from './views/StudyChapterExam'
@@ -117,6 +118,7 @@ function App() {
           <Route path="stock-news-alert" element={<StockNewsAlert />} />
           <Route path="polymarket-alert" element={<PolymarketAlert />} />
           <Route path="crypto-signal-hub" element={<CryptoSignalHub />} />
+          <Route path="ma-label-board" element={<MaLabelBoard />} />
           <Route path="agent-memory" element={<AgentMemory />} />
           <Route path="study-center" element={<StudyCenter />} />
           <Route path="study-center/:slug" element={<StudyChapterExam />} />
