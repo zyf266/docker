@@ -1,6 +1,11 @@
 {
   "running": false,
-  "watch_names": ["NVDA", "MU", "SNDK", "INTC"],
+  "watch_names": [
+    "NVDA",
+    "MU",
+    "SNDK",
+    "INTC"
+  ],
   "dingtalk_webhook": "https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN_HERE",
   "poll_interval_sec": 30,
   "max_news_age_minutes": 120,
@@ -15,10 +20,42 @@
     "futu",
     "yahoo",
     "wublock",
-    "bwenews"
+    "bwenews",
+    "blockbeats"
   ],
   "source_keywords": {
-    "wublock": ["AAVE", "UNI", "LINK", "HYPE", "NEAR", "ZEC", "TAO", "ONDO", "ENA"],
-    "bwenews": ["AAVE", "UNI", "LINK", "HYPE", "NEAR", "ZEC", "TAO", "ONDO", "ENA"]
+    "wublock": [
+      "AAVE",
+      "UNI",
+      "LINK",
+      "HYPE",
+      "NEAR",
+      "ZEC",
+      "TAO",
+      "ONDO",
+      "ENA"
+    ],
+    "bwenews": [
+      "AAVE",
+      "UNI",
+      "LINK",
+      "HYPE",
+      "NEAR",
+      "ZEC",
+      "TAO",
+      "ONDO",
+      "ENA"
+    ],
+    "blockbeats": [
+      "AAVE",
+      "UNI",
+      "LINK",
+      "HYPE",
+      "NEAR",
+      "ZEC",
+      "TAO",
+      "ONDO",
+      "ENA"
+    ]
   }
 }

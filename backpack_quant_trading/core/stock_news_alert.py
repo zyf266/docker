@@ -20,6 +20,7 @@ from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 import requests
 
 from backpack_quant_trading.core.stock_news_feeds import (
+    CRYPTO_SOURCE_KEYS,
     DEFAULT_CRYPTO_SOURCE_KEYWORDS,
     DEFAULT_JIN10_APP_ID,
     SOURCE_LABELS,
@@ -112,11 +113,13 @@ def _default_config() -> Dict[str, Any]:
             "yahoo",
             "wublock",
             "bwenews",
+            "blockbeats",
         ],
         # 按源覆盖自选关键词；有配置时该源只用这些词，不受全局 watch_names / 影响面限制
         "source_keywords": {
             "wublock": crypto_kws,
             "bwenews": crypto_kws,
+            "blockbeats": crypto_kws,
         },
     }
 
@@ -193,7 +196,7 @@ def load_config() -> Dict[str, Any]:
     if not isinstance(sk, dict):
         sk = {}
     crypto_kws = list(DEFAULT_CRYPTO_SOURCE_KEYWORDS)
-    for fk in ("wublock", "bwenews"):
+    for fk in CRYPTO_SOURCE_KEYS:
         if fk not in sk or not sk.get(fk):
             sk[fk] = list(crypto_kws)
     base["source_keywords"] = sk

@@ -30,6 +30,7 @@ const DEFAULT_SOURCE_KEYS = [
   'yahoo',
   'wublock',
   'bwenews',
+  'blockbeats',
 ]
 
 const FALLBACK_LABELS = {
@@ -41,6 +42,7 @@ const FALLBACK_LABELS = {
   yahoo: '雅虎财经',
   wublock: '吴说区块链',
   bwenews: '方程式新闻',
+  blockbeats: '律动BlockBeats',
 }
 
 const StockNewsAlert = () => {
@@ -328,7 +330,7 @@ const StockNewsAlert = () => {
   return (
     <AisPageShell
       title="自选重大快讯（多源聚合）"
-      subtitle="聚合金十、同花顺、东方财富、新浪、富途、雅虎，以及吴说区块链、方程式新闻等公开快讯；命中自选/源专属关键词后钉钉推送。吴说与方程式默认监控 AAVE/UNI/LINK/HYPE/NEAR/ZEC/TAO/ONDO/ENA。数据仅供个人研究备忘，不构成投资建议。"
+      subtitle="聚合金十、同花顺、东方财富、新浪、富途、雅虎，以及吴说区块链、方程式新闻、律动BlockBeats 等公开快讯；命中自选/源专属关键词后钉钉推送。加密三源默认监控 AAVE/UNI/LINK/HYPE/NEAR/ZEC/TAO/ONDO/ENA。数据仅供个人研究备忘，不构成投资建议。"
     >
       <section className="qpt-panel">
         <h2>数据源（勾选参与监控与预览）</h2>
@@ -347,7 +349,7 @@ const StockNewsAlert = () => {
         </div>
         <div className="qpt-hint">
           至少保留一个数据源；保存配置后「探测全部」与预览会按勾选生效。雅虎财经会按下方「自选关键词」逐条搜索。
-          <strong>吴说区块链 / 方程式新闻</strong> 使用源专属关键词（默认 AAVE、UNI、LINK、HYPE、NEAR、ZEC、TAO、ONDO、ENA），命中即推，不受「仅重要快讯 / 影响面」限制。
+          <strong>吴说区块链 / 方程式新闻 / 律动BlockBeats</strong> 使用源专属关键词（默认 AAVE、UNI、LINK、HYPE、NEAR、ZEC、TAO、ONDO、ENA），命中即推，不受「仅重要快讯 / 影响面」限制。
         </div>
       </section>
 

@@ -33,6 +33,7 @@ ALL_SOURCE_KEYS: Tuple[str, ...] = (
     "yahoo",
     "wublock",
     "bwenews",
+    "blockbeats",
 )
 SOURCE_LABELS: Dict[str, str] = {
     "jin10": "金十数据",
@@ -43,13 +44,16 @@ SOURCE_LABELS: Dict[str, str] = {
     "yahoo": "雅虎财经",
     "wublock": "吴说区块链",
     "bwenews": "方程式新闻",
+    "blockbeats": "律动BlockBeats",
 }
 
-# 加密媒体 RSS（公开订阅，仅供个人研究）
+# 加密媒体 RSS / 页面快讯（公开订阅，仅供个人研究）
 WUBLOCK_RSS_URL = os.environ.get("WUBLOCK_RSS_URL") or "https://www.wublock123.com/rss"
 BWENEWS_RSS_URL = os.environ.get("BWENEWS_RSS_URL") or "https://rss-public.bwe-ws.com"
+BLOCKBEATS_FLASH_URL = os.environ.get("BLOCKBEATS_FLASH_URL") or "https://www.theblockbeats.info/flash"
+BLOCKBEATS_FLASH_BASE = os.environ.get("BLOCKBEATS_FLASH_BASE") or "https://www.theblockbeats.info"
 
-# 吴说 / 方程式 默认监控币种关键词（可被配置 source_keywords 覆盖）
+# 吴说 / 方程式 / 律动 默认监控币种关键词（可被配置 source_keywords 覆盖）
 DEFAULT_CRYPTO_SOURCE_KEYWORDS: Tuple[str, ...] = (
     "AAVE",
     "UNI",
@@ -61,6 +65,11 @@ DEFAULT_CRYPTO_SOURCE_KEYWORDS: Tuple[str, ...] = (
     "ONDO",
     "ENA",
 )
+CRYPTO_SOURCE_KEYS: Tuple[str, ...] = ("wublock", "bwenews", "blockbeats")
+
+# 律动详情页发布时间缓存（flash_id -> unix ts），避免每轮重复打详情
+_BLOCKBEATS_TIME_CACHE: Dict[str, int] = {}
+_BLOCKBEATS_TIME_CACHE_MAX = 400
 
 YAHOO_SEARCH_BASES: Tuple[str, ...] = (
     "https://query1.finance.yahoo.com/v1/finance/search",
@@ -953,6 +962,133 @@ def _fetch_bwenews(timeout: float) -> Tuple[List[Dict[str, Any]], Optional[str]]
     return _fetch_rss_source("bwenews", BWENEWS_RSS_URL, timeout=timeout)
 
 
+def _blockbeats_parse_iso_ts(raw: str) -> Optional[int]:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        # 详情页常见 2026-09-30T08:19:31（无时区，按 UTC+8 理解）
+        if "T" in s and ("+" not in s[10:] and not s.endswith("Z")):
+            dt = datetime.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")
+            # 东八区 → UTC
+            return int(dt.replace(tzinfo=timezone.utc).timestamp()) - 8 * 3600
+        return int(datetime.fromisoformat(s).timestamp())
+    except (TypeError, ValueError, OSError):
+        return _parse_pub_ts(raw)
+
+
+def _blockbeats_fetch_detail_ts(flash_id: str, *, timeout: float) -> Optional[int]:
+    fid = str(flash_id or "").strip()
+    if not fid:
+        return None
+    cached = _BLOCKBEATS_TIME_CACHE.get(fid)
+    if cached is not None:
+        return cached
+    url = f"{BLOCKBEATS_FLASH_BASE.rstrip('/')}/flash/{fid}"
+    try:
+        with _session() as sess:
+            r = sess.get(
+                url,
+                headers={**_ua_headers(), "Accept": "text/html,*/*"},
+                timeout=min(12.0, max(4.0, float(timeout or 8.0))),
+            )
+        if r.status_code != 200:
+            return None
+        # 优先 ISO 时间戳
+        m = re.search(r"(20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})", r.text or "")
+        if not m:
+            m = re.search(r"(20\d{2}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", r.text or "")
+        if not m:
+            return None
+        ts = _blockbeats_parse_iso_ts(m.group(1))
+        if ts is None:
+            return None
+        _BLOCKBEATS_TIME_CACHE[fid] = ts
+        if len(_BLOCKBEATS_TIME_CACHE) > _BLOCKBEATS_TIME_CACHE_MAX:
+            # 丢掉最旧一批 key（插入顺序）
+            for k in list(_BLOCKBEATS_TIME_CACHE.keys())[:80]:
+                _BLOCKBEATS_TIME_CACHE.pop(k, None)
+        return ts
+    except Exception:
+        return None
+
+
+def _fetch_blockbeats(timeout: float) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """律动 BlockBeats：公开 API/RSS 常空，改为抓取官网快讯列表 + 详情补时间。"""
+    try:
+        with _session() as sess:
+            r = sess.get(
+                BLOCKBEATS_FLASH_URL,
+                headers={**_ua_headers(), "Accept": "text/html,*/*"},
+                timeout=timeout,
+            )
+        if r.status_code != 200:
+            return [], f"HTTP {r.status_code}"
+        html = r.text or ""
+        if not html.strip():
+            return [], "页面为空"
+    except Exception as exc:
+        return [], str(exc)
+
+    raw_items: List[Tuple[str, str, str]] = []
+    for m in re.finditer(r'href="(/flash/(\d+))"', html):
+        path, fid = m.group(1), m.group(2)
+        chunk = html[m.end() : m.end() + 900]
+        tm = re.search(r">\s*([^<>]{8,200})\s*<", chunk)
+        if not tm:
+            continue
+        title = _strip_html(tm.group(1))
+        if not title or len(title) < 6:
+            continue
+        if title.lower().startswith("http"):
+            continue
+        link = f"{BLOCKBEATS_FLASH_BASE.rstrip('/')}{path}"
+        raw_items.append((fid, title, link))
+
+    # 按出现顺序去重
+    seen: Set[str] = set()
+    rows_meta: List[Tuple[str, str, str]] = []
+    for fid, title, link in raw_items:
+        if fid in seen:
+            continue
+        seen.add(fid)
+        rows_meta.append((fid, title, link))
+        if len(rows_meta) >= 40:
+            break
+    if not rows_meta:
+        return [], "未解析到快讯条目"
+
+    out: List[Dict[str, Any]] = []
+    label = SOURCE_LABELS["blockbeats"]
+    # 每轮最多回填 12 条发布时间，其余有缓存则用缓存
+    detail_budget = 12
+    for fid, title, link in rows_meta:
+        pub_ts = _BLOCKBEATS_TIME_CACHE.get(fid)
+        if pub_ts is None and detail_budget > 0:
+            pub_ts = _blockbeats_fetch_detail_ts(fid, timeout=timeout)
+            detail_budget -= 1
+        if pub_ts is not None:
+            tm = datetime.fromtimestamp(pub_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            tm = ""
+        row: Dict[str, Any] = {
+            "dedupe_id": f"blockbeats:{fid}",
+            "feed_key": "blockbeats",
+            "feed": label,
+            "time": tm,
+            "text": title,
+            "important": 1,
+            "url": link,
+            "related_tickers": [],
+        }
+        if pub_ts is not None:
+            row["published_ts"] = pub_ts
+        out.append(row)
+    return out, None
+
+
 def fetch_unified_for_source(
     key: str,
     *,
@@ -989,6 +1125,8 @@ def fetch_unified_for_source(
         return _fetch_wublock(timeout)
     if key == "bwenews":
         return _fetch_bwenews(timeout)
+    if key == "blockbeats":
+        return _fetch_blockbeats(timeout)
     return [], "未知数据源"
 
 

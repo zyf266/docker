@@ -48,6 +48,7 @@ CONFIG = {
     # 按提醒ID路由到不同群（优先级最高）
     "id_webhook_map": {
         "趋势信号提醒": "https://oapi.dingtalk.com/robot/send?access_token=06a3b0f3dc20e4171267c912bd8e4892c0c0992df47349355657b4a4c146f1a2",
+        "标签信号提醒": "https://oapi.dingtalk.com/robot/send?access_token=67cd5219e00431e05e3bc65e38165206466458ea894e11b61d2e54a38f6c23f3",
         "做空策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=615446fec028e384703e8fb4b40cb19d92a5d8f330b7f3a411dc9e8e143d0a89",
         "山寨做多策略提醒": "https://oapi.dingtalk.com/robot/send?access_token=78f43fd7bf178e69b642b20be1b76addf64879db3427736f78643385645fef49",
         "山寨趋进": "https://oapi.dingtalk.com/robot/send?access_token=e4eb80eede7da4d49962359552f732a502a44aeefbe0b567bdc3f2fa1f72a74a",
@@ -384,6 +385,36 @@ class TradingViewBot:
         if strength:
             parsed_data["signal_strength"] = strength
 
+        if parsed_data["id"] == "标签信号提醒":
+            direction = _json_pick(data, "direction", "方向", "action", "side")
+            if direction:
+                self._apply_direction(parsed_data, direction)
+            close = _json_pick(data, "close", "收盘价")
+            if close:
+                parsed_data["price"] = close
+                parsed_data["price_label"] = "收盘价"
+            parsed_data["trend_fields"] = {
+                "id": _json_pick(data, "id"),
+                "strategy": _json_pick(data, "strategy", "策略名称", "策略"),
+                "event": _json_pick(data, "event"),
+                "symbol": _json_pick(data, "symbol", "ticker", "交易品种"),
+                "exchange": _json_pick(data, "exchange"),
+                "interval": _json_pick(data, "interval", "周期", "timeframe"),
+                "bar_time": _json_pick(data, "bar_time"),
+                "direction": direction or _json_pick(data, "direction"),
+                "close": close,
+                "score": _json_pick(data, "score"),
+                "prev_score": _json_pick(data, "prev_score"),
+                "pos_score": _json_pick(data, "pos_score"),
+                "align_score": _json_pick(data, "align_score"),
+                "state": _json_pick(data, "state"),
+                "state_cn": _json_pick(data, "state_cn"),
+                "sug_pos": _json_pick(data, "sug_pos"),
+                "ma5": _json_pick(data, "ma5"),
+                "ma30": _json_pick(data, "ma30"),
+                "ma200": _json_pick(data, "ma200"),
+            }
+
         if CONFIG["debug"]:
             print(
                 f"[JSON] id={parsed_data['id']} symbol={parsed_data['symbol']} "
@@ -552,6 +583,36 @@ class TradingViewBot:
     def format_signal_message(self, signal_data):
         if isinstance(signal_data, str):
             signal_data = self.parse_tradingview_message(signal_data)
+        if signal_data.get("id") == "标签信号提醒" and signal_data.get("trend_fields"):
+            labels = [
+                ("id", "提醒ID"),
+                ("strategy", "策略"),
+                ("event", "事件"),
+                ("symbol", "品种"),
+                ("exchange", "交易所"),
+                ("interval", "周期"),
+                ("bar_time", "K线时间"),
+                ("direction", "方向"),
+                ("close", "收盘价"),
+                ("score", "总分"),
+                ("prev_score", "上次分数"),
+                ("pos_score", "位置分"),
+                ("align_score", "排列分"),
+                ("state", "状态"),
+                ("state_cn", "状态说明"),
+                ("sug_pos", "建议仓位"),
+                ("ma5", "MA5"),
+                ("ma30", "MA30"),
+                ("ma200", "MA200"),
+            ]
+            fields = signal_data["trend_fields"]
+            lines = ["", f"**{self.config.get('dingtalk_keyword', '交易信号')}**"]
+            for key, label in labels:
+                value = fields.get(key, "")
+                if value != "":
+                    lines.append(f"**{label}**: {value}")
+            lines.append(f"**触发时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            return "\n\n".join(lines)
         symbol = signal_data.get("symbol", "未知品种")
         signal_type = signal_data.get("signal", "")
         strategy = signal_data.get("strategy", "未知策略")
