@@ -143,6 +143,7 @@ def normalize_symbol(raw: str) -> str:
     text = (raw or "").strip().upper().replace("/", "").replace("-", "")
     if ":" in text:
         text = text.split(":")[-1]
+    text = text.replace(".P", "").replace(".PERP", "")
     if text.startswith("{{") or not text:
         return ""
     if text.endswith("USDT") or text.endswith("USDC"):

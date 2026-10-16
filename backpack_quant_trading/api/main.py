@@ -756,4 +756,19 @@ for base in (_pkg_dir, _cwd_dir, _cwd_dir / "backpack_quant_trading"):
         @app.get("/polymarket-alert")
         def _polymarket_alert():
             return FileResponse(frontend_dist / "index.html")
+        @app.get("/ma-label-board")
+        def _ma_label_board_page():
+            return FileResponse(frontend_dist / "index.html")
+
+        @app.get("/{full_path:path}")
+        def _spa_fallback(full_path: str):
+            """前端路由刷新时回到 index.html，避免 /ma-label-board 这类地址 404。"""
+            if full_path.startswith("api/") or full_path.startswith("assets/"):
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail="Not Found")
+            index = frontend_dist / "index.html"
+            if index.is_file():
+                return FileResponse(index)
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
         break
