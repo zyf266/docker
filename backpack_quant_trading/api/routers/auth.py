@@ -46,20 +46,17 @@ def login(req: LoginRequest):
 
 @router.post("/register")
 def register(req: RegisterRequest):
+    """页面自主注册一律为普通用户；管理员只能用云端 CLI 创建。"""
     if not req.username or not req.password:
         raise HTTPException(status_code=400, detail="用户名和密码不能为空")
+    if len(req.username.strip()) < 2:
+        raise HTTPException(status_code=400, detail="用户名至少 2 个字符")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="密码至少 6 位")
     db = DatabaseManager()
-    if db.get_user_by_username(req.username):
+    if db.get_user_by_username(req.username.strip()):
         raise HTTPException(status_code=400, detail="用户名已存在")
-    try:
-        session = db.get_session()
-        from backpack_quant_trading.database.models import User
-        has_user = session.query(User).first() is not None
-        session.close()
-        role = "user" if has_user else "superuser"
-    except Exception:
-        role = "user"
-    user = db.create_user(req.username, get_password_hash(req.password), role=role)
+    user = db.create_user(req.username.strip(), get_password_hash(req.password), role="user")
     token = create_access_token({"sub": str(user.id)})
     return {
         "access_token": token,

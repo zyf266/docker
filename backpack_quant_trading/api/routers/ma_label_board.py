@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.get("")
 def get_board(
-    symbols: str = Query("", description="逗号分隔；留空则返回库里全部币种"),
+    symbols: str = Query("", description="逗号分隔；留空则返回看板固定币种列表"),
     user: dict = Depends(require_user),
 ) -> dict:
     parts: List[str] = [p.strip() for p in (symbols or "").split(",") if p.strip()]

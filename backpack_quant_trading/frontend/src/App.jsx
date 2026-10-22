@@ -1,6 +1,7 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import MainLayout from './layouts/MainLayout'
+import PortalLayout from './layouts/PortalLayout'
 import Login from './views/Login'
 import Dashboard from './views/Dashboard'
 import Trading from './views/Trading'
@@ -35,6 +36,31 @@ import AgentMemory from './views/AgentMemory'
 import StudyCenter from './views/StudyCenter'
 import StudyChapterExam from './views/StudyChapterExam'
 import GuestStockLayout from './layouts/GuestStockLayout'
+import PortalAccount from './views/portal/PortalAccount'
+import PortalTrades from './views/portal/PortalTrades'
+import PortalStrategies from './views/portal/PortalStrategies'
+import PortalWatchlist from './views/portal/PortalWatchlist'
+import PortalMaCards from './views/portal/PortalMaCards'
+import PortalMarket from './views/portal/PortalMarket'
+import PortalWorkflow from './views/portal/PortalWorkflow'
+import PortalFaq from './views/portal/PortalFaq'
+import PortalContact from './views/portal/PortalContact'
+
+const readUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null')
+  } catch (_) {
+    return null
+  }
+}
+
+const isAdminRole = (role) => ['superuser', 'admin', 'root'].includes(String(role || '').toLowerCase())
+
+const homeForUser = () => {
+  const user = readUser()
+  if (!user) return '/login'
+  return isAdminRole(user.role) ? '/trading' : '/portal'
+}
 
 const RequireAuth = ({ children }) => {
   const token = localStorage.getItem('token')
@@ -44,17 +70,40 @@ const RequireAuth = ({ children }) => {
   return children
 }
 
-const GuestOnly = ({ children }) => {
+const RequireAdmin = ({ children }) => {
   const token = localStorage.getItem('token')
-  if (token) {
-    return <Navigate to="/" replace />
+  if (!token) return <Navigate to="/login" replace />
+  const user = readUser()
+  if (!isAdminRole(user?.role)) {
+    return <Navigate to="/portal" replace />
   }
   return children
 }
 
-/** 游客个股分析入口：已登录则进完整泡沫检测页 */
+const RequirePortalUser = ({ children }) => {
+  const token = localStorage.getItem('token')
+  if (!token) return <Navigate to="/login" replace />
+  const user = readUser()
+  if (isAdminRole(user?.role)) {
+    return <Navigate to="/trading" replace />
+  }
+  return children
+}
+
+const GuestOnly = ({ children }) => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    return <Navigate to={homeForUser()} replace />
+  }
+  return children
+}
+
 const StockAnalysisEntry = () => {
   if (localStorage.getItem('token')) {
+    const user = readUser()
+    if (!isAdminRole(user?.role)) {
+      return <Navigate to="/portal" replace />
+    }
     return <Navigate to="/us-weekly-report?tab=stock" replace />
   }
   return <GuestStockLayout />
@@ -66,11 +115,11 @@ function App() {
       <Routes>
         <Route
           path="/login"
-          element={
+          element={(
             <GuestOnly>
               <Login />
             </GuestOnly>
-          }
+          )}
         />
 
         <Route path="/stock-analysis" element={<StockAnalysisEntry />}>
@@ -78,12 +127,31 @@ function App() {
         </Route>
 
         <Route
+          path="/portal"
+          element={(
+            <RequirePortalUser>
+              <PortalLayout />
+            </RequirePortalUser>
+          )}
+        >
+          <Route index element={<PortalAccount />} />
+          <Route path="trades" element={<PortalTrades />} />
+          <Route path="watchlist" element={<PortalWatchlist />} />
+          <Route path="ma-cards" element={<PortalMaCards />} />
+          <Route path="market" element={<PortalMarket />} />
+          <Route path="workflow" element={<PortalWorkflow />} />
+          <Route path="strategies" element={<PortalStrategies />} />
+          <Route path="faq" element={<PortalFaq />} />
+          <Route path="contact" element={<PortalContact />} />
+        </Route>
+
+        <Route
           path="/"
-          element={
-            <RequireAuth>
+          element={(
+            <RequireAdmin>
               <MainLayout />
-            </RequireAuth>
-          }
+            </RequireAdmin>
+          )}
         >
           <Route index element={<Navigate to="trading" replace />} />
           <Route path="trading" element={<Trading />} />
@@ -124,10 +192,11 @@ function App() {
           <Route path="study-center/:slug" element={<StudyChapterExam />} />
           <Route path="ai-agent-quiz" element={<StudyCenter />} />
         </Route>
+
+        <Route path="*" element={<Navigate to={homeForUser()} replace />} />
       </Routes>
     </>
   )
 }
 
 export default App
-

@@ -31,9 +31,31 @@ class MaLabelSnapshot(StoreBase):
 
 TIMEFRAMES = (
     {"id": "30m", "label": "30分钟"},
-    {"id": "60m", "label": "60分钟"},
-    {"id": "120m", "label": "120分钟"},
+    {"id": "60m", "label": "1h"},
+    {"id": "120m", "label": "2h"},
+    {"id": "4h", "label": "4h"},
     {"id": "1d", "label": "日线"},
+)
+
+# 标签看板固定币种（与自选列表一致；Venice Token = VVV）
+BOARD_SYMBOLS = (
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "HYPEUSDT",
+    "LTCUSDT",
+    "AAVEUSDT",
+    "UNIUSDT",
+    "ENAUSDT",
+    "NEARUSDT",
+    "SUIUSDT",
+    "AVAXUSDT",
+    "TAOUSDT",
+    "WLDUSDT",
+    "VVVUSDT",
+    "CRCLUSDT",
+    "ZECUSDT",
+    "PUMPUSDT",
 )
 
 def sma(values: List[float], length: int) -> Optional[float]:
@@ -164,6 +186,9 @@ def normalize_timeframe(raw: str) -> str:
         "120": "120m",
         "120m": "120m",
         "2h": "120m",
+        "240": "4h",
+        "4": "4h",
+        "4h": "4h",
         "d": "1d",
         "1d": "1d",
         "1day": "1d",
@@ -316,6 +341,72 @@ def seed_demo_snapshots(now: Optional[datetime] = None) -> int:
     return count
 
 
+def seed_board_mock(now: Optional[datetime] = None) -> int:
+    """为看板固定币种 × 全部周期写入模拟趋势/仓位，方便看表格效果。"""
+    moment = now or datetime.now()
+    # (state, state_cn, sug_pos, side_cn, total)
+    bands = (
+        ("strong_bull", "极强多头", 100, "做多", 5),
+        ("bull", "多头趋势", 60, "做多", 3),
+        ("weak_bull", "偏多", 20, "做多", 1),
+        ("neutral", "震荡", 0, "观望", 0),
+        ("weak_bear", "偏空", -20, "做空", -1),
+        ("bear", "空头趋势", -60, "做空", -3),
+        ("strong_bear", "极强空头", -100, "做空", -5),
+    )
+    base_prices = {
+        "BTCUSDT": 64880,
+        "ETHUSDT": 2446.7,
+        "SOLUSDT": 178.4,
+        "HYPEUSDT": 28.6,
+        "LTCUSDT": 92.3,
+        "AAVEUSDT": 186.2,
+        "UNIUSDT": 8.45,
+        "ENAUSDT": 0.62,
+        "NEARUSDT": 5.18,
+        "SUIUSDT": 2.34,
+        "AVAXUSDT": 28.9,
+        "TAOUSDT": 412.5,
+        "WLDUSDT": 1.86,
+        "VVVUSDT": 3.24,
+        "CRCLUSDT": 128.6,
+        "ZECUSDT": 48.2,
+        "PUMPUSDT": 0.0048,
+    }
+    count = 0
+    for si, symbol in enumerate(BOARD_SYMBOLS):
+        price = float(base_prices.get(symbol, 100 + si * 3))
+        for ti, tf in enumerate(TIMEFRAMES):
+            band = bands[(si + ti * 2) % len(bands)]
+            state, state_cn, sug, side, total = band
+            frame = {
+                "price": price * (1 + (ti - 2) * 0.004),
+                "ma5": price * 0.995,
+                "ma30": price * 0.98,
+                "ma200": price * 0.94,
+                "pos_score": 3 if sug > 0 else (-3 if sug < 0 else 0),
+                "align_score": 2 if sug >= 60 else (-2 if sug <= -60 else 0),
+                "align_text": "短 > 中 > 长" if sug > 0 else "交织",
+                "total": total,
+                "dev_short": {"pct": 0.5, "side": "线上", "above": True},
+                "dev_mid": {"pct": 1.2, "side": "线上", "above": True},
+                "dev_long": {"pct": 3.0, "side": "线上", "above": True},
+                "state": state,
+                "state_cn": state_cn,
+                "sug_pos": sug,
+                "side_cn": side,
+                "bars": ti + 1,
+                "duration_text": moment.strftime("%Y-%m-%d %H:%M:%S"),
+                "direction": "buy" if sug >= 0 else "sell",
+                "strategy": "mock",
+                "unresolved_symbol": False,
+                "unresolved_tf": False,
+            }
+            save_snapshot(symbol, tf["id"], frame, moment)
+            count += 1
+    return count
+
+
 def save_trend_fields(fields: Dict[str, Any]) -> Optional[int]:
     """把 TradingView「标签信号提醒」字段写成一条快照。不拉行情。"""
     raw_symbol = str(fields.get("symbol") or "")
@@ -376,4 +467,9 @@ def save_trend_fields(fields: Dict[str, Any]) -> Optional[int]:
 
 
 def load_board(symbols: List[str]) -> Dict[str, Any]:
-    return list_latest(symbols)
+    # 未指定时固定返回看板币种列表（即使库里还没有快照也占位）
+    wanted = [normalize_symbol(s) for s in (symbols or [])]
+    wanted = [s for s in wanted if s]
+    if not wanted:
+        wanted = list(BOARD_SYMBOLS)
+    return list_latest(wanted)

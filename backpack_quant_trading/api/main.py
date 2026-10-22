@@ -62,6 +62,7 @@ from backpack_quant_trading.api.routers.polymarket_alert import router as polyma
 from backpack_quant_trading.api.routers.ai_stock_hub import router as ai_stock_hub_router
 from backpack_quant_trading.api.routers.crypto_signal_hub import router as crypto_signal_hub_router
 from backpack_quant_trading.api.routers.ma_label_board import router as ma_label_board_router
+from backpack_quant_trading.api.routers.portal import router as portal_router
 from backpack_quant_trading.api.routers.quiz import router as quiz_router
 
 try:
@@ -91,6 +92,7 @@ app.include_router(polymarket_alert_router, prefix="/api/polymarket-alert", tags
 app.include_router(ai_stock_hub_router, prefix="/api/ai-stock-hub", tags=["AI选股卡片"])
 app.include_router(crypto_signal_hub_router, prefix="/api/crypto-signal-hub", tags=["加密信号评分"])
 app.include_router(ma_label_board_router, prefix="/api/ma-label-board", tags=["标签看板"])
+app.include_router(portal_router, prefix="/api/portal", tags=["普通用户产品站"])
 app.include_router(quiz_router, prefix="/api/quiz", tags=["AI Agent 考试"])
 if avatar_router is not None:
     app.include_router(avatar_router, prefix="/api/avatar", tags=["小沫数字人"])
@@ -758,6 +760,14 @@ for base in (_pkg_dir, _cwd_dir, _cwd_dir / "backpack_quant_trading"):
             return FileResponse(frontend_dist / "index.html")
         @app.get("/ma-label-board")
         def _ma_label_board_page():
+            return FileResponse(frontend_dist / "index.html")
+
+        @app.get("/portal")
+        def _portal_index():
+            return FileResponse(frontend_dist / "index.html")
+
+        @app.get("/portal/{full_path:path}")
+        def _portal_nested(full_path: str):
             return FileResponse(frontend_dist / "index.html")
 
         @app.get("/{full_path:path}")

@@ -38,7 +38,9 @@ const Login = () => {
       localStorage.setItem('user', JSON.stringify(res.user))
       setMessage('登录成功')
       setMessageType('success')
-      navigate('/')
+      const role = String(res?.user?.role || '').toLowerCase()
+      const isAdmin = ['superuser', 'admin', 'root'].includes(role)
+      navigate(isAdmin ? '/trading' : '/portal')
     } catch (e) {
       setMessage(e?.response?.data?.detail || '登录失败')
       setMessageType('error')
@@ -53,15 +55,25 @@ const Login = () => {
       setMessageType('error')
       return
     }
+    if (form.password !== form.confirmPassword) {
+      setMessage('两次密码不一致')
+      setMessageType('error')
+      return
+    }
+    if (form.password.length < 6) {
+      setMessage('密码至少 6 位')
+      setMessageType('error')
+      return
+    }
     setLoading(true)
     setMessage('')
     try {
-      const res = await register(form)
+      const res = await register({ username: form.username, password: form.password })
       localStorage.setItem('token', res.access_token)
       localStorage.setItem('user', JSON.stringify(res.user))
-      setMessage('注册成功')
+      setMessage('注册成功，已进入普通用户产品站')
       setMessageType('success')
-      navigate('/')
+      navigate('/portal')
     } catch (e) {
       setMessage(e?.response?.data?.detail || '注册失败')
       setMessageType('error')
@@ -97,6 +109,13 @@ const Login = () => {
               onClick={() => setActiveTab('login')}
             >
               登录
+            </button>
+            <button
+              type="button"
+              className={`tab-item${activeTab === 'register' ? ' active' : ''}`}
+              onClick={() => setActiveTab('register')}
+            >
+              注册
             </button>
           </div>
 

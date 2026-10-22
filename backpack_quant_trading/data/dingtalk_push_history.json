@@ -368,5 +368,85 @@
     "text": "惠誉将英特尔评级展望上调至“稳定” 【惠誉将英特尔评级展望上调至“稳定”】当地时间8月17日，惠誉确认英特尔长期发行人违约评级及高级无抵押债务评级为“BBB”，短期发行人违约评级及商业票据评级为“F2”，并将评级展望由“负面”调整为“稳定”。",
     "url": "https://finance.eastmoney.com/a/202608183843822130.html",
     "pushed_at": "2026-08-17 23:47:25"
+  },
+  {
+    "id": "wublock:ad644c609251232a3a53",
+    "kind": "stock_news",
+    "feed": "吴说区块链",
+    "feed_key": "wublock",
+    "time": "2026-10-16 12:43:01",
+    "text": "嘉信理财开放加密资产充提 年底前将新增 SOL、AVAX 和 LINK 交易 吴说获悉，嘉信理财（Charles Schwab，NYSE: SCHW）CEO Rick Wurster 在 10 月 15 日业务更新会上表示，旗下 Schwab Crypto 已完成面向零售客户的...",
+    "url": "https://www.wublock123.com/news/schwab-rolls-out-crypto-deposits-with-sol-avax-link-by-year-end-70216",
+    "pushed_at": "2026-10-16 12:46:35"
+  },
+  {
+    "id": "wublock:fa7611f1c8a2c7f4590f",
+    "kind": "stock_news",
+    "feed": "吴说区块链",
+    "feed_key": "wublock",
+    "time": "2026-10-16 13:32:33",
+    "text": "吴说每日精选加密新闻 - 美国 OCC 署长：GENIUS 法案最终规则预计 10 月底前发布 美国 OCC 署长称 GENIUS 法案最终规则预计很快发布，不晚于十月底；嘉信理财宣布 Schwab Crypto 已开放零售扩展，年底前新增 SOL、AVAX、LINK；德意志银行数周内推加密托管，2027 年拓展至亚洲；日本三大银行完成日元稳定币联合发行与跨境支付测试，计划 2026 年启动实际交易；The Information 报道 CoreWeave、Broadcom 反对 OKX/ICE 股权代币化；俄罗斯拟自 2027 年起全面禁止个人 P2P 加密交易，仅经合规中介。",
+    "url": "https://www.wublock123.com/articles/wu-daily-crypto-news-occ-genius-rule-by-october-59693",
+    "pushed_at": "2026-10-16 13:34:19"
+  },
+  {
+    "id": "wublock:206e0fee89573a942978",
+    "kind": "stock_news",
+    "feed": "吴说区块链",
+    "feed_key": "wublock",
+    "time": "2026-10-16 16:54:53",
+    "text": "NEAR Intents 披露 380 万美元攻击事件详情：合约漏洞导致虚假存款，资金已全部追回 吴说获悉，NEAR Intents 发布 10 月 1 日安全事件复盘报告，披露其智能合约在代币存入过程中调用第三方合约时存在漏洞。攻击者利用调用失败后的退款机制，使资金退回但存款仍被记录，通过 23...",
+    "url": "https://www.wublock123.com/news/near-intents-discloses-3-8m-exploit-contract-flaw-fake-deposits-recovered-70225",
+    "pushed_at": "2026-10-16 16:58:00"
+  },
+  {
+    "id": "wublock:3048823cb0204f5cb4c9",
+    "kind": "stock_news",
+    "feed": "吴说区块链",
+    "feed_key": "wublock",
+    "time": "2026-10-17 11:38:01",
+    "text": "黑客青睐 Zcash 洗钱，多起被盗案资金转入 ZEC 网络匿踪 吴说获悉，链上分析师 Specter 发文指出，自链上侦探 ZachXBT 披露 Bitget 攻击者利用隐私币 Zcash（ZEC）隐藏被盗资产后，链上观察到越来越多黑客正在将赃款转移至 ZEC 网...",
+    "url": "https://www.wublock123.com/news/hackers-use-zcash-to-launder-stolen-funds-70258",
+    "pushed_at": "2026-10-17 11:39:06"
+  },
+  {
+    "id": "wublock:4e606058abba2d829c01",
+    "kind": "stock_news",
+    "feed": "吴说区块链",
+    "feed_key": "wublock",
+    "time": "2026-10-18 08:45:02",
+    "text": "Hyperliquid 调整 write priority fees 规则 测试网上线并增加 10 HYPE 门槛 Hyperliquid 公告称，基于用户反馈，平台将调整 write priority fees 规则，相关改动已在测试网上线，主要影响对延迟敏感的交易用户。新规则包括：内存池优先级仅适用于 Stan...",
+    "url": "https://www.wublock123.com/news/hyperliquid-updates-write-priority-fees-testnet-increases-10-hype-threshold-70269",
+    "pushed_at": "2026-10-18 08:47:47"
+  },
+  {
+    "id": "sina:30aeefe4d5ab3d6c1564",
+    "kind": "stock_news",
+    "feed": "新浪财经",
+    "feed_key": "sina",
+    "time": "2026-10-19 10:52:59",
+    "text": "摩根大通将英特尔评级从减持上调至中性。",
+    "url": "",
+    "pushed_at": "2026-10-19 02:55:04"
+  },
+  {
+    "id": "jin10:20261019114958895800",
+    "kind": "stock_news",
+    "feed": "金十数据",
+    "feed_key": "jin10",
+    "time": "2026-10-19 11:49:58",
+    "text": "TD COWEN：将英特尔(INTC.O)目标价从115美元下调至95美元。",
+    "url": "",
+    "pushed_at": "2026-10-19 03:53:38"
+  },
+  {
+    "id": "sina:feee6a482a682171eff2",
+    "kind": "stock_news",
+    "feed": "新浪财经",
+    "feed_key": "sina",
+    "time": "2026-10-19 11:52:28",
+    "text": "TD COWEN ：将高通目标价从 175 美元上调至 200 美元；将英特尔目标价从 115 美元下调至 95 美元；将莱迪思半导体目标价从165美元下调至130美元。",
+    "url": "",
+    "pushed_at": "2026-10-19 03:57:40"
   }
 ]

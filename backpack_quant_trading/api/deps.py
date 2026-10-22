@@ -71,6 +71,17 @@ async def require_user(user: Optional[dict] = Depends(get_current_user)) -> dict
     return user
 
 
+def is_admin_role(role: Optional[str]) -> bool:
+    return (role or "").strip().lower() in ("superuser", "admin", "root")
+
+
+async def require_admin(user: dict = Depends(require_user)) -> dict:
+    """管理后台接口：仅 superuser/admin。"""
+    if not is_admin_role(user.get("role")):
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return user
+
+
 def require_login_unless(condition: bool, user: Optional[dict]) -> None:
     """condition 为 True 时允许游客；否则必须登录。"""
     if condition:

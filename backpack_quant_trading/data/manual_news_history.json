@@ -1,6 +1,86 @@
 {
   "items": [
     {
+      "id": "sina:feee6a482a682171eff2",
+      "feed": "新浪财经",
+      "feed_key": "sina",
+      "time": "2026-10-19 11:52:28",
+      "text": "TD COWEN ：将高通目标价从 175 美元上调至 200 美元；将英特尔目标价从 115 美元下调至 95 美元；将莱迪思半导体目标价从165美元下调至130美元。",
+      "summary": "TD COWEN：2026-10-19 11:52:28 将高通目标价从 175 美元上调至 200 美元；将英特尔目标价从 115 美元下调至 95 美元；将莱迪思半导体目标价从165美元下调至130美元。",
+      "url": "",
+      "source": "stock_news_alert"
+    },
+    {
+      "id": "jin10:20261019114958895800",
+      "feed": "金十数据",
+      "feed_key": "jin10",
+      "time": "2026-10-19 11:49:58",
+      "text": "TD COWEN：将英特尔(INTC.O)目标价从115美元下调至95美元。",
+      "summary": "TD COWEN：2026-10-19 11:49:58 将英特尔(INTC.O)目标价从115美元下调至95美元。",
+      "url": "",
+      "source": "stock_news_alert"
+    },
+    {
+      "id": "sina:30aeefe4d5ab3d6c1564",
+      "feed": "新浪财经",
+      "feed_key": "sina",
+      "time": "2026-10-19 10:52:59",
+      "text": "摩根大通将英特尔评级从减持上调至中性。",
+      "summary": "2026-10-19 10:52:59 摩根大通将英特尔评级从减持上调至中性。",
+      "url": "",
+      "source": "stock_news_alert"
+    },
+    {
+      "id": "wublock:4e606058abba2d829c01",
+      "feed": "吴说区块链",
+      "feed_key": "wublock",
+      "time": "2026-10-18 08:45:02",
+      "text": "Hyperliquid 调整 write priority fees 规则 测试网上线并增加 10 HYPE 门槛 Hyperliquid 公告称，基于用户反馈，平台将调整 write priority fees 规则，相关改动已在测试网上线，主要影响对延迟敏感的交易用户。新规则包括：内存池优先级仅适用于 Stan...",
+      "summary": "Hyperliquid 调整 write priority fees 规则 测试网上线并增加 10 HYPE 门槛 Hyperliquid 公告称，基于用户反馈，平台将调整 write priority fees 规则，相关改动已在测试网上线，主要影响对延迟敏感的交易用户。新规则包括：2026-10-18 08:45:02 内存池优先级仅适用于 Stan...",
+      "url": "https://www.wublock123.com/news/hyperliquid-updates-write-priority-fees-testnet-increases-10-hype-threshold-70269",
+      "source": "stock_news_alert"
+    },
+    {
+      "id": "wublock:3048823cb0204f5cb4c9",
+      "feed": "吴说区块链",
+      "feed_key": "wublock",
+      "time": "2026-10-17 11:38:01",
+      "text": "黑客青睐 Zcash 洗钱，多起被盗案资金转入 ZEC 网络匿踪 吴说获悉，链上分析师 Specter 发文指出，自链上侦探 ZachXBT 披露 Bitget 攻击者利用隐私币 Zcash（ZEC）隐藏被盗资产后，链上观察到越来越多黑客正在将赃款转移至 ZEC 网...",
+      "summary": "2026-10-17 11:38:01 黑客青睐 Zcash 洗钱，多起被盗案资金转入 ZEC 网络匿踪 吴说获悉，链上分析师 Specter 发文指出，自链上侦探 ZachXBT 披露 Bitget 攻击者利用隐私币 Zcash（ZEC）隐藏被盗资产后，链上观察到越来越多黑客正在将赃款转移至 ZEC 网...",
+      "url": "https://www.wublock123.com/news/hackers-use-zcash-to-launder-stolen-funds-70258",
+      "source": "stock_news_alert"
+    },
+    {
+      "id": "wublock:206e0fee89573a942978",
+      "feed": "吴说区块链",
+      "feed_key": "wublock",
+      "time": "2026-10-16 16:54:53",
+      "text": "NEAR Intents 披露 380 万美元攻击事件详情：合约漏洞导致虚假存款，资金已全部追回 吴说获悉，NEAR Intents 发布 10 月 1 日安全事件复盘报告，披露其智能合约在代币存入过程中调用第三方合约时存在漏洞。攻击者利用调用失败后的退款机制，使资金退回但存款仍被记录，通过 23...",
+      "summary": "NEAR Intents 披露 380 万美元攻击事件详情：2026-10-16 16:54:53 合约漏洞导致虚假存款，资金已全部追回 吴说获悉，NEAR Intents 发布 10 月 1 日安全事件复盘报告，披露其智能合约在代币存入过程中调用第三方合约时存在漏洞。攻击者利用调用失败后的退款机制，使资金退回但存款仍被记录，通过 23...",
+      "url": "https://www.wublock123.com/news/near-intents-discloses-3-8m-exploit-contract-flaw-fake-deposits-recovered-70225",
+      "source": "stock_news_alert"
+    },
+    {
+      "id": "wublock:fa7611f1c8a2c7f4590f",
+      "feed": "吴说区块链",
+      "feed_key": "wublock",
+      "time": "2026-10-16 13:32:33",
+      "text": "吴说每日精选加密新闻 - 美国 OCC 署长：GENIUS 法案最终规则预计 10 月底前发布 美国 OCC 署长称 GENIUS 法案最终规则预计很快发布，不晚于十月底；嘉信理财宣布 Schwab Crypto 已开放零售扩展，年底前新增 SOL、AVAX、LINK；德意志银行数周内推加密托管，2027 年拓展至亚洲；日本三大银行完成日元稳定币联合发行与跨境支付测试，计划 2026 年启动实际交易；The Information 报道 CoreWeave、Broadcom 反对 OKX/ICE 股权代币化；俄罗斯拟自 2027 年起全面禁止个人 P2P 加密交易，仅经合规中介。",
+      "summary": "吴说每日精选加密新闻 - 美国 OCC 署长：2026-10-16 13:32:33 GENIUS 法案最终规则预计 10 月底前发布 美国 OCC 署长称 GENIUS 法案最终规则预计很快发布，不晚于十月底；嘉信理财宣布 Schwab Crypto 已开放零售扩展，年底前新增 SOL、AVAX、LINK；德意志银行数周内推加密托管，2027 年拓展至亚洲；日本三大银行完成日元稳定币联合发行与跨境支付测试，计划 2026 年启动实际交易；The Information 报道 CoreWeave、Broadcom 反对 OKX/ICE 股权代币化；俄罗斯拟自 2027 年起全面禁止个人 P2P 加密交易，仅经合规中介。",
+      "url": "https://www.wublock123.com/articles/wu-daily-crypto-news-occ-genius-rule-by-october-59693",
+      "source": "stock_news_alert"
+    },
+    {
+      "id": "wublock:ad644c609251232a3a53",
+      "feed": "吴说区块链",
+      "feed_key": "wublock",
+      "time": "2026-10-16 12:43:01",
+      "text": "嘉信理财开放加密资产充提 年底前将新增 SOL、AVAX 和 LINK 交易 吴说获悉，嘉信理财（Charles Schwab，NYSE: SCHW）CEO Rick Wurster 在 10 月 15 日业务更新会上表示，旗下 Schwab Crypto 已完成面向零售客户的...",
+      "summary": "嘉信理财开放加密资产充提 年底前将新增 SOL、AVAX 和 LINK 交易 吴说获悉，嘉信理财（Charles Schwab，NYSE：2026-10-16 12:43:01 SCHW）CEO Rick Wurster 在 10 月 15 日业务更新会上表示，旗下 Schwab Crypto 已完成面向零售客户的...",
+      "url": "https://www.wublock123.com/news/schwab-rolls-out-crypto-deposits-with-sol-avax-link-by-year-end-70216",
+      "source": "stock_news_alert"
+    },
+    {
       "id": "eastmoney:81154a5de5bf5a7dac12",
       "feed": "东方财富",
       "feed_key": "eastmoney",
