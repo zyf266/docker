@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { isAdminRole } from '../utils/authRole'
 import {
   Zap,
   BarChart2,
@@ -227,6 +228,11 @@ const MainLayout = () => {
             </span>
           </div>
           <div className="header-right">
+            {isAdminRole(user?.role) ? (
+              <Link className="btn-switch-portal" to="/portal">
+                进入用户端
+              </Link>
+            ) : null}
             <button type="button" className="icon-btn desktop-only" aria-label="通知">
               <Bell size={22} />
             </button>
@@ -238,7 +244,10 @@ const MainLayout = () => {
                 {(user?.username || '用').slice(0, 2).toUpperCase()}
               </div>
               <div className="user-details desktop-only">
-                <div className="user-name">{user?.username || 'zyf'} {user?.role === 'superuser' ? '管理员' : '用户'}</div>
+                <div className="user-name">
+                  {user?.username || 'zyf'}{' '}
+                  {isAdminRole(user?.role) ? '管理员' : '用户'}
+                </div>
               </div>
             </div>
             <button

@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { isAdminRole, readStoredUser } from '../utils/authRole'
 import './PortalLayout.css'
 
 const links = [
@@ -12,6 +13,8 @@ const links = [
 
 const PortalLayout = () => {
   const navigate = useNavigate()
+  const user = useMemo(() => readStoredUser(), [])
+  const showAdminSwitch = isAdminRole(user?.role)
 
   const logout = () => {
     localStorage.removeItem('token')
@@ -34,6 +37,9 @@ const PortalLayout = () => {
           ))}
         </nav>
         <div className="portal-nav-actions">
+          {showAdminSwitch ? (
+            <Link className="portal-btn portal-btn-cyan" to="/trading">进入管理端</Link>
+          ) : null}
           <Link className="portal-btn portal-btn-primary" to="/portal">一键跟随</Link>
           <button type="button" className="portal-btn portal-btn-ghost" onClick={logout}>退出</button>
         </div>

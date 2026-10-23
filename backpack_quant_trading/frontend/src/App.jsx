@@ -45,19 +45,10 @@ import PortalMarket from './views/portal/PortalMarket'
 import PortalWorkflow from './views/portal/PortalWorkflow'
 import PortalFaq from './views/portal/PortalFaq'
 import PortalContact from './views/portal/PortalContact'
-
-const readUser = () => {
-  try {
-    return JSON.parse(localStorage.getItem('user') || 'null')
-  } catch (_) {
-    return null
-  }
-}
-
-const isAdminRole = (role) => ['superuser', 'admin', 'root'].includes(String(role || '').toLowerCase())
+import { isAdminRole, readStoredUser } from './utils/authRole'
 
 const homeForUser = () => {
-  const user = readUser()
+  const user = readStoredUser()
   if (!user) return '/login'
   return isAdminRole(user.role) ? '/trading' : '/portal'
 }
@@ -73,20 +64,17 @@ const RequireAuth = ({ children }) => {
 const RequireAdmin = ({ children }) => {
   const token = localStorage.getItem('token')
   if (!token) return <Navigate to="/login" replace />
-  const user = readUser()
+  const user = readStoredUser()
   if (!isAdminRole(user?.role)) {
     return <Navigate to="/portal" replace />
   }
   return children
 }
 
+/** 用户端：任意已登录用户可进；管理员也可进 Portal，再用顶栏切回管理端 */
 const RequirePortalUser = ({ children }) => {
   const token = localStorage.getItem('token')
   if (!token) return <Navigate to="/login" replace />
-  const user = readUser()
-  if (isAdminRole(user?.role)) {
-    return <Navigate to="/trading" replace />
-  }
   return children
 }
 
@@ -100,7 +88,7 @@ const GuestOnly = ({ children }) => {
 
 const StockAnalysisEntry = () => {
   if (localStorage.getItem('token')) {
-    const user = readUser()
+    const user = readStoredUser()
     if (!isAdminRole(user?.role)) {
       return <Navigate to="/portal" replace />
     }

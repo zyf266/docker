@@ -276,6 +276,23 @@
   margin-top: 1px;
 }
 
+.btn-switch-portal {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+
+.btn-switch-portal:hover {
+  background: #dbeafe;
+}
+
 .btn-logout {
   padding: 8px 18px;
   border-radius: 8px;

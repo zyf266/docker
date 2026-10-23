@@ -585,6 +585,27 @@ class DatabaseManager:
         finally:
             session.close()
 
+    def set_user_role(self, username: str, role: str):
+        """将已有用户角色设为 user / superuser / admin / root。"""
+        role_norm = (role or "").strip().lower()
+        if role_norm not in ("user", "superuser", "admin", "root"):
+            raise ValueError(f"非法 role: {role}")
+        session = self.get_session()
+        try:
+            user = session.query(User).filter_by(username=username.strip()).first()
+            if not user:
+                return None
+            user.role = role_norm
+            session.commit()
+            session.refresh(user)
+            session.expunge(user)
+            return user
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
     def save_user_instance(self, user_id: int, instance_type: str, instance_id: str, config_json: Optional[str] = None):
         """保存用户实例归属（实盘/网格/币种监视）。遇 MySQL 锁等待超时自动重试。"""
         import time
