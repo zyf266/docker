@@ -87,6 +87,89 @@ def _parse_pct(raw: str) -> Optional[float]:
     return v if v > 0 else None
 
 
+def _leverage_from_cfg(cfg: Dict[str, Any], default: int = 5) -> int:
+    try:
+        lev = int(cfg.get("leverage") if cfg.get("leverage") is not None else default)
+    except (TypeError, ValueError):
+        lev = default
+    return max(1, min(lev, 125))
+
+
+def _check_ma_gate(cfg: Dict[str, Any], side: str) -> Tuple[bool, str]:
+    """买入前检查是否满足配置勾选的「站上 MA5/30/200」。卖出/平仓不校验。"""
+    if side != "BUY":
+        return True, ""
+    need_short = bool(cfg.get("require_short"))
+    need_mid = bool(cfg.get("require_mid"))
+    need_long = bool(cfg.get("require_long"))
+    if not (need_short or need_mid or need_long):
+        return True, ""
+
+    from backpack_quant_trading.core.portal_watchlist import compute_symbol_metrics
+
+    symbol = str(cfg.get("symbol") or "")
+    try:
+        metrics = compute_symbol_metrics(symbol, market="crypto", force=False)
+    except Exception as exc:
+        return False, f"均线状态拉取失败: {exc}"
+
+    if metrics.get("error") and metrics.get("ma5") is None and metrics.get("ma30") is None:
+        return False, f"均线数据不足: {metrics.get('error')}"
+
+    missing = []
+    if need_short and not metrics.get("short_on"):
+        missing.append("MA5")
+    if need_mid and not metrics.get("mid_on"):
+        missing.append("MA30")
+    if need_long and not metrics.get("long_on"):
+        missing.append("MA200")
+    if missing:
+        return False, (
+            f"未站上 {','.join(missing)}（price={metrics.get('price')}, "
+            f"MA5={metrics.get('ma5')}, MA30={metrics.get('ma30')}, MA200={metrics.get('ma200')}），拒绝开多"
+        )
+    return True, ""
+
+
+def _record_from_result(
+    cfg: Dict[str, Any],
+    *,
+    side: str,
+    action: str,
+    out: Dict[str, Any],
+    dry: bool,
+) -> None:
+    if out.get("status") not in ("ok", "skipped", "error"):
+        return
+    status = str(out.get("status") or "ok")
+    if dry and status == "ok":
+        status = "dry-run"
+    order = out.get("order") if isinstance(out.get("order"), dict) else {}
+    try:
+        margin_val = out.get("margin")
+        if margin_val in (None, "") and order.get("margin") not in (None, ""):
+            margin_val = order.get("margin")
+        store.record_trade(
+            int(cfg.get("user_id")),
+            platform=str(cfg.get("exchange") or ""),
+            symbol=str(cfg.get("symbol") or out.get("coin") or ""),
+            side=side,
+            action=action,
+            strategy_name=str(cfg.get("strategy_name") or ""),
+            timeframe=str(cfg.get("timeframe") or ""),
+            price=float(out["entry"]) if out.get("entry") not in (None, "") else None,
+            quantity=float(out["size"]) if out.get("size") not in (None, "") else None,
+            margin=float(margin_val) if margin_val not in (None, "") else None,
+            leverage=_leverage_from_cfg(cfg),
+            pnl=float(out.get("pnl") or 0),
+            status=status,
+            detail=str(out.get("detail") or "")[:240],
+            order_id=str(order.get("orderId") or order.get("ordId") or ""),
+        )
+    except Exception:
+        logger.exception("写入 portal_trades 失败 cfg=%s", cfg.get("id"))
+
+
 def _margin_usdt(cfg: Dict[str, Any], equity: float) -> float:
     mode = (cfg.get("size_mode") or "percent").lower()
     try:
@@ -160,8 +243,32 @@ def execute_portal_signal(payload: dict) -> Dict[str, Any]:
             item["detail"] = f"用户未绑定 {exchange}"
             results.append(item)
             continue
+        # 买入前：校验勾选的站上 MA 条件
+        if side == "BUY":
+            ok_gate, gate_msg = _check_ma_gate(cfg, side)
+            if not ok_gate:
+                item["status"] = "rejected"
+                item["detail"] = gate_msg
+                results.append(item)
+                try:
+                    store.record_trade(
+                        int(uid),
+                        platform=exchange,
+                        symbol=str(cfg.get("symbol") or ""),
+                        side=side,
+                        action="open",
+                        strategy_name=str(cfg.get("strategy_name") or ""),
+                        timeframe=str(cfg.get("timeframe") or ""),
+                        leverage=_leverage_from_cfg(cfg),
+                        status="rejected",
+                        detail=gate_msg[:240],
+                    )
+                except Exception:
+                    logger.exception("写入拒绝记录失败")
+                continue
         try:
             secrets = _secrets_from_binding(binding.get("config") or {})
+            trade_action = "close" if side == "CLOSE" else "open"
             if side == "CLOSE":
                 out = _exec_close(cfg, exchange, secrets, dry=dry)
             elif exchange == "hyperliquid":
@@ -171,6 +278,13 @@ def execute_portal_signal(payload: dict) -> Dict[str, Any]:
             item.update(out)
             if out.get("status") == "ok":
                 executed += 1
+            _record_from_result(
+                cfg,
+                side=side if side != "CLOSE" else "SELL",
+                action=trade_action,
+                out=out,
+                dry=dry,
+            )
         except Exception as exc:
             logger.exception("portal webhook 执行失败 cfg=%s", cfg.get("id"))
             item["status"] = "error"
@@ -225,6 +339,7 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
 
     tp_pct = _parse_pct(cfg.get("take_profit") or "")
     sl_pct = _parse_pct(cfg.get("stop_loss") or "")
+    leverage = _leverage_from_cfg(cfg)
 
     if dry:
         return {
@@ -234,6 +349,7 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
             "equity": round(equity, 4),
             "coin": coin,
             "side": side,
+            "leverage": leverage,
             "tp_pct": tp_pct,
             "sl_pct": sl_pct,
         }
@@ -256,7 +372,7 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
                 side=side,
                 quantity=margin,
                 order_type="MARKET",
-                leverage=5,
+                leverage=leverage,
             )
             if res.get("status") != "FILLED":
                 return {"status": "error", "detail": f"开仓失败: {res.get('error') or res}"}
@@ -289,7 +405,12 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
             return {
                 "status": "ok",
                 "detail": "hyperliquid filled",
-                "order": {"orderId": res.get("orderId"), "margin": margin, "coin": coin},
+                "order": {
+                    "orderId": res.get("orderId"),
+                    "margin": margin,
+                    "coin": coin,
+                    "leverage": leverage,
+                },
                 "entry": entry,
                 "size": sz,
                 "tpsl": tpsl,
@@ -324,6 +445,7 @@ def _exec_okx(
 
     tp_pct = _parse_pct(cfg.get("take_profit") or "")
     sl_pct = _parse_pct(cfg.get("stop_loss") or "")
+    leverage = _leverage_from_cfg(cfg)
     pos_side = "long" if side == "BUY" else "short"
     okx_side = "buy" if side == "BUY" else "sell"
 
@@ -336,6 +458,7 @@ def _exec_okx(
             "instId": inst_id,
             "side": okx_side,
             "posSide": pos_side,
+            "leverage": leverage,
             "tp_pct": tp_pct,
             "sl_pct": sl_pct,
         }

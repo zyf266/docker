@@ -290,6 +290,21 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
 
         accounts.append(item)
 
+    # 持仓挂上观察库策略名（connected 配置）
+    try:
+        cfgs = store.list_connected_watch_configs(user_id)
+        for p in positions:
+            name = store.match_strategy_for_position(
+                cfgs,
+                symbol=str(p.get("symbol") or ""),
+                platform=str(p.get("platform") or ""),
+            )
+            p["strategy_name"] = name
+    except Exception as exc:
+        logger.warning("持仓匹配策略名失败: %s", exc)
+        for p in positions:
+            p.setdefault("strategy_name", "")
+
     return {
         "connected": any(a.get("status") == "ok" for a in accounts),
         "accounts": accounts,

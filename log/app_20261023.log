@@ -1,0 +1,601 @@
+2026-10-23 10:12:37 | DEBUG    | matplotlib:342 | matplotlib data path: C:\Users\A1\AppData\Roaming\Python\Python313\site-packages\matplotlib\mpl-data
+2026-10-23 10:12:37 | DEBUG    | matplotlib:342 | CONFIGDIR=C:\Users\A1\.matplotlib
+2026-10-23 10:12:37 | DEBUG    | matplotlib:1560 | interactive is False
+2026-10-23 10:12:37 | DEBUG    | matplotlib:1561 | platform is win32
+2026-10-23 10:12:43 | DEBUG    | asyncio:631 | Using proactor: IocpProactor
+2026-10-23 10:12:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-23 10:12:44 | INFO     | backpack_quant_trading.core.binance_monitor:1117 | 币种监视已启动: ['0GUSDT', '1000000BOBUSDT'], ['1小时', '2小时', '4小时']
+2026-10-23 10:12:44 | INFO     | backpack_quant_trading.core.binance_monitor:1203 | [币种监视] 已从 DB 恢复 3 对
+2026-10-23 10:12:44 | INFO     | kline_scheduler:272 | [A股AI Agent] 启动恢复: skip/none
+2026-10-23 10:12:44 | INFO     | kline_scheduler:284 | [自愈] startup: {'ok': True, 'healed': [], 'needs_human': [], 'notes': ['币种监视：restore 已调用', '新闻监控：已尝试磁盘恢复']}
+2026-10-23 10:12:44 | INFO     | backpack_quant_trading.core.live_trade_dingtalk_alert:232 | live_trade dingtalk handlers installed loggers=('adaptive_long', 'adaptive_short', 'auto_close', 'eth_trend_short', 'backpack_quant_trading.strategy.hype_adaptive_short', 'backpack_quant_trading.api.routers.trading') webhook=yes
+2026-10-23 10:12:44 | INFO     | kline_scheduler:302 | [调度] 本进程持锁，启动后台定时任务
+2026-10-23 10:12:44 | INFO     | backpack_quant_trading.api.routers.trading:1967 | 实例自动恢复完成 ok=0 fail=0 total=0
+2026-10-23 10:12:44 | INFO     | kline_scheduler:307 | [实例恢复] {'ok': 0, 'fail': 0, 'total': 0}
+2026-10-23 10:12:44 | INFO     | kline_scheduler:405 | [泡沫监测] 下次自动分析：2026-10-24 10:00:00（31.8h 后）
+2026-10-23 10:12:44 | INFO     | kline_scheduler:508 | [研究卡片价格] 使用有效缓存: 2026-10-23 05:00:00
+2026-10-23 10:12:44 | INFO     | kline_scheduler:525 | [研究卡片价格] 下次更新(北京时间)：2026-10-24 05:00:00（18.8h 后）
+2026-10-23 10:12:44 | INFO     | kline_scheduler:563 | [A股盯市收盘] 启动补拉: 缓存 2026-10-22 07:35:03
+2026-10-23 10:12:44 | INFO     | kline_scheduler:575 | [A股盯市收盘] 下次更新(北京时间)：2026-10-23 15:35:00（5.4h 后）
+2026-10-23 10:12:44 | INFO     | kline_scheduler:340 | [Agent巡检] 下次约 6.8h 后（09:00）
+2026-10-23 10:12:44 | INFO     | kline_scheduler:362 | [自动复盘] 下次约 17.8h 后（20:00）
+2026-10-23 10:12:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): money.finance.sina.com.cn:443
+2026-10-23 10:12:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.hyperliquid.xyz:443
+2026-10-23 10:12:45 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-23 10:12:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-23 10:12:45 | DEBUG    | urllib3.connectionpool:475 | https://money.finance.sina.com.cn:443 "GET /quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sz002837&scale=240&ma=no&datalen=30 HTTP/1.1" 200 None
+2026-10-23 10:12:45 | INFO     | backpack_quant_trading.core.a_share_strategy_mtm:138 | A股盯市 002837 收盘 43.53 @ 2026-10-22 (sina_daily)
+2026-10-23 10:12:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): money.finance.sina.com.cn:443
+2026-10-23 10:12:46 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 25681
+2026-10-23 10:12:46 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-23 10:12:46 | DEBUG    | urllib3.connectionpool:475 | https://api.hyperliquid.xyz:443 "POST /info HTTP/1.1" 200 270
+2026-10-23 10:12:46 | INFO     | backpack_quant_trading.api.routers.strategy:179 | [HL K线] HYPE 4h insert=1 update=1 dedupe=0
+2026-10-23 10:12:46 | DEBUG    | urllib3.connectionpool:475 | https://money.finance.sina.com.cn:443 "GET /quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sz159570&scale=240&ma=no&datalen=30 HTTP/1.1" 200 None
+2026-10-23 10:12:46 | INFO     | backpack_quant_trading.core.a_share_strategy_mtm:138 | A股盯市 159570 收盘 1.307 @ 2026-10-22 (sina_daily)
+2026-10-23 10:12:46 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): money.finance.sina.com.cn:443
+2026-10-23 10:12:48 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-23 10:12:48 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-23 10:12:49 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-23 10:12:49 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-23 10:12:49 | DEBUG    | urllib3.connectionpool:475 | https://money.finance.sina.com.cn:443 "GET /quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sz300308&scale=240&ma=no&datalen=30 HTTP/1.1" 200 None
+2026-10-23 10:12:49 | INFO     | backpack_quant_trading.core.a_share_strategy_mtm:138 | A股盯市 300308 收盘 590.11 @ 2026-10-22 (sina_daily)
+2026-10-23 10:12:49 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): money.finance.sina.com.cn:443
+2026-10-23 10:12:50 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.hyperliquid.xyz:443
+2026-10-23 10:12:50 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 52326
+2026-10-23 10:12:50 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:12:52 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-23 10:12:52 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:12:53 | DEBUG    | urllib3.connectionpool:475 | https://money.finance.sina.com.cn:443 "GET /quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh603986&scale=240&ma=no&datalen=30 HTTP/1.1" 200 None
+2026-10-23 10:12:53 | INFO     | backpack_quant_trading.core.a_share_strategy_mtm:138 | A股盯市 603986 收盘 276.75 @ 2026-10-22 (sina_daily)
+2026-10-23 10:12:53 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): money.finance.sina.com.cn:443
+2026-10-23 10:12:53 | DEBUG    | urllib3.connectionpool:475 | https://money.finance.sina.com.cn:443 "GET /quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh688146&scale=240&ma=no&datalen=30 HTTP/1.1" 200 None
+2026-10-23 10:12:53 | INFO     | backpack_quant_trading.core.a_share_strategy_mtm:138 | A股盯市 688146 收盘 148.68 @ 2026-10-22 (sina_daily)
+2026-10-23 10:12:53 | DEBUG    | urllib3.connectionpool:475 | https://api.hyperliquid.xyz:443 "POST /info HTTP/1.1" 200 405
+2026-10-23 10:12:53 | INFO     | backpack_quant_trading.api.routers.strategy:179 | [HL K线] ETH 2h insert=2 update=1 dedupe=0
+2026-10-23 10:12:53 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:12:53 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-23 10:12:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.hyperliquid.xyz:443
+2026-10-23 10:12:56 | DEBUG    | urllib3.connectionpool:475 | https://api.hyperliquid.xyz:443 "POST /info HTTP/1.1" 200 405
+2026-10-23 10:12:56 | INFO     | backpack_quant_trading.api.routers.strategy:179 | [HL K线] ETH 2h insert=2 update=1 dedupe=0
+2026-10-23 10:12:57 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:12:57 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:12:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:12:59 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:12:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:13:00 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:13:00 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/NVDA/range/2/hour/2026-04-26/2026-05-30?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:13:01 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:02 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:02 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:13:02 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/NVDA/range/2/hour/2026-05-31/2026-07-04?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:13:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:03 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:13:05 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/NVDA/range/2/hour/2026-07-05/2026-08-08?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:13:05 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:05 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:13:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:07 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:07 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:13:07 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/NVDA/range/2/hour/2026-08-09/2026-09-12?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:13:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:09 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:09 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:13:10 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/NVDA/range/2/hour/2026-09-13/2026-10-17?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:13:10 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:13:10 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:12 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/NVDA/range/2/hour/2026-10-18/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:12 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:13:12 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:12 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:13:13 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:14 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:14 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:13:14 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/NVDA/range/2/hour/2026-10-18/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:14 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:13:16 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:16 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:13:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:18 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:18 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:13:18 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/NVDA/range/2/hour/2026-10-18/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:18 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:13:19 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:19 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:13:21 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:13:21 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-23 10:13:22 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 NVDA 2026-10-18~2026-10-23: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:13:22 | INFO     | backpack_quant_trading.core.massive_klines:294 | Massive 分批 K线 NVDA 2hour: 5 批, 共 968 根
+2026-10-23 10:13:22 | INFO     | backpack_quant_trading.api.routers.strategy:403 | [Massive K线] NVDA 2h 写入 0 条 dedupe=0 (from 2026-04-26)
+2026-10-23 10:13:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:25 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-23 10:13:25 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-23 10:13:27 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:13:27 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-04-26/2026-05-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:27 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:13:27 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4046
+2026-10-23 10:13:28 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:13:28 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:28 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4153
+2026-10-23 10:13:28 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 34 条
+2026-10-23 10:13:28 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-23 10:13:29 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-23 10:13:29 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-23 10:13:30 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-04-26/2026-05-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:30 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:13:31 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:13:31 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-23 10:13:31 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-23 10:13:31 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-23 10:13:32 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-23 02:12:44 | 拉取 282 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=34, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 0 | 非最新 4 | 未命中关键词 267 | 非重要快讯 11 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-10-23 10:13:32 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:33 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-04-26/2026-05-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:33 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:13:37 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 INTC 2026-04-26~2026-05-23: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:13:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:40 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-05-24/2026-06-20?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:40 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:13:41 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:43 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-05-24/2026-06-20?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:43 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:13:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:47 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-05-24/2026-06-20?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:47 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:13:51 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 INTC 2026-05-24~2026-06-20: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:13:52 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:53 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-06-21/2026-07-18?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:53 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:13:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:13:58 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-06-21/2026-07-18?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:13:58 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:14:00 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:02 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-23 10:14:03 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-23 10:14:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-23 10:14:03 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 24910
+2026-10-23 10:14:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-23 10:14:04 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-23 10:14:04 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-06-21/2026-07-18?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:14:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-23 10:14:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:05 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-23 10:14:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-23 10:14:06 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 51699
+2026-10-23 10:14:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:14:06 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-07-19/2026-08-15?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:14:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:07 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-23 10:14:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:14:09 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:09 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-23 10:14:10 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:14:11 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-08-16/2026-09-12?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:11 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:14:12 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:12 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:12 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:14:14 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-08-16/2026-09-12?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:14 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:14:14 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:14 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:14:15 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:15 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:14:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:17 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:14:17 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-08-16/2026-09-12?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:17 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:14:18 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:18 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:14:20 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:20 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:14:21 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:21 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:14:21 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 INTC 2026-08-16~2026-09-12: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:14:22 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:23 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:14:24 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-09-13/2026-10-10?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:24 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:14:24 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:24 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:14:25 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:28 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:28 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:14:28 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-09-13/2026-10-10?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:28 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:14:30 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:31 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:31 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:14:32 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-09-13/2026-10-10?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:32 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:14:32 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:32 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:14:35 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:35 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:14:36 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 INTC 2026-09-13~2026-10-10: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:14:36 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:37 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:14:37 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-23 10:14:38 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-23 10:14:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-23 10:14:39 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-10-11/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:39 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:14:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:41 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:14:41 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4042
+2026-10-23 10:14:42 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:14:42 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4152
+2026-10-23 10:14:42 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 34 条
+2026-10-23 10:14:42 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-23 10:14:42 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-10-11/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:42 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:14:43 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-23 10:14:43 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-23 10:14:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:45 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:14:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-23 10:14:46 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-23 10:14:46 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-23 10:14:46 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-23 02:14:02 | 拉取 282 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=34, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 0 | 非最新 4 | 未命中关键词 266 | 非重要快讯 12 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-10-23 10:14:46 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/INTC/range/1/hour/2026-10-11/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:46 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:14:50 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 INTC 2026-10-11~2026-10-23: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:14:50 | INFO     | backpack_quant_trading.core.massive_klines:294 | Massive 分批 K线 INTC 1hour: 2 批, 共 624 根
+2026-10-23 10:14:50 | INFO     | backpack_quant_trading.api.routers.strategy:403 | [Massive K线] INTC 1h 写入 0 条 dedupe=0 (from 2026-04-26)
+2026-10-23 10:14:50 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:53 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2025-12-14/2026-01-17?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:53 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:14:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:14:56 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2025-12-14/2026-01-17?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:14:56 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:14:58 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:01 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2025-12-14/2026-01-17?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:15:01 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:04 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-01-18/2026-02-21?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:15:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:05 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-02-22/2026-03-28?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:05 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:15:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:08 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-02-22/2026-03-28?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:08 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:15:10 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:11 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-02-22/2026-03-28?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:11 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:15:15 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 MU 2026-02-22~2026-03-28: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:15:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:17 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-23 10:15:17 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-03-29/2026-05-02?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:17 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:15:18 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-23 10:15:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-23 10:15:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:18 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 25276
+2026-10-23 10:15:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-23 10:15:19 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-23 10:15:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-23 10:15:20 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-23 10:15:20 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-23 10:15:20 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 51417
+2026-10-23 10:15:21 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:15:21 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-03-29/2026-05-02?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:21 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:15:22 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-23 10:15:22 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:15:23 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:24 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-23 10:15:25 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-03-29/2026-05-02?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:25 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:15:25 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:25 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:15:27 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:27 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:15:28 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:28 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:15:29 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 MU 2026-03-29~2026-05-02: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:15:30 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:30 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:30 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:15:31 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:31 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:15:32 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-05-03/2026-06-06?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:32 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:15:33 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:33 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:15:33 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:35 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:35 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-05-03/2026-06-06?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:35 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:15:35 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:15:36 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:15:37 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:38 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:38 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:15:39 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-05-03/2026-06-06?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:39 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:15:40 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:40 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:15:42 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:42 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:15:43 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 MU 2026-05-03~2026-06-06: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:15:44 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:44 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:15:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:46 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-06-07/2026-07-11?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:46 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:15:46 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:15:47 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:48 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:48 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:15:50 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:15:50 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-23 10:15:51 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-06-07/2026-07-11?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:51 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:15:51 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-23 10:15:51 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-23 10:15:53 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:15:53 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:15:53 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4046
+2026-10-23 10:15:54 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:15:54 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4153
+2026-10-23 10:15:54 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 34 条
+2026-10-23 10:15:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-23 10:15:56 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-23 10:15:56 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-23 10:15:56 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-06-07/2026-07-11?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:15:56 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:15:57 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:15:57 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-23 10:15:58 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-23 10:15:58 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-23 10:15:58 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-23 02:15:17 | 拉取 282 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=34, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 0 | 非最新 4 | 未命中关键词 266 | 非重要快讯 12 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-10-23 10:16:00 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 MU 2026-06-07~2026-07-11: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:16:01 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:02 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-07-12/2026-08-15?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:16:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:05 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-08-16/2026-09-19?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:16:05 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:16:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:09 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-08-16/2026-09-19?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:16:09 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:16:11 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:13 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-08-16/2026-09-19?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:16:13 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:16:17 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 MU 2026-08-16~2026-09-19: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:16:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:19 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-09-20/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:16:19 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:16:20 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:21 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-09-20/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:16:21 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:16:23 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:26 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/MU/range/2/hour/2026-09-20/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:16:26 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:16:28 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-23 10:16:28 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-23 10:16:28 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-23 10:16:29 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 26329
+2026-10-23 10:16:29 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-23 10:16:30 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 MU 2026-09-20~2026-10-23: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:16:30 | INFO     | backpack_quant_trading.core.massive_klines:294 | Massive 分批 K线 MU 2hour: 3 批, 共 566 根
+2026-10-23 10:16:30 | INFO     | backpack_quant_trading.api.routers.strategy:403 | [Massive K线] MU 2h 写入 0 条 dedupe=0 (from 2025-12-14)
+2026-10-23 10:16:30 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:16:30 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-23 10:16:30 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-23 10:16:31 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-23 10:16:31 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-23 10:16:32 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 51390
+2026-10-23 10:16:32 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:16:32 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:16:32 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:16:33 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-23 10:16:33 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:16:33 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v8/finance/chart/300308.SZ?period1=1770802200&period2=1792808190&interval=60m HTTP/1.1" 200 None
+2026-10-23 10:16:34 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:16:35 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:35 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-23 10:16:35 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:16:35 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:16:36 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:16:37 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v8/finance/chart/603986.SS?period1=1770384600&period2=1792808194&interval=60m HTTP/1.1" 200 None
+2026-10-23 10:16:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:16:38 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:38 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:16:40 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:16:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:16:40 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:40 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:16:42 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:42 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:16:43 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v8/finance/chart/688146.SS?period1=1775899800&period2=1792808198&interval=60m HTTP/1.1" 200 None
+2026-10-23 10:16:43 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:43 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:16:43 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:16:44 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:16:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:16:45 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:45 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:16:46 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v8/finance/chart/002837.SZ?period1=1767087000&period2=1792808203&interval=60m HTTP/1.1" 200 None
+2026-10-23 10:16:46 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:16:47 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:16:49 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:49 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:16:49 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:16:49 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:16:50 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v8/finance/chart/159570.SZ?period1=1767625200&period2=1792808207&interval=60m HTTP/1.1" 200 None
+2026-10-23 10:16:50 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:50 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:16:51 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): push2his.eastmoney.com:443
+2026-10-23 10:16:52 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:52 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:16:54 | DEBUG    | urllib3.connectionpool:475 | https://push2his.eastmoney.com:443 "GET /api/qt/stock/kline/get?secid=1.510210&klt=240&fqt=1&beg=20250221&end=20261023&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58%2Cf59%2Cf60%2Cf61&ut=fa5fd1943c7b386f172d6893dbfba10b HTTP/1.1" 200 None
+2026-10-23 10:16:54 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:54 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:16:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:55 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2025-09-18/2025-10-22?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:16:55 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:16:55 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:16:56 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:16:57 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:16:58 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2025-09-18/2025-10-22?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:16:58 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:16:58 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:16:58 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:17:00 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:00 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-23 10:17:01 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2025-09-18/2025-10-22?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:17:01 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:01 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-23 10:17:01 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-23 10:17:03 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2025-10-23/2025-11-26?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:17:04 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:17:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:04 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4042
+2026-10-23 10:17:04 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:17:05 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2025-11-27/2025-12-31?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:05 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:17:05 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4153
+2026-10-23 10:17:05 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 34 条
+2026-10-23 10:17:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-23 10:17:06 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-23 10:17:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-23 10:17:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:07 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:17:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-23 10:17:08 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-23 10:17:08 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-23 10:17:08 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-23 02:16:28 | 拉取 283 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=34, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 0 | 非最新 4 | 未命中关键词 267 | 非重要快讯 12 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-10-23 10:17:08 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2025-11-27/2025-12-31?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:08 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:17:10 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:11 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2025-11-27/2025-12-31?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:11 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:17:15 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 I:NDX 2025-11-27~2025-12-31: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:17:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:18 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-01-01/2026-02-04?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:18 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:17:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:21 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-01-01/2026-02-04?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:21 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:17:23 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:26 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-01-01/2026-02-04?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:26 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:17:30 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 I:NDX 2026-01-01~2026-02-04: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:17:30 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:32 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-02-05/2026-03-11?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:32 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:17:33 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:34 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-02-05/2026-03-11?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:34 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:17:36 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-23 10:17:38 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-02-05/2026-03-11?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:38 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:17:38 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-23 10:17:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-23 10:17:39 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 26329
+2026-10-23 10:17:39 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-23 10:17:40 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-23 10:17:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-23 10:17:40 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-23 10:17:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-23 10:17:41 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 51390
+2026-10-23 10:17:41 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-23 10:17:42 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 I:NDX 2026-02-05~2026-03-11: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:17:42 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:43 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-23 10:17:43 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-23 10:17:44 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-03-12/2026-04-15?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:44 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:17:45 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-23 10:17:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:46 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:17:47 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-03-12/2026-04-15?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:47 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:17:48 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:48 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:17:49 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:49 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:49 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:17:50 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-03-12/2026-04-15?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:50 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:17:51 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:51 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:17:52 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:52 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:17:54 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:54 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:17:54 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 I:NDX 2026-03-12~2026-04-15: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:17:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:55 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-04-16/2026-05-20?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:55 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:17:55 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:17:56 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:17:57 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:17:58 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-04-16/2026-05-20?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:17:58 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:17:59 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:17:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:18:00 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:18:02 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:18:02 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:18:02 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-04-16/2026-05-20?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:18:02 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:18:03 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:18:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:18:05 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:18:05 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:18:06 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-05-21/2026-06-24?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 2040
+2026-10-23 10:18:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:18:06 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:18:06 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-23 10:18:08 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:18:08 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-23 10:18:09 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-06-25/2026-07-29?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:18:09 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:18:10 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-23 10:18:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-23 10:18:12 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-23 10:18:12 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-23 10:18:14 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:18:14 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4045
+2026-10-23 10:18:14 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-07-30/2026-09-02?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:18:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:18:15 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-23 10:18:15 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4153
+2026-10-23 10:18:15 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 34 条
+2026-10-23 10:18:15 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-23 10:18:16 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-09-03/2026-10-07?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 200 None
+2026-10-23 10:18:17 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:18:21 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-10-08/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:18:21 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，1.0s 后重试 (1/3)
+2026-10-23 10:18:22 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:18:23 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-23 10:18:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-23 10:18:24 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-10-08/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:18:24 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，2.0s 后重试 (2/3)
+2026-10-23 10:18:25 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-23 10:18:25 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-23 10:18:26 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-23 10:18:26 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-23 10:18:26 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-23 02:17:38 | 拉取 283 条 (金十数据=19, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=34, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 0 | 非最新 4 | 未命中关键词 267 | 非重要快讯 12 | 内容相似去重 0 | 新命中 0 | 待推送 0 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC
+2026-10-23 10:18:26 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): api.polygon.io:443
+2026-10-23 10:18:29 | DEBUG    | urllib3.connectionpool:475 | https://api.polygon.io:443 "GET /v2/aggs/ticker/I%3ANDX/range/4/hour/2026-10-08/2026-10-23?adjusted=true&sort=asc&limit=50000&apiKey=1sSgkUzRRI78x21KfdCjgsY47vlJPOIg HTTP/1.1" 429 207
+2026-10-23 10:18:29 | WARNING  | backpack_quant_trading.core.massive_klines:168 | Massive 限流 429，4.0s 后重试 (3/3)
+2026-10-23 10:18:33 | WARNING  | backpack_quant_trading.core.massive_klines:286 | Massive 分批 K线失败 I:NDX 2026-10-08~2026-10-23: Massive API 429: 限流重试次数已用尽
+2026-10-23 10:18:33 | INFO     | backpack_quant_trading.core.massive_klines:294 | Massive 分批 K线 I:NDX 4hour: 7 批, 共 364 根

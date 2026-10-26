@@ -36,6 +36,7 @@ class WatchConfigIn(BaseModel):
     timeframe: str = "2h"
     size_mode: str = "percent"  # fixed | percent
     size_value: str = "10"
+    leverage: int = 5  # 开仓杠杆，默认 5x
     take_profit: str = ""  # 止盈 %
     stop_loss: str = ""  # 止损 %
 
@@ -160,6 +161,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
             timeframe=body.timeframe,
             size_mode=body.size_mode,
             size_value=body.size_value,
+            leverage=body.leverage,
             take_profit=body.take_profit,
             stop_loss=body.stop_loss,
         )
@@ -244,8 +246,6 @@ def portal_tv_webhook_hint(user: dict = Depends(require_user)):
             "timeframe": "2h",
             "signal": "buy",
         },
-        "note": "须先在观察库保存配置并连接交易所（状态 connected）。"
-                " 设置 PORTAL_WEBHOOK_DRY_RUN=1 可只演练不下单。",
     }
 
 
@@ -296,6 +296,19 @@ def contact(body: ContactIn, user: dict = Depends(require_user)):
         user_id=user["id"],
     )
     return {"ok": True, **result}
+
+
+@router.get("/trades")
+def get_portal_trades(
+    platform: str = Query("", description="交易所过滤，空=全部"),
+    symbol: str = Query("", description="币种过滤，空=全部"),
+    limit: int = Query(200, ge=1, le=500),
+    user: dict = Depends(require_user),
+):
+    """交易记录清单 + 7/30/180 天收益与订单统计（按筛选条件）。"""
+    items = store.list_trades(user["id"], platform=platform, symbol=symbol, limit=limit)
+    stats = store.trade_stats(user["id"], platform=platform, symbol=symbol)
+    return {"ok": True, "items": items, "stats": stats}
 
 
 @router.get("/equity-overlay")

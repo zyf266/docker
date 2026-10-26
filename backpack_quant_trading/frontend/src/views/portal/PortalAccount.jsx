@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getExchangeBalances, getTvWebhookHint } from '../../api/portal'
+import { getExchangeBalances, getPortalTrades, getTvWebhookHint } from '../../api/portal'
 import PortalConnectModal from './PortalConnectModal'
 
 const fmtMoney = (n, digits = 2) => {
@@ -22,6 +22,13 @@ const fmtPnl = (row) => {
   return `${sign}${fmtMoney(pnl)}`
 }
 
+const fmtSigned = (n) => {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
+  const sign = v > 0 ? '+' : ''
+  return `${sign}${fmtMoney(v)}`
+}
+
 const PortalAccount = () => {
   const [connectOpen, setConnectOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -33,6 +40,12 @@ const PortalAccount = () => {
     total_equity: null,
   })
   const [webhookHint, setWebhookHint] = useState(null)
+  const [tradePlatform, setTradePlatform] = useState('all')
+  const [tradeSymbol, setTradeSymbol] = useState('all')
+  const [trades, setTrades] = useState([])
+  const [tradeStats, setTradeStats] = useState(null)
+  const [tradeOpts, setTradeOpts] = useState({ platforms: [], symbols: [] })
+  const [tradeErr, setTradeErr] = useState('')
 
   const loadBalances = useCallback(async () => {
     setError('')
@@ -51,16 +64,46 @@ const PortalAccount = () => {
     }
   }, [])
 
+  const loadTrades = useCallback(async () => {
+    setTradeErr('')
+    try {
+      const res = await getPortalTrades({
+        platform: tradePlatform === 'all' ? '' : tradePlatform,
+        symbol: tradeSymbol === 'all' ? '' : tradeSymbol,
+      })
+      setTrades(res?.items || [])
+      setTradeStats(res?.stats || null)
+    } catch (e) {
+      setTradeErr(e?.response?.data?.detail || e?.message || '交易记录加载失败')
+    }
+  }, [tradePlatform, tradeSymbol])
+
   useEffect(() => {
     loadBalances()
     getTvWebhookHint()
       .then((res) => setWebhookHint(res))
       .catch(() => setWebhookHint(null))
+    getPortalTrades({})
+      .then((res) => {
+        const items = res?.items || []
+        setTradeOpts({
+          platforms: Array.from(new Set(items.map((r) => r.platform).filter(Boolean))),
+          symbols: Array.from(new Set(items.map((r) => r.symbol).filter(Boolean))),
+        })
+      })
+      .catch(() => {})
   }, [loadBalances])
+
+  useEffect(() => {
+    loadTrades()
+  }, [loadTrades])
 
   const okAccounts = (snap.accounts || []).filter((a) => a.status === 'ok')
   const platforms = okAccounts.map((a) => a.platform)
   const positions = snap.positions || []
+  const s7 = tradeStats?.['7d'] || {}
+  const s30 = tradeStats?.['30d'] || {}
+  const s180 = tradeStats?.['180d'] || {}
 
   return (
     <div>
@@ -213,6 +256,11 @@ const PortalAccount = () => {
                           {row.platform === 'hyperliquid' ? 'Hype' : row.platform.toUpperCase()}
                         </span>
                       ) : null}
+                      {row.strategy_name ? (
+                        <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
+                          策略 · {row.strategy_name}
+                        </div>
+                      ) : null}
                     </div>
                     <span className={String(fmtPnl(row)).startsWith('-') ? 'qt-down' : 'qt-up'}>
                       {fmtPnl(row)}
@@ -228,10 +276,7 @@ const PortalAccount = () => {
       {webhookHint ? (
         <section className="qt-card" style={{ marginBottom: 16 }}>
           <strong>TradingView Webhook · 自动跟单</strong>
-          <p className="qt-sub" style={{ margin: '8px 0' }}>
-            {webhookHint.note || '观察库配置 connected 后，信号匹配策略名+币种+周期即下单。'}
-          </p>
-          <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, wordBreak: 'break-all' }}>
+          <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, wordBreak: 'break-all', margin: '8px 0 0' }}>
             POST {typeof window !== 'undefined' ? window.location.origin : ''}{webhookHint.path || '/api/portal/tv-webhook'}
           </p>
           <pre
@@ -285,6 +330,89 @@ const PortalAccount = () => {
           <p className="qt-stat-value qt-blue">{okAccounts.length}</p>
         </section>
       </div>
+
+      <section className="qt-card" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <strong>交易记录清单</strong>
+          <Link className="portal-btn portal-btn-ghost" to="/portal/trades">完整列表</Link>
+        </div>
+        <div className="qt-toolbar" style={{ marginTop: 12 }}>
+          <select className="qt-select" value={tradePlatform} onChange={(e) => setTradePlatform(e.target.value)}>
+            <option value="all">平台: 全部</option>
+            <option value="hyperliquid">Hyperliquid</option>
+            <option value="okx">OKX</option>
+            {tradeOpts.platforms.filter((p) => !['hyperliquid', 'okx'].includes(p)).map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          <select className="qt-select" value={tradeSymbol} onChange={(e) => setTradeSymbol(e.target.value)}>
+            <option value="all">币种: 全部</option>
+            {tradeOpts.symbols.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <button type="button" className="portal-btn portal-btn-ghost" onClick={loadTrades}>刷新</button>
+        </div>
+        <div className="qt-grid-4" style={{ margin: '12px 0' }}>
+          <div>
+            <p className="qt-stat-label">7 天收益 / 订单</p>
+            <p className={`qt-stat-value ${(s7.pnl || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>{fmtSigned(s7.pnl || 0)}</p>
+            <p className="qt-sub" style={{ margin: 0 }}>{s7.orders || 0} 笔</p>
+          </div>
+          <div>
+            <p className="qt-stat-label">30 天收益 / 订单</p>
+            <p className={`qt-stat-value ${(s30.pnl || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>{fmtSigned(s30.pnl || 0)}</p>
+            <p className="qt-sub" style={{ margin: 0 }}>{s30.orders || 0} 笔</p>
+          </div>
+          <div>
+            <p className="qt-stat-label">180 天收益 / 订单</p>
+            <p className={`qt-stat-value ${(s180.pnl || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>{fmtSigned(s180.pnl || 0)}</p>
+            <p className="qt-sub" style={{ margin: 0 }}>{s180.orders || 0} 笔</p>
+          </div>
+          <div>
+            <p className="qt-stat-label">筛选内累计</p>
+            <p className={`qt-stat-value ${(tradeStats?.total_pnl || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>
+              {fmtSigned(tradeStats?.total_pnl || 0)}
+            </p>
+            <p className="qt-sub" style={{ margin: 0 }}>{tradeStats?.total_orders || 0} 笔</p>
+          </div>
+        </div>
+        {tradeErr ? <p className="qt-down">{tradeErr}</p> : null}
+        <div className="qt-table-wrap">
+          <table className="qt-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>平台</th>
+                <th>币种</th>
+                <th>方向</th>
+                <th>动作</th>
+                <th>盈亏</th>
+                <th>策略</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.length === 0 ? (
+                <tr><td colSpan={8}>暂无交易记录（Webhook 跟单成功后写入）</td></tr>
+              ) : (
+                trades.slice(0, 30).map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.created_at}</td>
+                    <td>{row.platform === 'hyperliquid' ? 'Hype' : (row.platform || '—').toUpperCase()}</td>
+                    <td>{row.symbol}</td>
+                    <td>{row.side === 'BUY' ? '多' : row.side === 'SELL' ? '空' : row.side}</td>
+                    <td>{row.action === 'open' ? '开仓' : row.action === 'close' ? '平仓' : row.action}</td>
+                    <td className={Number(row.pnl) >= 0 ? 'qt-up' : 'qt-down'}>{fmtSigned(row.pnl)}</td>
+                    <td>{row.strategy_name || '—'}</td>
+                    <td>{row.status}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <PortalConnectModal
         open={connectOpen}

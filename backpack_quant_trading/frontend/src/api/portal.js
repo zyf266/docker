@@ -21,6 +21,8 @@ export const getExchangeBalances = () =>
 export const connectExchange = (data) =>
   request.post('/portal/exchange/connect', data, { timeout: 45000 })
 export const getTvWebhookHint = () => request.get('/portal/tv-webhook/hint')
+export const getPortalTrades = (params = {}) =>
+  request.get('/portal/trades', { params, timeout: 30000 })
 export const searchPortal = (q) => request.get('/portal/search', { params: { q } })
 export const getInbox = () => request.get('/portal/inbox')
 export const testInbox = (data) => request.post('/portal/inbox/test', data)

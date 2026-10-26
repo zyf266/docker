@@ -29,6 +29,17 @@ class MaLabelSnapshot(StoreBase):
     payload = Column(Text, nullable=False)
     created_at = Column(DateTime, nullable=False, index=True)
 
+
+class MaLabelBoardSymbol(StoreBase):
+    """看板展示币种（可增删；默认种子来自 BOARD_SYMBOLS）。"""
+    __tablename__ = "ma_label_board_symbols"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(32), nullable=False, unique=True, index=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+
+
 TIMEFRAMES = (
     {"id": "30m", "label": "30分钟"},
     {"id": "60m", "label": "1h"},
@@ -215,7 +226,77 @@ def _to_int(value: Any, default: int = 0) -> int:
 def _session():
     manager = DatabaseManager()
     MaLabelSnapshot.__table__.create(manager.engine, checkfirst=True)
+    MaLabelBoardSymbol.__table__.create(manager.engine, checkfirst=True)
     return manager.get_session()
+
+
+def ensure_default_symbols() -> List[str]:
+    """库空时写入默认币种；返回当前看板币种顺序。"""
+    session = _session()
+    try:
+        count = session.query(MaLabelBoardSymbol).count()
+        if count == 0:
+            now = datetime.now()
+            for i, sym in enumerate(BOARD_SYMBOLS):
+                session.add(
+                    MaLabelBoardSymbol(symbol=sym, sort_order=i, created_at=now)
+                )
+            session.commit()
+        rows = (
+            session.query(MaLabelBoardSymbol)
+            .order_by(MaLabelBoardSymbol.sort_order.asc(), MaLabelBoardSymbol.id.asc())
+            .all()
+        )
+        return [r.symbol for r in rows]
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def list_board_symbols() -> List[str]:
+    return ensure_default_symbols()
+
+
+def add_board_symbol(raw: str) -> str:
+    sym = normalize_symbol(raw)
+    if not sym:
+        raise ValueError("币种无效")
+    session = _session()
+    try:
+        existing = session.query(MaLabelBoardSymbol).filter_by(symbol=sym).first()
+        if existing:
+            return sym
+        max_order = session.query(func.max(MaLabelBoardSymbol.sort_order)).scalar()
+        order = int(max_order or 0) + 1
+        session.add(MaLabelBoardSymbol(symbol=sym, sort_order=order, created_at=datetime.now()))
+        session.commit()
+        return sym
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def remove_board_symbol(raw: str) -> bool:
+    sym = normalize_symbol(raw)
+    if not sym:
+        return False
+    session = _session()
+    try:
+        row = session.query(MaLabelBoardSymbol).filter_by(symbol=sym).first()
+        if not row:
+            return False
+        session.delete(row)
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def save_snapshot(symbol: str, timeframe: str, frame: Dict[str, Any], created_at: Optional[datetime] = None) -> int:
@@ -467,9 +548,79 @@ def save_trend_fields(fields: Dict[str, Any]) -> Optional[int]:
 
 
 def load_board(symbols: List[str]) -> Dict[str, Any]:
-    # 未指定时固定返回看板币种列表（即使库里还没有快照也占位）
+    # 未指定时返回看板币种表（可增删；空库会种子默认列表）
     wanted = [normalize_symbol(s) for s in (symbols or [])]
     wanted = [s for s in wanted if s]
     if not wanted:
-        wanted = list(BOARD_SYMBOLS)
-    return list_latest(wanted)
+        wanted = list_board_symbols()
+    data = list_latest(wanted)
+    data["webhook_path"] = "/api/ma-label-board/tv-webhook"
+    return data
+
+
+def _pick(fields: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in fields and fields.get(key) not in (None, ""):
+            return fields.get(key)
+    lower = {str(k).lower(): v for k, v in fields.items()}
+    for key in keys:
+        lk = key.lower()
+        if lk in lower and lower.get(lk) not in (None, ""):
+            return lower.get(lk)
+    return None
+
+
+def ingest_webhook_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """TradingView → 标签看板：写入快照，同币种同周期只展示最新一条。
+
+    不走钉钉；自动把币种加入看板列表（若尚无）。
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("payload 必须是 JSON 对象")
+
+    fields = {
+        "symbol": _pick(payload, "symbol", "交易品种", "币种", "ticker", "coin"),
+        "interval": _pick(payload, "interval", "timeframe", "tf", "周期", "K线级别"),
+        "close": _pick(payload, "close", "price", "收盘价"),
+        "ma5": _pick(payload, "ma5", "MA5"),
+        "ma30": _pick(payload, "ma30", "MA30"),
+        "ma200": _pick(payload, "ma200", "MA200"),
+        "score": _pick(payload, "score", "total", "总分"),
+        "pos_score": _pick(payload, "pos_score", "价格分"),
+        "align_score": _pick(payload, "align_score", "排列分"),
+        "sug_pos": _pick(payload, "sug_pos", "建议仓位", "仓位"),
+        "state": _pick(payload, "state"),
+        "state_cn": _pick(payload, "state_cn", "状态", "标签"),
+        "direction": _pick(payload, "direction", "signal", "action", "方向", "操作"),
+        "strategy": _pick(payload, "strategy", "strategy_name", "策略名称", "策略名"),
+        "bar_time": _pick(payload, "bar_time", "time", "时间"),
+    }
+
+    # 若只给了总分、没给中文状态，用分数推一版
+    if not fields.get("state_cn") and fields.get("score") is not None:
+        band = classify_score(_to_int(fields.get("score")))
+        fields["state"] = fields.get("state") or band["state"]
+        fields["state_cn"] = band["state_cn"]
+        if fields.get("sug_pos") in (None, ""):
+            fields["sug_pos"] = band["sug_pos"]
+
+    snap_id = save_trend_fields(fields)
+    symbol = normalize_symbol(str(fields.get("symbol") or ""))
+    if not symbol:
+        strategy = str(fields.get("strategy") or "").strip()
+        symbol = strategy or "未识别品种"
+    else:
+        try:
+            add_board_symbol(symbol)
+        except Exception:
+            pass
+
+    timeframe = normalize_timeframe(str(fields.get("interval") or "")) or "unknown"
+    return {
+        "ok": True,
+        "id": snap_id,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "state_cn": str(fields.get("state_cn") or "—"),
+        "sug_pos": _to_int(fields.get("sug_pos")),
+    }

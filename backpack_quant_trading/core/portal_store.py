@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, Boolean, UniqueConstraint
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean, UniqueConstraint
 from sqlalchemy.orm import declarative_base
 
 from backpack_quant_trading.database.models import DatabaseManager
@@ -71,6 +71,7 @@ class PortalWatchConfig(StoreBase):
     timeframe = Column(String(16), nullable=False, default="2h")
     size_mode = Column(String(16), nullable=False, default="percent")  # fixed | percent
     size_value = Column(String(32), nullable=False, default="10")
+    leverage = Column(Integer, nullable=False, default=5)  # 开仓杠杆，默认 5x
     take_profit = Column(String(32), nullable=False, default="")  # 止盈%，空=未设
     stop_loss = Column(String(32), nullable=False, default="")  # 止损%，空=未设
     status = Column(String(16), nullable=False, default="")  # '' | living | connected
@@ -89,6 +90,28 @@ class PortalExchangeBinding(StoreBase):
     status = Column(String(16), nullable=False, default="connected")
     updated_at = Column(DateTime, default=datetime.now)
     __table_args__ = (UniqueConstraint("user_id", "platform", name="uq_portal_ex_user_plat"),)
+
+
+class PortalTrade(StoreBase):
+    """Portal Webhook / 跟单成交记录。"""
+    __tablename__ = "portal_trades"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    platform = Column(String(32), nullable=False, default="", index=True)
+    symbol = Column(String(32), nullable=False, default="", index=True)
+    side = Column(String(16), nullable=False, default="")  # BUY / SELL
+    action = Column(String(16), nullable=False, default="")  # open / close
+    strategy_name = Column(String(80), nullable=False, default="")
+    timeframe = Column(String(16), nullable=False, default="")
+    price = Column(Float, nullable=True)
+    quantity = Column(Float, nullable=True)
+    margin = Column(Float, nullable=True)
+    leverage = Column(Integer, nullable=False, default=5)
+    pnl = Column(Float, nullable=False, default=0.0)  # 已实现盈亏（开仓多为 0）
+    status = Column(String(16), nullable=False, default="ok")  # ok | dry-run | skipped | error
+    detail = Column(String(255), nullable=False, default="")
+    order_id = Column(String(80), nullable=False, default="")
+    created_at = Column(DateTime, nullable=False, default=datetime.now, index=True)
 
 
 # 搜索占位目录（后期换真数据）
@@ -125,6 +148,8 @@ def _ensure_watch_config_columns(engine) -> None:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT ''")
         if "exchange" not in existing:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN exchange VARCHAR(32) NOT NULL DEFAULT ''")
+        if "leverage" not in existing:
+            alters.append("ALTER TABLE portal_watch_configs ADD COLUMN leverage INT NOT NULL DEFAULT 5")
         for sql in alters:
             conn.execute(text(sql))
 
@@ -137,6 +162,189 @@ def _session():
     except Exception:
         pass
     return manager.get_session()
+
+
+def _trade_dict(r: "PortalTrade") -> Dict[str, Any]:
+    return {
+        "id": r.id,
+        "user_id": r.user_id,
+        "platform": r.platform or "",
+        "symbol": r.symbol or "",
+        "side": r.side or "",
+        "action": r.action or "",
+        "strategy_name": r.strategy_name or "",
+        "timeframe": r.timeframe or "",
+        "price": r.price,
+        "quantity": r.quantity,
+        "margin": r.margin,
+        "leverage": int(r.leverage or 5),
+        "pnl": float(r.pnl or 0),
+        "status": r.status or "",
+        "detail": r.detail or "",
+        "order_id": r.order_id or "",
+        "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
+    }
+
+
+def record_trade(
+    user_id: int,
+    *,
+    platform: str,
+    symbol: str,
+    side: str,
+    action: str,
+    strategy_name: str = "",
+    timeframe: str = "",
+    price: Optional[float] = None,
+    quantity: Optional[float] = None,
+    margin: Optional[float] = None,
+    leverage: int = 5,
+    pnl: float = 0.0,
+    status: str = "ok",
+    detail: str = "",
+    order_id: str = "",
+) -> Dict[str, Any]:
+    session = _session()
+    try:
+        row = PortalTrade(
+            user_id=int(user_id),
+            platform=(platform or "").strip().lower(),
+            symbol=(symbol or "").strip().upper(),
+            side=(side or "").strip().upper(),
+            action=(action or "").strip().lower(),
+            strategy_name=(strategy_name or "").strip(),
+            timeframe=(timeframe or "").strip(),
+            price=price,
+            quantity=quantity,
+            margin=margin,
+            leverage=int(leverage or 5),
+            pnl=float(pnl or 0),
+            status=(status or "ok").strip(),
+            detail=(detail or "")[:255],
+            order_id=(order_id or "")[:80],
+            created_at=datetime.now(),
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        session.expunge(row)
+        return _trade_dict(row)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def list_trades(
+    user_id: int,
+    *,
+    platform: str = "",
+    symbol: str = "",
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    session = _session()
+    try:
+        q = session.query(PortalTrade).filter(PortalTrade.user_id == int(user_id))
+        plat = (platform or "").strip().lower()
+        if plat and plat not in ("all", "全部"):
+            q = q.filter(PortalTrade.platform == plat)
+        sym = (symbol or "").strip().upper().replace("/", "")
+        if sym and sym not in ("ALL", "全部"):
+            bases = _symbol_bases(sym)
+            # 模糊：存的可能是 BTC / BTCUSDT
+            from sqlalchemy import or_
+
+            conds = [PortalTrade.symbol == b for b in bases]
+            conds.append(PortalTrade.symbol.like(f"%{sym}%"))
+            q = q.filter(or_(*conds))
+        rows = q.order_by(PortalTrade.id.desc()).limit(max(1, min(int(limit or 200), 500))).all()
+        return [_trade_dict(r) for r in rows]
+    finally:
+        session.close()
+
+
+def trade_stats(
+    user_id: int,
+    *,
+    platform: str = "",
+    symbol: str = "",
+) -> Dict[str, Any]:
+    """按筛选条件统计 7/30/180 天订单数与已实现盈亏合计。"""
+    session = _session()
+    try:
+        q = session.query(PortalTrade).filter(PortalTrade.user_id == int(user_id))
+        plat = (platform or "").strip().lower()
+        if plat and plat not in ("all", "全部"):
+            q = q.filter(PortalTrade.platform == plat)
+        sym = (symbol or "").strip().upper().replace("/", "")
+        if sym and sym not in ("ALL", "全部"):
+            from sqlalchemy import or_
+
+            bases = _symbol_bases(sym)
+            conds = [PortalTrade.symbol == b for b in bases]
+            conds.append(PortalTrade.symbol.like(f"%{sym}%"))
+            q = q.filter(or_(*conds))
+        # 只统计真实成交（ok），dry-run 不计入收益
+        q = q.filter(PortalTrade.status == "ok")
+        rows = q.all()
+    finally:
+        session.close()
+
+    now = datetime.now()
+    windows = {"7d": 7, "30d": 30, "180d": 180}
+    out: Dict[str, Any] = {}
+    for key, days in windows.items():
+        since = now - timedelta(days=days)
+        subset = [r for r in rows if r.created_at and r.created_at >= since]
+        out[key] = {
+            "orders": len(subset),
+            "pnl": round(sum(float(r.pnl or 0) for r in subset), 4),
+            "opens": sum(1 for r in subset if (r.action or "") == "open"),
+            "closes": sum(1 for r in subset if (r.action or "") == "close"),
+        }
+    out["total_orders"] = len(rows)
+    out["total_pnl"] = round(sum(float(r.pnl or 0) for r in rows), 4)
+    return out
+
+
+def list_connected_watch_configs(user_id: int) -> List[Dict[str, Any]]:
+    session = _session()
+    try:
+        rows = (
+            session.query(PortalWatchConfig)
+            .filter(
+                PortalWatchConfig.user_id == int(user_id),
+                PortalWatchConfig.status == "connected",
+            )
+            .all()
+        )
+        return [_watch_config_dict(r) for r in rows]
+    finally:
+        session.close()
+
+
+def match_strategy_for_position(
+    configs: List[Dict[str, Any]],
+    *,
+    symbol: str,
+    platform: str = "",
+) -> str:
+    """持仓币种 → 观察库 connected 配置的策略名（优先同交易所）。"""
+    want = _symbol_bases(symbol)
+    plat = (platform or "").strip().lower()
+    hits = []
+    for c in configs or []:
+        if not (_symbol_bases(c.get("symbol") or "") & want):
+            continue
+        hits.append(c)
+    if not hits:
+        return ""
+    if plat:
+        same = [c for c in hits if (c.get("exchange") or "").strip().lower() == plat]
+        if same:
+            hits = same
+    return (hits[0].get("strategy_name") or "").strip()
 
 
 def list_favorites(user_id: int) -> List[Dict[str, Any]]:
@@ -331,6 +539,7 @@ def _watch_config_dict(r: PortalWatchConfig) -> Dict[str, Any]:
         "timeframe": r.timeframe or "2h",
         "size_mode": r.size_mode or "percent",
         "size_value": r.size_value or "10",
+        "leverage": int(getattr(r, "leverage", None) or 5),
         "take_profit": getattr(r, "take_profit", None) or "",
         "stop_loss": getattr(r, "stop_loss", None) or "",
         "status": getattr(r, "status", None) or "",
@@ -434,6 +643,7 @@ def upsert_watch_configs(
     size_value: str,
     take_profit: str = "",
     stop_loss: str = "",
+    leverage: int = 5,
 ) -> List[Dict[str, Any]]:
     cleaned = []
     for raw in symbols or []:
@@ -450,6 +660,12 @@ def upsert_watch_configs(
     value = str(size_value or "").strip()
     if not value:
         raise ValueError("请填写仓位大小")
+    try:
+        lev = int(leverage)
+    except (TypeError, ValueError):
+        lev = 5
+    if lev < 1 or lev > 125:
+        raise ValueError("杠杆需在 1～125 之间")
     tp = str(take_profit or "").strip()
     sl = str(stop_loss or "").strip()
     session = _session()
@@ -468,6 +684,7 @@ def upsert_watch_configs(
             row.timeframe = tf
             row.size_mode = mode
             row.size_value = value
+            row.leverage = lev
             row.take_profit = tp
             row.stop_loss = sl
             # 保存配置后进入 living；已连接交易所的保持 connected

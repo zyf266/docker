@@ -56,6 +56,7 @@ const emptyConfig = {
   timeframe: '2h',
   size_mode: 'percent',
   size_value: '10',
+  leverage: 5,
   take_profit: '',
   stop_loss: '',
 }
@@ -225,6 +226,7 @@ const PortalWatchlist = () => {
       timeframe: seed?.timeframe || '2h',
       size_mode: seed?.size_mode || 'percent',
       size_value: seed?.size_value || '10',
+      leverage: Number(seed?.leverage) > 0 ? Number(seed.leverage) : 5,
       take_profit: seed?.take_profit || '',
       stop_loss: seed?.stop_loss || '',
     })
@@ -300,6 +302,7 @@ const PortalWatchlist = () => {
         timeframe: cfg.timeframe,
         size_mode: cfg.size_mode,
         size_value: cfg.size_value,
+        leverage: Number(cfg.leverage) > 0 ? Number(cfg.leverage) : 5,
         take_profit: cfg.take_profit,
         stop_loss: cfg.stop_loss,
       })
@@ -630,6 +633,19 @@ const PortalWatchlist = () => {
                     value={cfg.size_value}
                     onChange={(e) => setCfg((prev) => ({ ...prev, size_value: e.target.value }))}
                     placeholder={cfg.size_mode === 'fixed' ? '例如 500' : '例如 10'}
+                  />
+                </label>
+                <label className="qt-field">
+                  杠杆 (x)
+                  <input
+                    className="qt-input"
+                    type="number"
+                    min={1}
+                    max={125}
+                    step={1}
+                    value={cfg.leverage}
+                    onChange={(e) => setCfg((prev) => ({ ...prev, leverage: e.target.value }))}
+                    placeholder="默认 5"
                   />
                 </label>
                 <label className="qt-field">
