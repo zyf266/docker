@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getExchangeBalances, getPortalTrades, getTvWebhookHint } from '../../api/portal'
+import { getExchangeBalances, getPortalTrades } from '../../api/portal'
 import PortalConnectModal from './PortalConnectModal'
 
 const fmtMoney = (n, digits = 2) => {
@@ -39,7 +39,6 @@ const PortalAccount = () => {
     positions: [],
     total_equity: null,
   })
-  const [webhookHint, setWebhookHint] = useState(null)
   const [tradePlatform, setTradePlatform] = useState('all')
   const [tradeSymbol, setTradeSymbol] = useState('all')
   const [trades, setTrades] = useState([])
@@ -80,9 +79,6 @@ const PortalAccount = () => {
 
   useEffect(() => {
     loadBalances()
-    getTvWebhookHint()
-      .then((res) => setWebhookHint(res))
-      .catch(() => setWebhookHint(null))
     getPortalTrades({})
       .then((res) => {
         const items = res?.items || []
@@ -272,32 +268,6 @@ const PortalAccount = () => {
           </section>
         </div>
       </div>
-
-      {webhookHint ? (
-        <section className="qt-card" style={{ marginBottom: 16 }}>
-          <strong>TradingView Webhook · 自动跟单</strong>
-          <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, wordBreak: 'break-all', margin: '8px 0 0' }}>
-            POST {typeof window !== 'undefined' ? window.location.origin : ''}{webhookHint.path || '/api/portal/tv-webhook'}
-          </p>
-          <pre
-            style={{
-              margin: '10px 0 0',
-              padding: 12,
-              borderRadius: 10,
-              background: 'rgba(0,0,0,0.35)',
-              fontSize: 12,
-              overflow: 'auto',
-            }}
-          >
-            {JSON.stringify(webhookHint.example || {
-              strategy_name: 'test',
-              symbol: 'BTC',
-              timeframe: '2h',
-              signal: 'buy',
-            }, null, 2)}
-          </pre>
-        </section>
-      ) : null}
 
       <div className="qt-grid-4">
         <section className="qt-card">
