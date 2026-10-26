@@ -55,7 +55,7 @@ const PortalSearch = () => {
                     {it.type === 'strategy' ? (
                       <Link className="portal-btn portal-btn-ghost" to="/portal/strategies">查看</Link>
                     ) : (
-                      <Link className="portal-btn portal-btn-ghost" to="/portal/watchlist">跟踪库</Link>
+                      <Link className="portal-btn portal-btn-ghost" to="/portal#portal-watchlist">跟踪库</Link>
                     )}
                   </td>
                 </tr>

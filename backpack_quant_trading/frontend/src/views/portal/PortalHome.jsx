@@ -116,7 +116,7 @@ const PortalHome = () => {
       <section className="portal-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2>标的实时预览</h2>
-          <Link className="portal-btn portal-btn-ghost" to="/portal/watchlist">进入完整标的库</Link>
+          <Link className="portal-btn portal-btn-ghost" to="/portal#portal-watchlist">进入完整标的库</Link>
         </div>
         <div className="portal-card" style={{ overflowX: 'auto' }}>
           <table className="portal-table">

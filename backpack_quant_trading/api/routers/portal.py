@@ -39,6 +39,7 @@ class WatchConfigIn(BaseModel):
     leverage: int = 5  # 开仓杠杆，默认 5x
     take_profit: str = ""  # 止盈 %
     stop_loss: str = ""  # 止损 %
+    exchanges: List[str] = Field(default_factory=list)  # 下单平台多选：hyperliquid / okx
 
 
 class ExchangeConnectIn(BaseModel):
@@ -164,6 +165,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
             leverage=body.leverage,
             take_profit=body.take_profit,
             stop_loss=body.stop_loss,
+            exchanges=body.exchanges,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -208,6 +210,22 @@ def post_exchange_connect(body: ExchangeConnectIn, user: dict = Depends(require_
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"连接失败: {e}") from e
+    return {"ok": True, **result}
+
+
+@router.delete("/exchange/bindings/{platform}")
+def delete_exchange_binding(platform: str, user: dict = Depends(require_user)):
+    """断开指定交易所连接（删除绑定密钥）。"""
+    try:
+        result = exchange.disconnect_exchange(user["id"], platform)
+        try:
+            result["balances"] = exchange.fetch_balances(user["id"])
+        except Exception:
+            result["balances"] = None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"断开失败: {e}") from e
     return {"ok": True, **result}
 
 
@@ -302,12 +320,17 @@ def contact(body: ContactIn, user: dict = Depends(require_user)):
 def get_portal_trades(
     platform: str = Query("", description="交易所过滤，空=全部"),
     symbol: str = Query("", description="币种过滤，空=全部"),
+    strategy: str = Query("", description="策略名过滤，空=全部"),
     limit: int = Query(200, ge=1, le=500),
     user: dict = Depends(require_user),
 ):
-    """交易记录清单 + 7/30/180 天收益与订单统计（按筛选条件）。"""
-    items = store.list_trades(user["id"], platform=platform, symbol=symbol, limit=limit)
-    stats = store.trade_stats(user["id"], platform=platform, symbol=symbol)
+    """交易记录清单 + 7/30/180 天收益、盈亏比与订单统计（按筛选条件）。"""
+    items = store.list_trades(
+        user["id"], platform=platform, symbol=symbol, strategy=strategy, limit=limit
+    )
+    stats = store.trade_stats(
+        user["id"], platform=platform, symbol=symbol, strategy=strategy
+    )
     return {"ok": True, "items": items, "stats": stats}
 
 

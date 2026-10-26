@@ -19,9 +19,32 @@ from backpack_quant_trading.core.portal_store import _norm_tf, _symbol_bases
 
 logger = logging.getLogger(__name__)
 
+# 与观察库下拉、原交易册三策略对齐的标准名
+STRATEGY_LONG = "自适应做多策略"
+STRATEGY_SHORT = "自适应做空策略"
+STRATEGY_CLOSE = "自适应平仓策略"
+PORTAL_STRATEGY_OPTIONS = (STRATEGY_LONG, STRATEGY_SHORT, STRATEGY_CLOSE)
+
 
 def _dry_run() -> bool:
     return (os.getenv("PORTAL_WEBHOOK_DRY_RUN") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _skip_equity_check() -> bool:
+    """测试用：权益为 0 时仍用固定保证金继续向交易所发单（看请求是否到达）。"""
+    return (os.getenv("PORTAL_SKIP_EQUITY_CHECK") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _skip_ma_gate() -> bool:
+    return (os.getenv("PORTAL_SKIP_MA_GATE") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _test_margin_usdt() -> float:
+    try:
+        v = float(os.getenv("PORTAL_TEST_MARGIN") or "5")
+    except (TypeError, ValueError):
+        v = 5.0
+    return max(v, 1.0)
 
 
 def extract_tv_fields(payload: dict) -> Tuple[str, str, str, str]:
@@ -65,6 +88,78 @@ def _normalize_side(action: str) -> Optional[str]:
     if a in ("close", "平仓", "flat"):
         return "CLOSE"
     return None
+
+
+def strategy_family(strategy_name: str) -> str:
+    """long | short | close | unknown — 对齐原自适应多/空/自动平仓。"""
+    n = (strategy_name or "").strip().lower().replace(" ", "")
+    if not n:
+        return "unknown"
+    if "平仓" in n or "autoclose" in n or "auto_close" in n or "auto-close" in n:
+        return "close"
+    if "做空" in n or "short" in n:
+        return "short"
+    if "做多" in n or "long" in n:
+        return "long"
+    return "unknown"
+
+
+def parse_exchanges(raw: Any) -> List[str]:
+    """配置里 exchange 支持单值或逗号分隔多平台。"""
+    if isinstance(raw, (list, tuple)):
+        items = [str(x or "").strip().lower() for x in raw]
+    else:
+        items = [p.strip().lower() for p in str(raw or "").replace(";", ",").split(",")]
+    out: List[str] = []
+    for p in items:
+        if p in ("hyperliquid", "okx", "binance") and p not in out:
+            out.append(p)
+    return out
+
+
+def resolve_trade_intent(strategy_name: str, side: str) -> Tuple[str, Optional[str], str]:
+    """按策略族解析意图。
+
+    返回 (op, open_side_or_expect_pos, detail)
+    - op=open 时第二项为 BUY/SELL
+    - op=close 时第二项为 long/short/None（None=任意仓）
+    - op=skip 时忽略信号
+    """
+    fam = strategy_family(strategy_name)
+    side_u = (side or "").upper()
+
+    # 自适应做多：buy 开多，sell/close 平多（对齐 adaptive_long_strategy）
+    if fam == "long":
+        if side_u == "BUY":
+            return "open", "BUY", "自适应做多·开多"
+        if side_u in ("SELL", "CLOSE"):
+            return "close", "long", "自适应做多·平多"
+        return "skip", None, f"自适应做多忽略信号 {side_u}"
+
+    # 自适应做空：sell 开空，buy/close 平空（对齐 adaptive_short_strategy）
+    if fam == "short":
+        if side_u == "SELL":
+            return "open", "SELL", "自适应做空·开空"
+        if side_u in ("BUY", "CLOSE"):
+            return "close", "short", "自适应做空·平空"
+        return "skip", None, f"自适应做空忽略信号 {side_u}"
+
+    # 自动平仓：多仓仅 sell 平；空仓仅 buy 平（对齐 auto_close_strategy）
+    if fam == "close":
+        if side_u == "SELL":
+            return "close", "long", "自动平仓·平多"
+        if side_u == "BUY":
+            return "close", "short", "自动平仓·平空"
+        if side_u == "CLOSE":
+            return "close", None, "自动平仓·平任意"
+        return "skip", None, f"自动平仓忽略信号 {side_u}"
+
+    # 未知策略名：保持旧行为（buy 开多 / sell 开空 / close 平仓）
+    if side_u == "CLOSE":
+        return "close", None, "平仓"
+    if side_u in ("BUY", "SELL"):
+        return "open", side_u, "开仓"
+    return "skip", None, f"未知信号 {side_u}"
 
 
 def _base_coin(symbol: str) -> str:
@@ -214,82 +309,115 @@ def execute_portal_signal(payload: dict) -> Dict[str, Any]:
         }
 
     configs = store.find_connected_configs(strategy_name, symbol, tf)
+    op, intent_side, intent_detail = resolve_trade_intent(strategy_name, side)
     results: List[Dict[str, Any]] = []
     executed = 0
 
     for cfg in configs:
         uid = cfg.get("user_id")
-        exchange = (cfg.get("exchange") or "").strip().lower()
-        item: Dict[str, Any] = {
-            "config_id": cfg.get("id"),
-            "user_id": uid,
-            "symbol": cfg.get("symbol"),
-            "strategy_name": cfg.get("strategy_name"),
-            "timeframe": cfg.get("timeframe"),
-            "exchange": exchange,
-            "status": "skipped",
-            "detail": "",
-        }
-        if not uid:
-            item["detail"] = "配置缺少 user_id"
-            results.append(item)
+        platforms = parse_exchanges(cfg.get("exchange"))
+        if not platforms:
+            results.append({
+                "config_id": cfg.get("id"),
+                "user_id": uid,
+                "symbol": cfg.get("symbol"),
+                "strategy_name": cfg.get("strategy_name"),
+                "status": "skipped",
+                "detail": "配置未选择下单平台",
+            })
             continue
-        if exchange not in ("hyperliquid", "okx"):
-            item["detail"] = f"交易所未支持或未绑定: {exchange or '(空)'}"
-            results.append(item)
-            continue
-        binding = store.get_exchange_binding(int(uid), exchange)
-        if not binding:
-            item["detail"] = f"用户未绑定 {exchange}"
-            results.append(item)
-            continue
-        # 买入前：校验勾选的站上 MA 条件
-        if side == "BUY":
-            ok_gate, gate_msg = _check_ma_gate(cfg, side)
-            if not ok_gate:
-                item["status"] = "rejected"
-                item["detail"] = gate_msg
+
+        for exchange in platforms:
+            item: Dict[str, Any] = {
+                "config_id": cfg.get("id"),
+                "user_id": uid,
+                "symbol": cfg.get("symbol"),
+                "strategy_name": cfg.get("strategy_name"),
+                "timeframe": cfg.get("timeframe"),
+                "exchange": exchange,
+                "intent": intent_detail,
+                "status": "skipped",
+                "detail": "",
+            }
+            if not uid:
+                item["detail"] = "配置缺少 user_id"
                 results.append(item)
-                try:
-                    store.record_trade(
-                        int(uid),
-                        platform=exchange,
-                        symbol=str(cfg.get("symbol") or ""),
-                        side=side,
-                        action="open",
-                        strategy_name=str(cfg.get("strategy_name") or ""),
-                        timeframe=str(cfg.get("timeframe") or ""),
-                        leverage=_leverage_from_cfg(cfg),
-                        status="rejected",
-                        detail=gate_msg[:240],
-                    )
-                except Exception:
-                    logger.exception("写入拒绝记录失败")
                 continue
-        try:
-            secrets = _secrets_from_binding(binding.get("config") or {})
-            trade_action = "close" if side == "CLOSE" else "open"
-            if side == "CLOSE":
-                out = _exec_close(cfg, exchange, secrets, dry=dry)
-            elif exchange == "hyperliquid":
-                out = _exec_hyperliquid(cfg, side, secrets, dry=dry)
-            else:
-                out = _exec_okx(cfg, side, secrets, dry=dry, demo=bool((binding.get("config") or {}).get("demo")))
-            item.update(out)
-            if out.get("status") == "ok":
-                executed += 1
-            _record_from_result(
-                cfg,
-                side=side if side != "CLOSE" else "SELL",
-                action=trade_action,
-                out=out,
-                dry=dry,
-            )
-        except Exception as exc:
-            logger.exception("portal webhook 执行失败 cfg=%s", cfg.get("id"))
-            item["status"] = "error"
-            item["detail"] = str(exc)[:240]
-        results.append(item)
+            if exchange not in ("hyperliquid", "okx"):
+                item["detail"] = f"交易所未支持或未绑定: {exchange}"
+                results.append(item)
+                continue
+            if op == "skip":
+                item["detail"] = intent_detail
+                results.append(item)
+                continue
+
+            binding = store.get_exchange_binding(int(uid), exchange)
+            if not binding:
+                item["detail"] = f"用户未绑定 {exchange}"
+                results.append(item)
+                continue
+
+            run_cfg = {**cfg, "exchange": exchange}
+
+            # 仅「开多」校验站上 MA（开空/平仓不挡）
+            if op == "open" and intent_side == "BUY" and not _skip_ma_gate():
+                ok_gate, gate_msg = _check_ma_gate(run_cfg, "BUY")
+                if not ok_gate:
+                    item["status"] = "rejected"
+                    item["detail"] = gate_msg
+                    results.append(item)
+                    try:
+                        store.record_trade(
+                            int(uid),
+                            platform=exchange,
+                            symbol=str(cfg.get("symbol") or ""),
+                            side="BUY",
+                            action="open",
+                            strategy_name=str(cfg.get("strategy_name") or ""),
+                            timeframe=str(cfg.get("timeframe") or ""),
+                            leverage=_leverage_from_cfg(cfg),
+                            status="rejected",
+                            detail=gate_msg[:240],
+                        )
+                    except Exception:
+                        logger.exception("写入拒绝记录失败")
+                    continue
+
+            try:
+                secrets = _secrets_from_binding(binding.get("config") or {})
+                demo = bool((binding.get("config") or {}).get("demo"))
+                if op == "close":
+                    out = _exec_close(
+                        run_cfg, exchange, secrets, dry=dry, expect_side=intent_side, demo=demo
+                    )
+                    trade_action = "close"
+                    record_side = "SELL" if intent_side != "short" else "BUY"
+                elif exchange == "hyperliquid":
+                    out = _exec_hyperliquid(run_cfg, intent_side or side, secrets, dry=dry)
+                    trade_action = "open"
+                    record_side = intent_side or side
+                else:
+                    out = _exec_okx(
+                        run_cfg, intent_side or side, secrets, dry=dry, demo=demo
+                    )
+                    trade_action = "open"
+                    record_side = intent_side or side
+                item.update(out)
+                if out.get("status") == "ok":
+                    executed += 1
+                _record_from_result(
+                    run_cfg,
+                    side=record_side,
+                    action=trade_action,
+                    out=out,
+                    dry=dry,
+                )
+            except Exception as exc:
+                logger.exception("portal webhook 执行失败 cfg=%s exchange=%s", cfg.get("id"), exchange)
+                item["status"] = "error"
+                item["detail"] = str(exc)[:240]
+            results.append(item)
 
     return {
         "ok": True,
@@ -300,8 +428,11 @@ def execute_portal_signal(payload: dict) -> Dict[str, Any]:
             "symbol": symbol,
             "action": action,
             "side": side,
+            "intent": intent_detail,
+            "op": op,
             "timeframe": _norm_tf(tf),
             "strategy_name": strategy_name,
+            "strategy_family": strategy_family(strategy_name),
         },
         "results": results,
     }
@@ -334,6 +465,10 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
     meta = _verify_hyperliquid(pk)
     equity = float(meta.get("equity") or meta.get("balance") or 0)
     margin = _margin_usdt(cfg, equity)
+    skipped_equity = False
+    if margin <= 0 and _skip_equity_check():
+        margin = _test_margin_usdt()
+        skipped_equity = True
     if margin <= 0:
         return {"status": "error", "detail": f"仓位金额无效 equity={equity} margin={margin}"}
 
@@ -352,6 +487,7 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
             "leverage": leverage,
             "tp_pct": tp_pct,
             "sl_pct": sl_pct,
+            "skipped_equity": skipped_equity,
         }
 
     client = HyperliquidAPIClient(private_key=pk)
@@ -367,6 +503,7 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
                     return {"status": "skipped", "detail": f"已有 {target} 仓位，跳过"}
 
             price = await client.get_price(coin)
+            # 与原实盘策略相同：HyperliquidAPIClient.place_order（保证金→×杠杆→市价 IOC）
             res = await client.place_order(
                 symbol=coin,
                 side=side,
@@ -374,8 +511,27 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
                 order_type="MARKET",
                 leverage=leverage,
             )
+            close_side = "SELL" if side == "BUY" else "BUY"
             if res.get("status") != "FILLED":
-                return {"status": "error", "detail": f"开仓失败: {res.get('error') or res}"}
+                # 无余额联通测试：开仓被拒时仍向交易所发 TP/SL 触发单请求，确认接口可达
+                tpsl_probe: Dict[str, Any] = {}
+                if _skip_equity_check() and (tp_pct or sl_pct) and price and price > 0:
+                    probe_sz = max(float(f"{(margin * leverage / price):.4f}"), 0.001)
+                    if tp_pct:
+                        tp_px = price * (1 + tp_pct / 100.0) if side == "BUY" else price * (1 - tp_pct / 100.0)
+                        tpsl_probe["tp"] = await client.place_tpsl_order(coin, close_side, probe_sz, tp_px, "tp")
+                    if sl_pct:
+                        sl_px = price * (1 - sl_pct / 100.0) if side == "BUY" else price * (1 + sl_pct / 100.0)
+                        tpsl_probe["sl"] = await client.place_tpsl_order(coin, close_side, probe_sz, sl_px, "sl")
+                return {
+                    "status": "error",
+                    "detail": f"开仓失败(交易所已收到请求): {res.get('error') or res}",
+                    "exchange_response": res,
+                    "margin": margin,
+                    "leverage": leverage,
+                    "skipped_equity": skipped_equity,
+                    "tpsl_probe": tpsl_probe or None,
+                }
 
             positions = await client.get_positions(symbol=coin)
             pos = next(
@@ -395,7 +551,7 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
             )
             tpsl = {}
             if sz > 0 and entry > 0:
-                close_side = "SELL" if side == "BUY" else "BUY"
+                # 与原自适应多相同：place_tpsl_order 挂交易所触发单
                 if tp_pct:
                     tp_px = entry * (1 + tp_pct / 100.0) if side == "BUY" else entry * (1 - tp_pct / 100.0)
                     tpsl["tp"] = await client.place_tpsl_order(coin, close_side, sz, tp_px, "tp")
@@ -414,6 +570,7 @@ def _exec_hyperliquid(cfg: Dict[str, Any], side: str, secrets: Dict[str, str], *
                 "entry": entry,
                 "size": sz,
                 "tpsl": tpsl,
+                "skipped_equity": skipped_equity,
             }
         finally:
             await client.close()
@@ -440,14 +597,23 @@ def _exec_okx(
     meta = _verify_okx(key, sec, pwd, demo=demo)
     equity = float(meta.get("equity") or 0)
     margin = _margin_usdt(cfg, equity)
+    skipped_equity = False
+    if margin <= 0 and _skip_equity_check():
+        margin = _test_margin_usdt()
+        skipped_equity = True
     if margin <= 0:
         return {"status": "error", "detail": f"仓位金额无效 equity={equity} margin={margin}"}
 
     tp_pct = _parse_pct(cfg.get("take_profit") or "")
     sl_pct = _parse_pct(cfg.get("stop_loss") or "")
     leverage = _leverage_from_cfg(cfg)
-    pos_side = "long" if side == "BUY" else "short"
     okx_side = "buy" if side == "BUY" else "sell"
+    pos_mode = _okx_pos_mode(key, sec, pwd, demo=demo)  # net_mode | long_short_mode
+    # 净仓用 net；双向用 long/short（与 OKX 控制台 / okx_console 兜底一致）
+    if pos_mode == "long_short_mode":
+        pos_side = "long" if side == "BUY" else "short"
+    else:
+        pos_side = "net"
 
     if dry:
         return {
@@ -458,29 +624,55 @@ def _exec_okx(
             "instId": inst_id,
             "side": okx_side,
             "posSide": pos_side,
+            "posMode": pos_mode,
             "leverage": leverage,
             "tp_pct": tp_pct,
             "sl_pct": sl_pct,
+            "demo": demo,
+            "skipped_equity": skipped_equity,
         }
 
     # 同向持仓跳过
+    want_side = "Long" if side == "BUY" else "Short"
     for p in meta.get("positions") or []:
-        if coin in str(p.get("symbol") or "").upper() and (p.get("side") or "") == ("Long" if pos_side == "long" else "Short"):
-            return {"status": "skipped", "detail": f"已有 {pos_side} 仓位，跳过"}
+        if coin in str(p.get("symbol") or "").upper() and (p.get("side") or "") == want_side:
+            return {"status": "skipped", "detail": f"已有 {want_side} 仓位，跳过"}
 
-    # 张数：用 USDT 保证金 / (标记价 * ctVal) 近似；简化：sz = margin（合约面值需查 instruments）
-    sz = _okx_size_from_margin(key, sec, pwd, inst_id, margin, demo=demo)
+    # 模拟盘/实盘同一套：先设杠杆，再市价开仓；demo 仅多 x-simulated-trading 头
+    lev_body: Dict[str, Any] = {
+        "instId": inst_id,
+        "lever": str(leverage),
+        "mgnMode": "cross",
+    }
+    if pos_mode == "long_short_mode":
+        lev_body["posSide"] = pos_side
+    lev_res = _okx_private(
+        "POST",
+        "/api/v5/account/set-leverage",
+        key,
+        sec,
+        pwd,
+        body=lev_body,
+        demo=demo,
+    )
+
+    # 名义≈保证金×杠杆，再换算张数
+    notional = margin * leverage
+    sz = _okx_size_from_margin(key, sec, pwd, inst_id, notional, demo=demo)
     if sz <= 0:
-        return {"status": "error", "detail": "OKX 下单张数过小"}
+        return {"status": "error", "detail": "OKX 下单张数过小", "leverage_set": lev_res}
 
     body: Dict[str, Any] = {
         "instId": inst_id,
         "tdMode": "cross",
         "side": okx_side,
-        "posSide": pos_side,
         "ordType": "market",
         "sz": str(sz),
     }
+    if pos_mode == "long_short_mode":
+        body["posSide"] = pos_side
+    else:
+        body["posSide"] = "net"
     mark = _okx_mark_price(inst_id, demo=demo) or 0.0
     if mark > 0 and (tp_pct or sl_pct):
         algo: Dict[str, Any] = {}
@@ -497,22 +689,51 @@ def _exec_okx(
 
     order_res = _okx_private("POST", "/api/v5/trade/order", key, sec, pwd, body=body, demo=demo)
     if str(order_res.get("code")) not in ("0", "0.0"):
-        return {"status": "error", "detail": f"OKX 开仓失败: {order_res.get('msg') or order_res}"}
+        return {
+            "status": "error",
+            "detail": f"OKX 开仓失败(交易所已收到请求, demo={demo}): {order_res.get('msg') or order_res}",
+            "exchange_response": order_res,
+            "leverage_set": lev_res,
+            "request_body": body,
+            "skipped_equity": skipped_equity,
+        }
 
     return {
         "status": "ok",
-        "detail": "okx filled",
+        "detail": f"okx filled (demo={demo})",
         "order": order_res.get("data"),
         "margin": margin,
         "sz": sz,
         "instId": inst_id,
         "mark": mark,
+        "leverage": leverage,
+        "leverage_set": lev_res,
+        "demo": demo,
+        "posMode": pos_mode,
+        "posSide": body.get("posSide"),
+        "skipped_equity": skipped_equity,
+        "tpsl_attached": bool(body.get("attachAlgoOrds")),
+        "request_body": body,
     }
 
 
-def _exec_close(cfg: Dict[str, Any], exchange: str, secrets: Dict[str, str], *, dry: bool) -> Dict[str, Any]:
+def _exec_close(
+    cfg: Dict[str, Any],
+    exchange: str,
+    secrets: Dict[str, str],
+    *,
+    dry: bool,
+    expect_side: Optional[str] = None,
+    demo: bool = False,
+) -> Dict[str, Any]:
+    """平仓。expect_side=long|short|None：限制只平对应方向（对齐三策略）。"""
+    expect = (expect_side or "").strip().lower() or None
     if dry:
-        return {"status": "ok", "detail": "dry-run close", "exchange": exchange}
+        return {
+            "status": "ok",
+            "detail": f"dry-run close expect={expect or 'any'}",
+            "exchange": exchange,
+        }
     coin = _base_coin(cfg.get("symbol") or "")
     if exchange == "hyperliquid":
         from backpack_quant_trading.core.hyperliquid_client import HyperliquidAPIClient
@@ -523,15 +744,27 @@ def _exec_close(cfg: Dict[str, Any], exchange: str, secrets: Dict[str, str], *, 
         async def _run():
             try:
                 positions = await client.get_positions(symbol=coin)
-                pos = next((p for p in (positions or []) if (p.get("symbol") or "").upper() == coin), None)
+                pos = None
+                for p in positions or []:
+                    psym = str(p.get("symbol") or "").split(":")[-1].upper()
+                    if psym != coin:
+                        continue
+                    ps = (p.get("side") or "").lower()
+                    if expect and ps and ps != expect:
+                        continue
+                    pos = p
+                    break
                 if not pos:
-                    return {"status": "skipped", "detail": "无持仓"}
+                    tip = f"无{expect}仓" if expect else "无持仓"
+                    return {"status": "skipped", "detail": tip}
                 close_side = "SELL" if (pos.get("side") or "").lower() == "long" else "BUY"
                 sz = abs(float(pos.get("size") or 0))
+                if sz <= 0:
+                    return {"status": "skipped", "detail": "持仓数量为 0"}
                 res = await client.place_order(coin, close_side, sz, order_type="MARKET", reduce_only=True)
                 if res.get("status") != "FILLED":
                     return {"status": "error", "detail": str(res.get("error") or res)}
-                return {"status": "ok", "detail": "hyperliquid closed", "order": res}
+                return {"status": "ok", "detail": f"hyperliquid closed ({pos.get('side')})", "order": res}
             finally:
                 await client.close()
 
@@ -542,30 +775,54 @@ def _exec_close(cfg: Dict[str, Any], exchange: str, secrets: Dict[str, str], *, 
     sec = secrets.get("api_secret") or ""
     pwd = secrets.get("api_passphrase") or ""
     inst_id = f"{coin}-USDT-SWAP"
-    meta = _verify_okx(key, sec, pwd, demo=False)
+    meta = _verify_okx(key, sec, pwd, demo=demo)
     target = None
     for p in meta.get("positions") or []:
-        if coin in str(p.get("symbol") or "").upper():
+        if coin not in str(p.get("symbol") or "").upper():
+            continue
+        ps = "long" if (p.get("side") or "") in ("Long", "long") else "short"
+        if expect and ps != expect:
+            continue
+        if abs(float(p.get("size") or 0)) > 0:
             target = p
             break
     if not target:
-        return {"status": "skipped", "detail": "无持仓"}
-    pos_side = "long" if target.get("side") == "Long" else "short"
+        tip = f"无{expect}仓" if expect else "无持仓"
+        return {"status": "skipped", "detail": tip}
+    pos_side = "long" if target.get("side") in ("Long", "long") else "short"
     okx_side = "sell" if pos_side == "long" else "buy"
-    sz = float(target.get("size") or 0)
-    body = {
+    sz = abs(float(target.get("size") or 0))
+    pos_mode = _okx_pos_mode(key, sec, pwd, demo=demo)
+    body: Dict[str, Any] = {
         "instId": inst_id,
         "tdMode": "cross",
         "side": okx_side,
-        "posSide": pos_side,
         "ordType": "market",
         "sz": str(sz),
         "reduceOnly": True,
     }
-    order_res = _okx_private("POST", "/api/v5/trade/order", key, sec, pwd, body=body, demo=False)
+    if pos_mode == "long_short_mode":
+        body["posSide"] = pos_side
+    else:
+        body["posSide"] = "net"
+    order_res = _okx_private("POST", "/api/v5/trade/order", key, sec, pwd, body=body, demo=demo)
     if str(order_res.get("code")) not in ("0", "0.0"):
         return {"status": "error", "detail": f"OKX 平仓失败: {order_res.get('msg') or order_res}"}
-    return {"status": "ok", "detail": "okx closed", "order": order_res.get("data")}
+    return {"status": "ok", "detail": f"okx closed ({pos_side})", "order": order_res.get("data")}
+
+
+def _okx_pos_mode(api_key: str, api_secret: str, passphrase: str, *, demo: bool = False) -> str:
+    """返回 net_mode 或 long_short_mode；失败时默认 net_mode（OKX 模拟盘常见）。"""
+    try:
+        res = _okx_private("GET", "/api/v5/account/config", api_key, api_secret, passphrase, demo=demo)
+        rows = res.get("data") or []
+        if rows:
+            mode = str(rows[0].get("posMode") or "").strip()
+            if mode in ("net_mode", "long_short_mode"):
+                return mode
+    except Exception as exc:
+        logger.warning("OKX 读取 posMode 失败: %s", exc)
+    return "net_mode"
 
 
 def _okx_private(

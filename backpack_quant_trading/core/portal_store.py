@@ -236,28 +236,60 @@ def record_trade(
         session.close()
 
 
+def _apply_trade_filters(q, *, platform: str = "", symbol: str = "", strategy: str = ""):
+    plat = (platform or "").strip().lower()
+    if plat and plat not in ("all", "全部"):
+        q = q.filter(PortalTrade.platform == plat)
+    sym = (symbol or "").strip().upper().replace("/", "")
+    if sym and sym not in ("ALL", "全部"):
+        from sqlalchemy import or_
+
+        bases = _symbol_bases(sym)
+        conds = [PortalTrade.symbol == b for b in bases]
+        conds.append(PortalTrade.symbol.like(f"%{sym}%"))
+        q = q.filter(or_(*conds))
+    stg = (strategy or "").strip()
+    if stg and stg not in ("all", "全部", "ALL"):
+        q = q.filter(PortalTrade.strategy_name == stg)
+    return q
+
+
+def _window_stats(subset) -> Dict[str, Any]:
+    wins = sum(float(r.pnl or 0) for r in subset if float(r.pnl or 0) > 0)
+    losses = abs(sum(float(r.pnl or 0) for r in subset if float(r.pnl or 0) < 0))
+    if losses > 0:
+        ratio: Optional[float] = round(wins / losses, 4)
+        ratio_display = ratio
+    elif wins > 0:
+        ratio = None
+        ratio_display = None  # 前端显示 ∞
+    else:
+        ratio = None
+        ratio_display = None
+    return {
+        "orders": len(subset),
+        "pnl": round(sum(float(r.pnl or 0) for r in subset), 4),
+        "opens": sum(1 for r in subset if (r.action or "") == "open"),
+        "closes": sum(1 for r in subset if (r.action or "") == "close"),
+        "pnl_ratio": ratio,
+        "pnl_ratio_infinite": bool(wins > 0 and losses <= 0),
+        "gross_profit": round(wins, 4),
+        "gross_loss": round(losses, 4),
+    }
+
+
 def list_trades(
     user_id: int,
     *,
     platform: str = "",
     symbol: str = "",
+    strategy: str = "",
     limit: int = 200,
 ) -> List[Dict[str, Any]]:
     session = _session()
     try:
         q = session.query(PortalTrade).filter(PortalTrade.user_id == int(user_id))
-        plat = (platform or "").strip().lower()
-        if plat and plat not in ("all", "全部"):
-            q = q.filter(PortalTrade.platform == plat)
-        sym = (symbol or "").strip().upper().replace("/", "")
-        if sym and sym not in ("ALL", "全部"):
-            bases = _symbol_bases(sym)
-            # 模糊：存的可能是 BTC / BTCUSDT
-            from sqlalchemy import or_
-
-            conds = [PortalTrade.symbol == b for b in bases]
-            conds.append(PortalTrade.symbol.like(f"%{sym}%"))
-            q = q.filter(or_(*conds))
+        q = _apply_trade_filters(q, platform=platform, symbol=symbol, strategy=strategy)
         rows = q.order_by(PortalTrade.id.desc()).limit(max(1, min(int(limit or 200), 500))).all()
         return [_trade_dict(r) for r in rows]
     finally:
@@ -269,22 +301,13 @@ def trade_stats(
     *,
     platform: str = "",
     symbol: str = "",
+    strategy: str = "",
 ) -> Dict[str, Any]:
-    """按筛选条件统计 7/30/180 天订单数与已实现盈亏合计。"""
+    """按筛选条件统计 7/30/180 天订单数、已实现盈亏与盈亏比。"""
     session = _session()
     try:
         q = session.query(PortalTrade).filter(PortalTrade.user_id == int(user_id))
-        plat = (platform or "").strip().lower()
-        if plat and plat not in ("all", "全部"):
-            q = q.filter(PortalTrade.platform == plat)
-        sym = (symbol or "").strip().upper().replace("/", "")
-        if sym and sym not in ("ALL", "全部"):
-            from sqlalchemy import or_
-
-            bases = _symbol_bases(sym)
-            conds = [PortalTrade.symbol == b for b in bases]
-            conds.append(PortalTrade.symbol.like(f"%{sym}%"))
-            q = q.filter(or_(*conds))
+        q = _apply_trade_filters(q, platform=platform, symbol=symbol, strategy=strategy)
         # 只统计真实成交（ok），dry-run 不计入收益
         q = q.filter(PortalTrade.status == "ok")
         rows = q.all()
@@ -297,15 +320,45 @@ def trade_stats(
     for key, days in windows.items():
         since = now - timedelta(days=days)
         subset = [r for r in rows if r.created_at and r.created_at >= since]
-        out[key] = {
-            "orders": len(subset),
-            "pnl": round(sum(float(r.pnl or 0) for r in subset), 4),
-            "opens": sum(1 for r in subset if (r.action or "") == "open"),
-            "closes": sum(1 for r in subset if (r.action or "") == "close"),
-        }
-    out["total_orders"] = len(rows)
-    out["total_pnl"] = round(sum(float(r.pnl or 0) for r in rows), 4)
+        out[key] = _window_stats(subset)
+    total = _window_stats(rows)
+    out["total_orders"] = total["orders"]
+    out["total_pnl"] = total["pnl"]
+    out["pnl_ratio"] = total["pnl_ratio"]
+    out["pnl_ratio_infinite"] = total["pnl_ratio_infinite"]
+    out["gross_profit"] = total["gross_profit"]
+    out["gross_loss"] = total["gross_loss"]
     return out
+
+
+def delete_exchange_binding(user_id: int, platform: str) -> bool:
+    plat = (platform or "").strip().lower()
+    if not plat:
+        return False
+    session = _session()
+    try:
+        row = session.query(PortalExchangeBinding).filter_by(user_id=user_id, platform=plat).first()
+        if not row:
+            return False
+        session.delete(row)
+        # 从观察配置的 exchange 多选中移除该平台
+        configs = session.query(PortalWatchConfig).filter_by(user_id=user_id).all()
+        for cfg in configs:
+            plats = _normalize_exchanges(getattr(cfg, "exchange", None) or "")
+            if plat not in plats:
+                continue
+            remain = [p for p in plats if p != plat]
+            cfg.exchange = ",".join(remain)
+            if not remain and (getattr(cfg, "status", None) or "").lower() == "connected":
+                cfg.status = "living"
+            cfg.updated_at = datetime.now()
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def list_connected_watch_configs(user_id: int) -> List[Dict[str, Any]]:
@@ -528,6 +581,8 @@ def save_contact(
 
 
 def _watch_config_dict(r: PortalWatchConfig) -> Dict[str, Any]:
+    ex_raw = getattr(r, "exchange", None) or ""
+    exchanges = _normalize_exchanges(ex_raw)
     return {
         "id": r.id,
         "user_id": r.user_id,
@@ -543,7 +598,8 @@ def _watch_config_dict(r: PortalWatchConfig) -> Dict[str, Any]:
         "take_profit": getattr(r, "take_profit", None) or "",
         "stop_loss": getattr(r, "stop_loss", None) or "",
         "status": getattr(r, "status", None) or "",
-        "exchange": getattr(r, "exchange", None) or "",
+        "exchange": ",".join(exchanges) if exchanges else (ex_raw or ""),
+        "exchanges": exchanges,
         "updated_at": r.updated_at.strftime("%Y-%m-%d %H:%M:%S") if r.updated_at else "",
     }
 
@@ -630,6 +686,18 @@ def get_exchange_binding(user_id: int, platform: str) -> Optional[Dict[str, Any]
         session.close()
 
 
+def _normalize_exchanges(raw) -> List[str]:
+    if isinstance(raw, (list, tuple)):
+        items = [str(x or "").strip().lower() for x in raw]
+    else:
+        items = [p.strip().lower() for p in str(raw or "").replace(";", ",").split(",")]
+    out: List[str] = []
+    for p in items:
+        if p in ("hyperliquid", "okx", "binance") and p not in out:
+            out.append(p)
+    return out
+
+
 def upsert_watch_configs(
     user_id: int,
     symbols: List[str],
@@ -644,6 +712,7 @@ def upsert_watch_configs(
     take_profit: str = "",
     stop_loss: str = "",
     leverage: int = 5,
+    exchanges: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     cleaned = []
     for raw in symbols or []:
@@ -656,7 +725,7 @@ def upsert_watch_configs(
     tf = (timeframe or "2h").strip() or "2h"
     name = (strategy_name or "").strip()
     if not name:
-        raise ValueError("请填写策略名称")
+        raise ValueError("请选择策略名称")
     value = str(size_value or "").strip()
     if not value:
         raise ValueError("请填写仓位大小")
@@ -668,6 +737,15 @@ def upsert_watch_configs(
         raise ValueError("杠杆需在 1～125 之间")
     tp = str(take_profit or "").strip()
     sl = str(stop_loss or "").strip()
+    plats = _normalize_exchanges(exchanges)
+    # 若指定了平台，校验用户已绑定；全部有效则直接 connected
+    if plats:
+        missing = []
+        for p in plats:
+            if not get_exchange_binding(user_id, p):
+                missing.append(p)
+        if missing:
+            raise ValueError(f"尚未连接平台: {', '.join(missing)}，请先连接交易所")
     session = _session()
     try:
         out = []
@@ -687,10 +765,16 @@ def upsert_watch_configs(
             row.leverage = lev
             row.take_profit = tp
             row.stop_loss = sl
-            # 保存配置后进入 living；已连接交易所的保持 connected
-            cur = (getattr(row, "status", None) or "").strip().lower()
-            if cur != "connected":
-                row.status = "living"
+            if plats:
+                row.exchange = ",".join(plats)
+                row.status = "connected"
+            else:
+                # 未选平台：进入 living，等连接弹窗；已 connected 的保留平台但退回 living 提示重连
+                cur = (getattr(row, "status", None) or "").strip().lower()
+                if cur != "connected":
+                    row.status = "living"
+                elif not (getattr(row, "exchange", None) or "").strip():
+                    row.status = "living"
             row.updated_at = now
             session.flush()
             out.append(_watch_config_dict(row))
@@ -717,7 +801,12 @@ def mark_watch_connected(user_id: int, symbols: List[str], exchange: str) -> Lis
             cleaned.append(sym)
     if not cleaned:
         return []
-    plat = (exchange or "").strip().lower()
+    plats = _normalize_exchanges(exchange)
+    if not plats:
+        plat = (exchange or "").strip().lower()
+        plats = [plat] if plat else []
+    if not plats:
+        return []
     session = _session()
     try:
         out = []
@@ -731,7 +820,13 @@ def mark_watch_connected(user_id: int, symbols: List[str], exchange: str) -> Lis
             if not row:
                 continue
             row.status = "connected"
-            row.exchange = plat
+            # 新连接平台并入已有多选（去重）
+            existing = _normalize_exchanges(getattr(row, "exchange", None) or "")
+            merged = list(existing)
+            for p in plats:
+                if p not in merged:
+                    merged.append(p)
+            row.exchange = ",".join(merged)
             row.updated_at = now
             session.flush()
             out.append(_watch_config_dict(row))

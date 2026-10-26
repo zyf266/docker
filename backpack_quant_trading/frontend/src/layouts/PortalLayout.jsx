@@ -5,7 +5,6 @@ import './PortalLayout.css'
 
 const links = [
   { to: '/portal', end: true, label: '实盘账户' },
-  { to: '/portal/watchlist', label: '标的观察库' },
   { to: '/portal/market', label: '市场状态' },
   { to: '/portal/workflow', label: 'AI工作流' },
   { to: '/portal/strategies', label: '策略库' },
@@ -40,7 +39,7 @@ const PortalLayout = () => {
           {showAdminSwitch ? (
             <Link className="portal-btn portal-btn-cyan" to="/trading">进入管理端</Link>
           ) : null}
-          <Link className="portal-btn portal-btn-primary" to="/portal">一键跟随</Link>
+          <Link className="portal-btn portal-btn-primary" to="/portal">一键连接</Link>
           <button type="button" className="portal-btn portal-btn-ghost" onClick={logout}>退出</button>
         </div>
       </header>

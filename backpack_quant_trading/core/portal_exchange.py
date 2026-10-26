@@ -377,6 +377,16 @@ def connect_exchange(
     }
 
 
+def disconnect_exchange(user_id: int, platform: str) -> Dict[str, Any]:
+    plat = _normalize_platform(platform)
+    if plat not in SUPPORTED and plat != "binance":
+        raise ValueError("不支持的交易平台")
+    ok = store.delete_exchange_binding(user_id, plat)
+    if not ok:
+        raise ValueError(f"未找到已连接的 {PLATFORM_LABEL.get(plat, plat)}")
+    return {"platform": plat, "platform_label": PLATFORM_LABEL.get(plat, plat), "disconnected": True}
+
+
 def list_bindings(user_id: int) -> List[Dict[str, Any]]:
     rows = store.list_exchange_bindings(user_id)
     out = []

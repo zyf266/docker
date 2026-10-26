@@ -20,6 +20,8 @@ export const getExchangeBalances = () =>
   request.get('/portal/exchange/balances', { timeout: 45000 })
 export const connectExchange = (data) =>
   request.post('/portal/exchange/connect', data, { timeout: 45000 })
+export const disconnectExchange = (platform) =>
+  request.delete(`/portal/exchange/bindings/${encodeURIComponent(platform)}`, { timeout: 30000 })
 export const getTvWebhookHint = () => request.get('/portal/tv-webhook/hint')
 export const getPortalTrades = (params = {}) =>
   request.get('/portal/trades', { params, timeout: 30000 })

@@ -39,7 +39,6 @@ import GuestStockLayout from './layouts/GuestStockLayout'
 import PortalAccount from './views/portal/PortalAccount'
 import PortalTrades from './views/portal/PortalTrades'
 import PortalStrategies from './views/portal/PortalStrategies'
-import PortalWatchlist from './views/portal/PortalWatchlist'
 import PortalMaCards from './views/portal/PortalMaCards'
 import PortalMarket from './views/portal/PortalMarket'
 import PortalWorkflow from './views/portal/PortalWorkflow'
@@ -124,7 +123,7 @@ function App() {
         >
           <Route index element={<PortalAccount />} />
           <Route path="trades" element={<PortalTrades />} />
-          <Route path="watchlist" element={<PortalWatchlist />} />
+          <Route path="watchlist" element={<Navigate to="/portal#portal-watchlist" replace />} />
           <Route path="ma-cards" element={<PortalMaCards />} />
           <Route path="market" element={<PortalMarket />} />
           <Route path="workflow" element={<PortalWorkflow />} />

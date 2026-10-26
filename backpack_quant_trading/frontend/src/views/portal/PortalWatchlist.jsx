@@ -2,12 +2,34 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   addWatchSymbol,
+  getExchangeBindings,
   getWatchlist,
   removeWatchSymbol,
   saveWatchConfig,
   searchBinanceSymbols,
 } from '../../api/portal'
 import PortalConnectModal from './PortalConnectModal'
+
+const STRATEGY_OPTIONS = [
+  { value: '自适应做多策略', hint: 'buy 开多 · sell 平多' },
+  { value: '自适应做空策略', hint: 'sell 开空 · buy 平空' },
+  { value: '自适应平仓策略', hint: '多仓 sell 平 · 空仓 buy 平' },
+]
+
+const platLabel = (id) => {
+  if (id === 'hyperliquid') return 'Hyperliquid'
+  if (id === 'okx') return '欧意 OKX'
+  if (id === 'binance') return '币安'
+  return id || '—'
+}
+
+const parseExchanges = (raw) => {
+  if (Array.isArray(raw)) return raw.map((x) => String(x || '').toLowerCase()).filter(Boolean)
+  return String(raw || '')
+    .split(/[,;]/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+}
 
 const Strength = ({ on, label }) => (
   <span className={`qt-pill ${on ? (label === '长强' ? 'qt-pill-long' : 'qt-pill-crypto') : 'qt-pill-off'}`}>
@@ -23,14 +45,17 @@ const SignalCell = ({ value }) => {
 
 const StatusCell = ({ row, onConnect }) => {
   const st = (row?.config?.status || row?.status || '').toLowerCase()
-  const ex = row?.config?.exchange || row?.exchange || ''
+  const plats = parseExchanges(row?.config?.exchange || row?.exchange || '')
+  const exTip = plats
+    .map((ex) => (ex === 'hyperliquid' ? 'Hype' : ex === 'okx' ? 'OKX' : ex))
+    .join('+')
   if (st === 'connected') {
     return (
       <button type="button" className="qt-status-btn" onClick={() => onConnect?.(row)} title="已连接，可重新绑定">
         <span className="qt-pill qt-pill-live">
           <span className="qt-status-dot" />
           connected
-          {ex ? ` · ${ex === 'hyperliquid' ? 'Hype' : ex === 'okx' ? 'OKX' : ex}` : ''}
+          {exTip ? ` · ${exTip}` : ''}
         </span>
       </button>
     )
@@ -52,13 +77,14 @@ const emptyConfig = {
   require_short: true,
   require_mid: true,
   require_long: false,
-  strategy_name: '',
+  strategy_name: STRATEGY_OPTIONS[0].value,
   timeframe: '2h',
   size_mode: 'percent',
   size_value: '10',
   leverage: 5,
   take_profit: '',
   stop_loss: '',
+  exchanges: [],
 }
 
 const fmtPrice = (n) => {
@@ -80,7 +106,7 @@ const fmtCacheAge = (sec) => {
 /** 路由切走再回来时，先画上一帧，避免误以为每次都在重拉 */
 let _watchlistSnap = null
 
-const PortalWatchlist = () => {
+const PortalWatchlist = ({ embedded = false }) => {
   const [items, setItems] = useState(() => _watchlistSnap?.items || [])
   const [summary, setSummary] = useState(() => _watchlistSnap?.summary || { short: 0, mid: 0, long: 0 })
   const [loading, setLoading] = useState(!_watchlistSnap)
@@ -109,6 +135,7 @@ const PortalWatchlist = () => {
   const [cfg, setCfg] = useState(emptyConfig)
   const [cfgBusy, setCfgBusy] = useState(false)
   const [cfgMsg, setCfgMsg] = useState('')
+  const [bindings, setBindings] = useState([])
 
   const [connectOpen, setConnectOpen] = useState(false)
   const [connectSymbols, setConnectSymbols] = useState([])
@@ -212,27 +239,59 @@ const PortalWatchlist = () => {
     setSelected((prev) => (prev.includes(symbol) ? prev.filter((s) => s !== symbol) : [...prev, symbol]))
   }
 
-  const openConfig = (symbols, seed) => {
+  const loadBindings = useCallback(async () => {
+    try {
+      const res = await getExchangeBindings()
+      const items = res?.items || []
+      setBindings(items)
+      return items
+    } catch {
+      setBindings([])
+      return []
+    }
+  }, [])
+
+  const openConfig = async (symbols, seed) => {
     const list = Array.from(new Set(symbols.filter(Boolean)))
     if (!list.length) return
     setCfgSymbols(list)
+    const items = await loadBindings()
+    const seedEx = parseExchanges(seed?.exchange || seed?.exchanges || '')
+    const boundIds = items.map((b) => String(b.platform || '').toLowerCase()).filter(Boolean)
+    let exchanges = seedEx.filter((p) => boundIds.includes(p))
+    if (!exchanges.length && boundIds.length === 1) {
+      exchanges = [...boundIds]
+    } else if (!exchanges.length && boundIds.length > 1 && seedEx.length) {
+      exchanges = seedEx.filter((p) => boundIds.includes(p))
+    }
+    const seedStrategy = (seed?.strategy_name || '').trim()
+    const strategyOk = STRATEGY_OPTIONS.some((o) => o.value === seedStrategy)
     setCfg({
       ...emptyConfig,
       ...(seed || {}),
       require_short: seed?.require_short ?? true,
       require_mid: seed?.require_mid ?? true,
       require_long: seed?.require_long ?? false,
-      strategy_name: seed?.strategy_name || '',
+      strategy_name: strategyOk ? seedStrategy : STRATEGY_OPTIONS[0].value,
       timeframe: seed?.timeframe || '2h',
       size_mode: seed?.size_mode || 'percent',
       size_value: seed?.size_value || '10',
       leverage: Number(seed?.leverage) > 0 ? Number(seed.leverage) : 5,
       take_profit: seed?.take_profit || '',
       stop_loss: seed?.stop_loss || '',
+      exchanges,
     })
     setCfgStep(1)
     setCfgMsg('')
     setCfgOpen(true)
+  }
+
+  const toggleExchange = (plat) => {
+    setCfg((prev) => {
+      const cur = parseExchanges(prev.exchanges)
+      const next = cur.includes(plat) ? cur.filter((p) => p !== plat) : [...cur, plat]
+      return { ...prev, exchanges: next }
+    })
   }
 
   const onAdd = async (hit) => {
@@ -290,6 +349,19 @@ const PortalWatchlist = () => {
   }
 
   const onSaveConfig = async () => {
+    if (!STRATEGY_OPTIONS.some((o) => o.value === cfg.strategy_name)) {
+      setCfgMsg('请选择策略名称')
+      return
+    }
+    const boundIds = bindings.map((b) => String(b.platform || '').toLowerCase()).filter(Boolean)
+    let selected = parseExchanges(cfg.exchanges).filter((p) => boundIds.includes(p))
+    if (boundIds.length === 1 && !selected.length) {
+      selected = [...boundIds]
+    }
+    if (boundIds.length > 0 && selected.length === 0) {
+      setCfgMsg('请至少选择一个已连接的下单平台')
+      return
+    }
     setCfgBusy(true)
     setCfgMsg('')
     try {
@@ -305,12 +377,15 @@ const PortalWatchlist = () => {
         leverage: Number(cfg.leverage) > 0 ? Number(cfg.leverage) : 5,
         take_profit: cfg.take_profit,
         stop_loss: cfg.stop_loss,
+        exchanges: selected,
       })
       setCfgOpen(false)
       await load({ force: false })
-      // 保存后状态变 living，引导去连交易所
-      setConnectSymbols([...cfgSymbols])
-      setConnectOpen(true)
+      // 未连接任何平台 → 保存后弹出连接；已选平台则已是 connected
+      if (!boundIds.length || !selected.length) {
+        setConnectSymbols([...cfgSymbols])
+        setConnectOpen(true)
+      }
     } catch (e) {
       setCfgMsg(e?.response?.data?.detail || e?.message || '保存失败')
     } finally {
@@ -319,25 +394,42 @@ const PortalWatchlist = () => {
   }
 
   return (
-    <div>
-      <div className="qt-hero">
-        <div>
-          <p className="qt-kicker">WATCHLIST</p>
-          <h1 className="qt-title">标的观察库 · 概览</h1>
-          <p className="qt-sub">
-            添加只写库、秒返回；指标默认读 30 分钟缓存。配置保存后点 living 连接交易所 → 状态 connected 后，
-            TradingView webhook（策略名+币种+周期一致）会按仓位自动下单并挂止盈止损。
-          </p>
+    <div id="portal-watchlist">
+      {embedded ? (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div>
+            <strong style={{ fontSize: 16 }}>标的观察库</strong>
+            <p className="qt-sub" style={{ margin: '4px 0 0' }}>
+              配置策略与平台后，Webhook 自动跟单；下方为交易记录清单
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="portal-btn portal-btn-primary" onClick={() => setAddOpen(true)}>
+              + 添加标的
+            </button>
+            <Link className="portal-btn portal-btn-cyan" to="/portal/ma-cards">多卡片均线</Link>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="button" className="portal-btn portal-btn-primary" onClick={() => setAddOpen(true)}>
-            + 添加标的
-          </button>
-          <Link className="portal-btn portal-btn-cyan" to="/portal/ma-cards">多卡片均线视图</Link>
+      ) : (
+        <div className="qt-hero">
+          <div>
+            <p className="qt-kicker">WATCHLIST</p>
+            <h1 className="qt-title">标的观察库 · 概览</h1>
+            <p className="qt-sub">
+              添加只写库、秒返回；指标默认读 30 分钟缓存。配置保存后点 living 连接交易所 → 状态 connected 后，
+              TradingView webhook（策略名+币种+周期一致）会按仓位自动下单并挂止盈止损。
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" className="portal-btn portal-btn-primary" onClick={() => setAddOpen(true)}>
+              + 添加标的
+            </button>
+            <Link className="portal-btn portal-btn-cyan" to="/portal/ma-cards">多卡片均线视图</Link>
+          </div>
         </div>
-      </div>
+      )}
 
-      <section className="qt-card" style={{ marginBottom: 16 }}>
+      <section className="qt-card" style={{ marginBottom: embedded ? 0 : 16 }}>
         <div className="qt-toolbar">
           <select className="qt-select" value={marketFilter} onChange={(e) => setMarketFilter(e.target.value)}>
             <option value="all">市场: 全部</option>
@@ -590,17 +682,52 @@ const PortalWatchlist = () => {
             ) : (
               <div>
                 <p className="qt-sub" style={{ marginTop: 0 }}>
-                  第二步：策略名称、K 线级别、仓位大小（保存后须连接交易所，webhook 才会自动下单）
+                  第二步：策略、下单平台、K 线与仓位（策略逻辑对齐原交易册三策略；TradingView 策略名须一致）
                 </p>
                 <label className="qt-field">
                   策略名称
-                  <input
-                    className="qt-input"
+                  <select
+                    className="qt-select"
                     value={cfg.strategy_name}
                     onChange={(e) => setCfg((prev) => ({ ...prev, strategy_name: e.target.value }))}
-                    placeholder="例如 趋势跟随"
-                  />
+                  >
+                    {STRATEGY_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.value}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="qt-sub" style={{ margin: '4px 0 0', fontSize: 12 }}>
+                    {STRATEGY_OPTIONS.find((o) => o.value === cfg.strategy_name)?.hint || ''}
+                  </span>
                 </label>
+                <div className="qt-field">
+                  <span>下单平台（可多选）</span>
+                  {bindings.length ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {bindings.map((b) => {
+                        const id = String(b.platform || '').toLowerCase()
+                        const checked = parseExchanges(cfg.exchanges).includes(id)
+                        return (
+                          <label key={id || b.id} className="qt-check" style={{ margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleExchange(id)}
+                            />
+                            {platLabel(id)}
+                            {b.demo ? ' · 模拟盘' : ''}
+                            {b.label ? ` · ${b.label}` : ''}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="qt-sub" style={{ margin: 0, fontSize: 13 }}>
+                      尚未连接交易所。点「保存配置」后将弹出连接窗口。
+                    </p>
+                  )}
+                </div>
                 <label className="qt-field">
                   K 线级别
                   <select
@@ -685,7 +812,10 @@ const PortalWatchlist = () => {
         open={connectOpen}
         symbols={connectSymbols}
         onClose={() => setConnectOpen(false)}
-        onDone={() => load({ force: false })}
+        onDone={async () => {
+          await loadBindings()
+          await load({ force: false })
+        }}
       />
     </div>
   )
