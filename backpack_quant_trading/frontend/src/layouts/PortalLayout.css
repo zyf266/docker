@@ -390,6 +390,12 @@
   display: block;
 }
 
+.qt-chart-live {
+  height: 240px;
+  width: 100%;
+  border-radius: 12px;
+}
+
 .qt-pos-list {
   display: flex;
   flex-direction: column;

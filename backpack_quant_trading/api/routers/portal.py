@@ -343,3 +343,33 @@ def equity_overlay(ids: str = Query(""), user: dict = Depends(require_user)):
 @router.post("/equity-overlay")
 def equity_overlay_post(body: EquityIn, user: dict = Depends(require_user)):
     return {"ok": True, **store.equity_overlay_mock(body.strategy_ids)}
+
+
+@router.get("/equity-curve")
+def get_equity_curve(
+    platform: str = Query("", description="交易所过滤，空=全部"),
+    days: int = Query(90, ge=7, le=365),
+    user: dict = Depends(require_user),
+):
+    """AI 实盘净值曲线 vs BTC 基准（按已实现盈亏重建，末点对齐当前权益）。"""
+    plat = (platform or "").strip().lower()
+    current_equity = None
+    try:
+        snap = exchange.fetch_balances(user["id"])
+        accounts = snap.get("accounts") or []
+        if plat and plat not in ("all", "全部"):
+            for a in accounts:
+                if (a.get("platform") or "").lower() == plat and a.get("status") == "ok":
+                    current_equity = a.get("equity")
+                    break
+        else:
+            current_equity = snap.get("total_equity")
+    except Exception:
+        current_equity = None
+    curve = store.build_equity_curve(
+        user["id"],
+        platform=plat,
+        days=days,
+        current_equity=current_equity,
+    )
+    return {"ok": True, **curve}

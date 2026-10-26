@@ -41,7 +41,6 @@ import PortalTrades from './views/portal/PortalTrades'
 import PortalStrategies from './views/portal/PortalStrategies'
 import PortalMaCards from './views/portal/PortalMaCards'
 import PortalMarket from './views/portal/PortalMarket'
-import PortalWorkflow from './views/portal/PortalWorkflow'
 import PortalFaq from './views/portal/PortalFaq'
 import PortalContact from './views/portal/PortalContact'
 import { isAdminRole, readStoredUser } from './utils/authRole'
@@ -126,8 +125,8 @@ function App() {
           <Route path="watchlist" element={<Navigate to="/portal#portal-watchlist" replace />} />
           <Route path="ma-cards" element={<PortalMaCards />} />
           <Route path="market" element={<PortalMarket />} />
-          <Route path="workflow" element={<PortalWorkflow />} />
           <Route path="strategies" element={<PortalStrategies />} />
+          <Route path="workflow" element={<Navigate to="/portal" replace />} />
           <Route path="faq" element={<PortalFaq />} />
           <Route path="contact" element={<PortalContact />} />
         </Route>

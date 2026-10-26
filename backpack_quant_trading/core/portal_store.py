@@ -892,10 +892,161 @@ def equity_overlay_mock(strategy_ids: Optional[List[str]] = None) -> Dict[str, A
     series = []
     for i, sid in enumerate(ids[:4]):
         base = 1.0 + i * 0.02
-        points = []
-        for d in range(0, 30):
-            points.append({"t": f"2026-09-{d+1:02d}" if d < 30 else "2026-10-01", "v": round(base + d * (0.003 + i * 0.001), 4)})
-        # fix fake dates simply
         points = [{"t": f"D{d+1}", "v": round(base + d * (0.003 + i * 0.001), 4)} for d in range(30)]
         series.append({"id": sid, "name": next((x["title"] for x in _SEARCH_CATALOG if x["id"] == sid), sid), "points": points})
     return {"series": series, "note": "占位数据，后期接真实净值"}
+
+
+def _fetch_btc_daily_closes(days: int) -> List[Dict[str, Any]]:
+    """BTCUSDT 日线收盘价，失败返回空。"""
+    try:
+        from backpack_quant_trading.core.binance_monitor import fetch_binance_klines
+
+        bars = fetch_binance_klines("BTCUSDT", "1d", limit=max(days + 5, 10), market="spot") or []
+        out = []
+        for b in bars:
+            ts = int(b.get("open_time") or 0)
+            if ts <= 0:
+                continue
+            day = datetime.utcfromtimestamp(ts / 1000.0).strftime("%Y-%m-%d")
+            out.append({"date": day, "close": float(b.get("close") or 0)})
+        return [x for x in out if x["close"] > 0]
+    except Exception:
+        return []
+
+
+def build_equity_curve(
+    user_id: int,
+    *,
+    platform: str = "",
+    days: int = 90,
+    current_equity: Optional[float] = None,
+) -> Dict[str, Any]:
+    """用 portal_trades 已实现盈亏重建 AI 实盘净值，并叠加 BTC 同起点基准。
+
+    - live：按日累加已实现 pnl，末点对齐当前权益（若有）
+    - btc：同起点资金按 BTC 涨跌缩放
+    - *_index：归一化到起点=1，便于对比
+    """
+    days = max(7, min(int(days or 90), 365))
+    now = datetime.now()
+    start_day = (now - timedelta(days=days - 1)).date()
+    end_day = now.date()
+
+    session = _session()
+    try:
+        q = session.query(PortalTrade).filter(
+            PortalTrade.user_id == int(user_id),
+            PortalTrade.status == "ok",
+        )
+        plat = (platform or "").strip().lower()
+        if plat and plat not in ("all", "全部"):
+            q = q.filter(PortalTrade.platform == plat)
+        rows = q.order_by(PortalTrade.created_at.asc()).all()
+    finally:
+        session.close()
+
+    # 按日汇总已实现盈亏
+    daily_pnl: Dict[str, float] = {}
+    for r in rows:
+        if not r.created_at:
+            continue
+        d = r.created_at.date()
+        if d < start_day:
+            # 窗口前盈亏计入起点调整
+            key = "_before"
+            daily_pnl[key] = daily_pnl.get(key, 0.0) + float(r.pnl or 0)
+            continue
+        if d > end_day:
+            continue
+        key = d.strftime("%Y-%m-%d")
+        daily_pnl[key] = daily_pnl.get(key, 0.0) + float(r.pnl or 0)
+
+    pnl_before = float(daily_pnl.pop("_before", 0.0))
+    pnl_in_window = sum(float(v) for v in daily_pnl.values())
+    try:
+        cur = float(current_equity) if current_equity is not None else None
+    except (TypeError, ValueError):
+        cur = None
+    # 权益为 0/负数视为「未读到有效余额」，避免末点被压成 0 导致假 -100%
+    if cur is None or cur <= 0:
+        cur = None
+
+    # 起点权益：优先用「当前权益 − 窗口内累计盈亏」；无权益则用保守默认
+    if cur is not None:
+        start_equity = cur - pnl_in_window
+        if start_equity <= 0:
+            start_equity = max(cur * 0.5, 100.0)
+    else:
+        # 无余额时仍展示相对曲线：以窗口盈亏波动为中心
+        start_equity = max(abs(pnl_before) + abs(pnl_in_window) + 1000.0, 1000.0)
+
+    dates: List[str] = []
+    live: List[float] = []
+    cum = 0.0
+    d = start_day
+    while d <= end_day:
+        key = d.strftime("%Y-%m-%d")
+        cum += float(daily_pnl.get(key, 0.0))
+        dates.append(key)
+        live.append(round(start_equity + cum, 4))
+        d += timedelta(days=1)
+
+    if cur is not None and live:
+        live[-1] = round(cur, 4)
+
+    # BTC 基准：同起点资金按涨跌比缩放
+    btc_bars = _fetch_btc_daily_closes(days + 3)
+    btc_map = {x["date"]: x["close"] for x in btc_bars}
+    btc: List[Optional[float]] = []
+    btc0 = None
+    for day in dates:
+        px = btc_map.get(day)
+        if px and px > 0:
+            if btc0 is None:
+                btc0 = px
+            btc.append(round(start_equity * (px / btc0), 4) if btc0 else None)
+        else:
+            btc.append(btc[-1] if btc else (round(start_equity, 4) if btc0 is None else None))
+
+    # 若整段都没有 BTC，填空列表标记
+    if not any(v is not None for v in btc):
+        btc = []
+
+    live0 = live[0] if live else 1.0
+    if live0 == 0:
+        live0 = 1.0
+    live_index = [round(v / live0, 6) for v in live]
+    btc_index: List[Optional[float]] = []
+    if btc:
+        b0 = next((v for v in btc if v is not None and v > 0), None) or start_equity
+        for v in btc:
+            if v is None:
+                btc_index.append(None)
+            else:
+                btc_index.append(round(float(v) / b0, 6))
+
+    live_ret = round((live[-1] / live0 - 1.0) * 100.0, 4) if live else 0.0
+    btc_ret = None
+    if btc_index and btc_index[-1] is not None:
+        btc_ret = round((float(btc_index[-1]) - 1.0) * 100.0, 4)
+
+    return {
+        "dates": dates,
+        "live": live,
+        "btc": btc,
+        "live_index": live_index,
+        "btc_index": btc_index,
+        "start_equity": round(start_equity, 4),
+        "end_equity": round(live[-1], 4) if live else None,
+        "current_equity": cur,
+        "live_return_pct": live_ret,
+        "btc_return_pct": btc_ret,
+        "trade_count": len(rows),
+        "pnl_in_window": round(pnl_in_window, 4),
+        "platform": plat if plat and plat not in ("all", "全部") else "all",
+        "days": days,
+        "currency": "USD",
+        "note": "AI 实盘由成交已实现盈亏重建；BTC 为同起点买入持有基准",
+    }
+

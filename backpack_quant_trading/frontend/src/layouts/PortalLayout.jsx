@@ -6,7 +6,6 @@ import './PortalLayout.css'
 const links = [
   { to: '/portal', end: true, label: '实盘账户' },
   { to: '/portal/market', label: '市场状态' },
-  { to: '/portal/workflow', label: 'AI工作流' },
   { to: '/portal/strategies', label: '策略库' },
 ]
 

@@ -1,6 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { disconnectExchange, getExchangeBalances, getPortalTrades } from '../../api/portal'
+import * as echarts from 'echarts'
+import {
+  disconnectExchange,
+  getEquityCurve,
+  getExchangeBalances,
+  getPortalTrades,
+} from '../../api/portal'
 import PortalConnectModal from './PortalConnectModal'
 import PortalWatchlist from './PortalWatchlist'
 
@@ -63,6 +69,11 @@ const PortalAccount = () => {
   const [tradeStats, setTradeStats] = useState(null)
   const [tradeOpts, setTradeOpts] = useState({ symbols: [], strategies: [] })
   const [tradeErr, setTradeErr] = useState('')
+  const [curve, setCurve] = useState(null)
+  const [curveErr, setCurveErr] = useState('')
+  const [curveLoading, setCurveLoading] = useState(false)
+  const chartRef = useRef(null)
+  const chartInst = useRef(null)
 
   const applySnap = (res) => {
     setSnap({
@@ -126,6 +137,106 @@ const PortalAccount = () => {
   useEffect(() => {
     loadTrades()
   }, [loadTrades])
+
+  const loadCurve = useCallback(async () => {
+    setCurveLoading(true)
+    setCurveErr('')
+    try {
+      const res = await getEquityCurve({
+        platform: viewPlatform === 'all' ? '' : viewPlatform,
+        days: 90,
+      })
+      setCurve(res)
+    } catch (e) {
+      setCurve(null)
+      setCurveErr(e?.response?.data?.detail || e?.message || '净值曲线加载失败')
+    } finally {
+      setCurveLoading(false)
+    }
+  }, [viewPlatform])
+
+  useEffect(() => {
+    loadCurve()
+  }, [loadCurve])
+
+  useEffect(() => {
+    const el = chartRef.current
+    if (!el) return undefined
+    if (!chartInst.current) chartInst.current = echarts.init(el)
+    const ch = chartInst.current
+    const dates = curve?.dates || []
+    const liveIdx = curve?.live_index || []
+    const btcIdx = curve?.btc_index || []
+    if (!dates.length || !liveIdx.length) {
+      ch.clear()
+      ch.setOption({
+        title: {
+          text: curveLoading ? '净值加载中…' : (curveErr || '暂无净值数据（成交后自动生成）'),
+          left: 'center',
+          top: 'middle',
+          textStyle: { color: '#94a3b8', fontSize: 13, fontWeight: 'normal' },
+        },
+      })
+    } else {
+      ch.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'axis',
+          valueFormatter: (v) => (v == null || Number.isNaN(Number(v)) ? '—' : `${(Number(v) * 100 - 100).toFixed(2)}%`),
+        },
+        legend: {
+          data: ['AI 实盘', '基准 BTC'],
+          top: 0,
+          textStyle: { color: '#94a3b8' },
+        },
+        grid: { left: 48, right: 16, top: 36, bottom: 28 },
+        xAxis: {
+          type: 'category',
+          data: dates.map((d) => String(d).slice(5)),
+          axisLabel: { color: '#64748b' },
+          axisLine: { lineStyle: { color: '#334155' } },
+        },
+        yAxis: {
+          type: 'value',
+          scale: true,
+          axisLabel: {
+            color: '#64748b',
+            formatter: (v) => `${((Number(v) - 1) * 100).toFixed(0)}%`,
+          },
+          splitLine: { lineStyle: { color: 'rgba(148,163,184,0.12)' } },
+        },
+        series: [
+          {
+            name: 'AI 实盘',
+            type: 'line',
+            smooth: true,
+            showSymbol: false,
+            data: liveIdx,
+            lineStyle: { color: '#4ade80', width: 2.5 },
+            itemStyle: { color: '#4ade80' },
+            areaStyle: { color: 'rgba(74, 222, 128, 0.12)' },
+          },
+          {
+            name: '基准 BTC',
+            type: 'line',
+            smooth: true,
+            showSymbol: false,
+            data: btcIdx,
+            lineStyle: { color: '#38bdf8', width: 2, type: 'dashed' },
+            itemStyle: { color: '#38bdf8' },
+          },
+        ],
+      }, true)
+    }
+    const onResize = () => ch.resize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [curve, curveLoading, curveErr])
+
+  useEffect(() => () => {
+    chartInst.current?.dispose()
+    chartInst.current = null
+  }, [])
 
   const allOkAccounts = useMemo(
     () => (snap.accounts || []).filter((a) => a.status === 'ok'),
@@ -233,27 +344,18 @@ const PortalAccount = () => {
 
       <div className="qt-grid-2" style={{ marginBottom: 16 }}>
         <section className="qt-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
             <strong>净值曲线 · AI 实盘 vs 基准 BTC</strong>
-            <span className="qt-muted" style={{ color: 'var(--qt-muted)', fontSize: 12 }}>占位图，逻辑后接</span>
+            <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
+              {curveLoading
+                ? '加载中…'
+                : curve
+                  ? `近 ${curve.days || 90} 日 · 实盘 ${fmtSigned(curve.live_return_pct || 0)}%`
+                    + (curve.btc_return_pct != null ? ` · BTC ${fmtSigned(curve.btc_return_pct)}%` : '')
+                  : (curveErr || '—')}
+            </span>
           </div>
-          <div className="qt-chart-fake">
-            <svg viewBox="0 0 640 220" preserveAspectRatio="none">
-              <polyline
-                fill="none"
-                stroke="#38bdf8"
-                strokeWidth="2.5"
-                strokeDasharray="5 4"
-                points="0,160 80,150 160,145 240,120 320,110 400,95 480,70 560,55 640,40"
-              />
-              <polyline
-                fill="none"
-                stroke="#4ade80"
-                strokeWidth="2.5"
-                points="0,175 80,168 160,155 240,150 320,140 400,125 480,118 560,105 640,90"
-              />
-            </svg>
-          </div>
+          <div ref={chartRef} className="qt-chart-live" />
           <div className="qt-grid-4" style={{ marginTop: 14 }}>
             <div>
               <p className="qt-stat-label">账户权益</p>
@@ -526,6 +628,7 @@ const PortalAccount = () => {
             setLoading(true)
             loadBalances()
           }
+          loadCurve()
         }}
       />
     </div>
