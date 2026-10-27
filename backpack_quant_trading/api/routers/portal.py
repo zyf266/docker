@@ -347,13 +347,18 @@ def equity_overlay_post(body: EquityIn, user: dict = Depends(require_user)):
 
 @router.get("/equity-curve")
 def get_equity_curve(
-    platform: str = Query("", description="交易所过滤，空=全部"),
-    days: int = Query(90, ge=7, le=365),
+    platform: str = Query("", description="平台过滤，空=全部（含账面账户）"),
+    days: int = Query(30, ge=7, le=365),
     user: dict = Depends(require_user),
 ):
-    """AI 实盘净值曲线 vs BTC 基准（按已实现盈亏重建，末点对齐当前权益）。"""
+    """净值曲线（按已实现盈亏重建；默认不含 BTC 基准）。"""
     plat = (platform or "").strip().lower()
+    try:
+        store.ensure_crypto_account_csv_trades(user["id"])
+    except Exception:
+        pass
     current_equity = None
+    initial_capital = None
     try:
         snap = exchange.fetch_balances(user["id"])
         accounts = snap.get("accounts") or []
@@ -361,7 +366,13 @@ def get_equity_curve(
             for a in accounts:
                 if (a.get("platform") or "").lower() == plat and a.get("status") == "ok":
                     current_equity = a.get("equity")
+                    if a.get("book"):
+                        initial_capital = a.get("initial_capital")
                     break
+            if plat == store.BOOK_PLATFORM_CRYPTO and initial_capital is None:
+                initial_capital = store.CRYPTO_ACCOUNT_INITIAL_USD
+            elif plat == store.BOOK_PLATFORM_US and initial_capital is None:
+                initial_capital = store.US_ACCOUNT_INITIAL_USD
         else:
             current_equity = snap.get("total_equity")
     except Exception:
@@ -371,5 +382,7 @@ def get_equity_curve(
         platform=plat,
         days=days,
         current_equity=current_equity,
+        initial_capital=initial_capital,
+        include_btc=False,
     )
     return {"ok": True, **curve}

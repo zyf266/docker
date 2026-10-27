@@ -186,6 +186,18 @@ def _trade_dict(r: "PortalTrade") -> Dict[str, Any]:
     }
 
 
+# 账面账户（非交易所连接）：加密账户 = ETH 200万 + HYPE 100万 CSV
+BOOK_PLATFORM_CRYPTO = "crypto_account"
+BOOK_PLATFORM_US = "us_account"
+BOOK_PLATFORM_LABELS = {
+    BOOK_PLATFORM_CRYPTO: "加密账户",
+    BOOK_PLATFORM_US: "美股账户",
+}
+CRYPTO_ACCOUNT_INITIAL_USD = 3_000_000.0  # ETH 200万 + HYPE 100万
+US_ACCOUNT_INITIAL_USD = 0.0
+CSV_IMPORT_DETAIL_PREFIX = "csv import"
+
+
 def record_trade(
     user_id: int,
     *,
@@ -203,6 +215,7 @@ def record_trade(
     status: str = "ok",
     detail: str = "",
     order_id: str = "",
+    created_at: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     session = _session()
     try:
@@ -222,7 +235,7 @@ def record_trade(
             status=(status or "ok").strip(),
             detail=(detail or "")[:255],
             order_id=(order_id or "")[:80],
-            created_at=datetime.now(),
+            created_at=created_at or datetime.now(),
         )
         session.add(row)
         session.commit()
@@ -234,6 +247,217 @@ def record_trade(
         raise
     finally:
         session.close()
+
+
+def sum_trade_pnl(user_id: int, *, platform: str = "") -> float:
+    """已实现盈亏合计（status=ok）。"""
+    session = _session()
+    try:
+        q = session.query(PortalTrade).filter(
+            PortalTrade.user_id == int(user_id),
+            PortalTrade.status == "ok",
+        )
+        plat = (platform or "").strip().lower()
+        if plat and plat not in ("all", "全部"):
+            q = q.filter(PortalTrade.platform == plat)
+        total = 0.0
+        for r in q.all():
+            total += float(r.pnl or 0)
+        return round(total, 4)
+    finally:
+        session.close()
+
+
+def book_account_equity(user_id: int, platform: str) -> float:
+    """账面账户权益 = 初始本金 + 已实现盈亏。"""
+    plat = (platform or "").strip().lower()
+    if plat == BOOK_PLATFORM_CRYPTO:
+        return round(CRYPTO_ACCOUNT_INITIAL_USD + sum_trade_pnl(user_id, platform=plat), 4)
+    if plat == BOOK_PLATFORM_US:
+        return round(US_ACCOUNT_INITIAL_USD + sum_trade_pnl(user_id, platform=plat), 4)
+    return 0.0
+
+
+def _project_root():
+    from pathlib import Path
+
+    return Path(__file__).resolve().parents[2]
+
+
+def _parse_csv_float(raw: Any) -> Optional[float]:
+    if raw is None:
+        return None
+    s = str(raw).strip().replace(",", "").replace("%", "")
+    if not s or s in ("—", "-", "nan", "NaN"):
+        return None
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_csv_trade_type(type_raw: str) -> Optional[Dict[str, str]]:
+    t = (type_raw or "").strip()
+    mapping = {
+        "多头进场": {"side": "BUY", "action": "open"},
+        "多头出场": {"side": "SELL", "action": "close"},
+        "空头进场": {"side": "SELL", "action": "open"},
+        "空头出场": {"side": "BUY", "action": "close"},
+        "多头入场": {"side": "BUY", "action": "open"},
+        "多头平仓": {"side": "SELL", "action": "close"},
+        "空头入场": {"side": "SELL", "action": "open"},
+        "空头平仓": {"side": "BUY", "action": "close"},
+    }
+    return mapping.get(t)
+
+
+def _crypto_csv_candidates():
+    """按优先级解析 ETH/HYPE CSV 路径（包内 data → 仓库根 → 环境变量）。"""
+    import os
+    from pathlib import Path
+
+    root = _project_root()
+    pkg_data = Path(__file__).resolve().parents[1] / "data"
+    specs = [
+        (
+            "ETHUSDT",
+            2_000_000.0,
+            [
+                os.environ.get("CRYPTO_CSV_ETH") or "",
+                str(pkg_data / "eth_200w.csv"),
+                str(root / "eth 200万.csv"),
+                str(root / "eth_200w.csv"),
+            ],
+        ),
+        (
+            "HYPEUSDT",
+            1_000_000.0,
+            [
+                os.environ.get("CRYPTO_CSV_HYPE") or "",
+                str(pkg_data / "hype_100w.csv"),
+                str(root / "hype 100万.csv"),
+                str(root / "hype_100w.csv"),
+            ],
+        ),
+    ]
+    out = []
+    for symbol, capital, paths in specs:
+        chosen = None
+        for raw in paths:
+            if not raw:
+                continue
+            p = Path(raw)
+            if p.is_file():
+                chosen = p
+                break
+        if chosen is not None:
+            out.append((symbol, capital, chosen))
+    return out
+
+
+def _iter_crypto_csv_rows():
+    """读取 ETH/HYPE TradingView 导出 CSV，产出统一字段字典。"""
+    import csv
+
+    for symbol, capital, path in _crypto_csv_candidates():
+        with path.open(encoding="utf-8-sig", newline="") as fp:
+            reader = csv.DictReader(fp)
+            for row in reader:
+                yield symbol, capital, row
+
+
+def import_crypto_account_csv_trades(user_id: int, *, force: bool = False) -> Dict[str, Any]:
+    """将 eth/hype CSV 导入为 platform=crypto_account 的 portal_trades。
+
+    - 出场行写入净损益，进场行 pnl=0（避免双边双计）
+    - detail 前缀 csv import，便于幂等清理
+    """
+    uid = int(user_id)
+    session = _session()
+    try:
+        existing_q = session.query(PortalTrade).filter(
+            PortalTrade.user_id == uid,
+            PortalTrade.platform == BOOK_PLATFORM_CRYPTO,
+            PortalTrade.detail.like(f"{CSV_IMPORT_DETAIL_PREFIX}%"),
+        )
+        existing_n = existing_q.count()
+        if existing_n and not force:
+            return {"ok": True, "skipped": True, "existing": existing_n, "imported": 0}
+        if existing_n and force:
+            existing_q.delete(synchronize_session=False)
+            session.commit()
+
+        imported = 0
+        skipped = 0
+        for symbol, capital, row in _iter_crypto_csv_rows():
+            meta = _parse_csv_trade_type(str(row.get("类型") or ""))
+            if not meta:
+                skipped += 1
+                continue
+            dt_raw = str(row.get("日期和时间") or "").strip()
+            try:
+                created = datetime.strptime(dt_raw, "%Y-%m-%d %H:%M")
+            except ValueError:
+                try:
+                    created = datetime.strptime(dt_raw, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    skipped += 1
+                    continue
+            trade_no = str(row.get("交易编号") or "").strip() or "0"
+            action = meta["action"]
+            # 仅出场计入净损益
+            pnl = _parse_csv_float(row.get("净损益 USDT")) or 0.0
+            if action == "open":
+                pnl = 0.0
+            price = _parse_csv_float(row.get("价格 USDT"))
+            qty = _parse_csv_float(row.get("大小（数量）"))
+            margin = _parse_csv_float(row.get("大小（价值）"))
+            signal = str(row.get("信号") or "").strip()
+            order_id = f"csv-{symbol}-{trade_no}-{action}"[:80]
+            detail = f"{CSV_IMPORT_DETAIL_PREFIX} {symbol} capital={int(capital)} {signal}"[:255]
+            session.add(
+                PortalTrade(
+                    user_id=uid,
+                    platform=BOOK_PLATFORM_CRYPTO,
+                    symbol=symbol,
+                    side=meta["side"],
+                    action=action,
+                    strategy_name="CSV导入",
+                    timeframe="",
+                    price=price,
+                    quantity=qty,
+                    margin=margin,
+                    leverage=1,
+                    pnl=float(pnl),
+                    status="ok",
+                    detail=detail,
+                    order_id=order_id,
+                    created_at=created,
+                )
+            )
+            imported += 1
+        session.commit()
+        return {
+            "ok": True,
+            "skipped": False,
+            "imported": imported,
+            "parse_skipped": skipped,
+            "platform": BOOK_PLATFORM_CRYPTO,
+            "initial_capital": CRYPTO_ACCOUNT_INITIAL_USD,
+        }
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def ensure_crypto_account_csv_trades(user_id: int) -> Dict[str, Any]:
+    """登录用户首次访问时自动灌入 CSV（已有则跳过）。"""
+    try:
+        return import_crypto_account_csv_trades(user_id, force=False)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
 
 
 def _apply_trade_filters(q, *, platform: str = "", symbol: str = "", strategy: str = ""):
@@ -921,12 +1145,15 @@ def build_equity_curve(
     platform: str = "",
     days: int = 90,
     current_equity: Optional[float] = None,
+    initial_capital: Optional[float] = None,
+    include_btc: bool = False,
 ) -> Dict[str, Any]:
-    """用 portal_trades 已实现盈亏重建 AI 实盘净值，并叠加 BTC 同起点基准。
+    """用 portal_trades 已实现盈亏重建净值曲线。
 
     - live：按日累加已实现 pnl，末点对齐当前权益（若有）
-    - btc：同起点资金按 BTC 涨跌缩放
-    - *_index：归一化到起点=1，便于对比
+    - include_btc=True 时叠加 BTC 同起点基准（默认关闭）
+    - initial_capital：账面账户本金，无交易所权益时用作起点
+    - *_index：归一化到起点=1
     """
     days = max(7, min(int(days or 90), 365))
     now = datetime.now()
@@ -972,11 +1199,22 @@ def build_equity_curve(
     if cur is None or cur <= 0:
         cur = None
 
-    # 起点权益：优先用「当前权益 − 窗口内累计盈亏」；无权益则用保守默认
+    try:
+        init_cap = float(initial_capital) if initial_capital is not None else None
+    except (TypeError, ValueError):
+        init_cap = None
+    if init_cap is not None and init_cap < 0:
+        init_cap = None
+
+    # 起点权益：优先用「当前权益 − 窗口内累计盈亏」；其次账面本金+窗口前盈亏
     if cur is not None:
         start_equity = cur - pnl_in_window
         if start_equity <= 0:
             start_equity = max(cur * 0.5, 100.0)
+    elif init_cap is not None:
+        start_equity = init_cap + pnl_before
+        if start_equity <= 0:
+            start_equity = max(init_cap, 100.0)
     else:
         # 无余额时仍展示相对曲线：以窗口盈亏波动为中心
         start_equity = max(abs(pnl_before) + abs(pnl_in_window) + 1000.0, 1000.0)
@@ -995,41 +1233,40 @@ def build_equity_curve(
     if cur is not None and live:
         live[-1] = round(cur, 4)
 
-    # BTC 基准：同起点资金按涨跌比缩放
-    btc_bars = _fetch_btc_daily_closes(days + 3)
-    btc_map = {x["date"]: x["close"] for x in btc_bars}
     btc: List[Optional[float]] = []
-    btc0 = None
-    for day in dates:
-        px = btc_map.get(day)
-        if px and px > 0:
-            if btc0 is None:
-                btc0 = px
-            btc.append(round(start_equity * (px / btc0), 4) if btc0 else None)
-        else:
-            btc.append(btc[-1] if btc else (round(start_equity, 4) if btc0 is None else None))
-
-    # 若整段都没有 BTC，填空列表标记
-    if not any(v is not None for v in btc):
-        btc = []
+    btc_index: List[Optional[float]] = []
+    btc_ret = None
+    if include_btc:
+        # BTC 基准：同起点资金按涨跌比缩放
+        btc_bars = _fetch_btc_daily_closes(days + 3)
+        btc_map = {x["date"]: x["close"] for x in btc_bars}
+        btc0 = None
+        for day in dates:
+            px = btc_map.get(day)
+            if px and px > 0:
+                if btc0 is None:
+                    btc0 = px
+                btc.append(round(start_equity * (px / btc0), 4) if btc0 else None)
+            else:
+                btc.append(btc[-1] if btc else (round(start_equity, 4) if btc0 is None else None))
+        if not any(v is not None for v in btc):
+            btc = []
+        if btc:
+            b0 = next((v for v in btc if v is not None and v > 0), None) or start_equity
+            for v in btc:
+                if v is None:
+                    btc_index.append(None)
+                else:
+                    btc_index.append(round(float(v) / b0, 6))
+            if btc_index and btc_index[-1] is not None:
+                btc_ret = round((float(btc_index[-1]) - 1.0) * 100.0, 4)
 
     live0 = live[0] if live else 1.0
     if live0 == 0:
         live0 = 1.0
     live_index = [round(v / live0, 6) for v in live]
-    btc_index: List[Optional[float]] = []
-    if btc:
-        b0 = next((v for v in btc if v is not None and v > 0), None) or start_equity
-        for v in btc:
-            if v is None:
-                btc_index.append(None)
-            else:
-                btc_index.append(round(float(v) / b0, 6))
 
     live_ret = round((live[-1] / live0 - 1.0) * 100.0, 4) if live else 0.0
-    btc_ret = None
-    if btc_index and btc_index[-1] is not None:
-        btc_ret = round((float(btc_index[-1]) - 1.0) * 100.0, 4)
 
     return {
         "dates": dates,
@@ -1047,6 +1284,10 @@ def build_equity_curve(
         "platform": plat if plat and plat not in ("all", "全部") else "all",
         "days": days,
         "currency": "USD",
-        "note": "AI 实盘由成交已实现盈亏重建；BTC 为同起点买入持有基准",
+        "include_btc": bool(include_btc),
+        "note": (
+            "由成交已实现盈亏重建净值"
+            + ("；含 BTC 同起点基准" if include_btc else "")
+        ),
     }
 

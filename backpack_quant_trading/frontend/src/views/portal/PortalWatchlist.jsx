@@ -554,21 +554,6 @@ const PortalWatchlist = ({ embedded = false }) => {
         </div>
       </section>
 
-      <div className="qt-grid-3">
-        <section className="qt-card">
-          <p className="qt-stat-label">短强 (站上 MA5)</p>
-          <p className="qt-stat-value qt-cyan">{summary.short}</p>
-        </section>
-        <section className="qt-card">
-          <p className="qt-stat-label">中强 (站上 MA30)</p>
-          <p className="qt-stat-value qt-blue">{summary.mid}</p>
-        </section>
-        <section className="qt-card">
-          <p className="qt-stat-label">长强 (站上 MA200)</p>
-          <p className="qt-stat-value qt-up">{summary.long}</p>
-        </section>
-      </div>
-
       {addOpen ? (
         <div className="qt-modal-mask" role="dialog" aria-modal="true">
           <div className="qt-modal">

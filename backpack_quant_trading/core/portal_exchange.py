@@ -25,6 +25,8 @@ PLATFORM_LABEL = {
     "okx": "欧意 OKX",
     "hyperliquid": "Hyperliquid",
     "binance": "币安",
+    store.BOOK_PLATFORM_CRYPTO: store.BOOK_PLATFORM_LABELS[store.BOOK_PLATFORM_CRYPTO],
+    store.BOOK_PLATFORM_US: store.BOOK_PLATFORM_LABELS[store.BOOK_PLATFORM_US],
 }
 
 
@@ -225,11 +227,18 @@ def _secrets_from_binding(cfg: Dict[str, Any]) -> Dict[str, str]:
 
 
 def fetch_balances(user_id: int) -> Dict[str, Any]:
-    """登录后拉已绑定交易所的真实余额/持仓。"""
+    """登录后拉已绑定交易所的真实余额/持仓，并附带账面账户（加密/美股）。"""
+    # 加密账户 CSV 幂等导入（首次访问自动灌入）
+    try:
+        store.ensure_crypto_account_csv_trades(user_id)
+    except Exception as exc:
+        logger.warning("ensure crypto csv trades failed: %s", exc)
+
     rows = store.list_exchange_bindings(user_id)
     accounts: List[Dict[str, Any]] = []
     positions: List[Dict[str, Any]] = []
     total_equity = 0.0
+    exchange_equity = 0.0
 
     for r in rows:
         plat = (r.get("platform") or "").lower()
@@ -263,6 +272,7 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
                     "address_mask": _mask_addr(meta.get("address") or cfg.get("address") or ""),
                 })
                 total_equity += equity
+                exchange_equity += equity
                 for p in meta.get("positions") or []:
                     positions.append({**p, "platform": plat})
             elif plat == "okx":
@@ -280,6 +290,7 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
                     "currency": meta.get("currency") or "USDT",
                 })
                 total_equity += equity
+                exchange_equity += equity
                 for p in meta.get("positions") or []:
                     positions.append({**p, "platform": plat})
             else:
@@ -289,6 +300,33 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
             item["error"] = str(exc)[:200]
 
         accounts.append(item)
+
+    # 账面账户：加密（CSV）+ 美股（占位），排在交易所前面便于筛选
+    book_accounts: List[Dict[str, Any]] = []
+    for book_plat, init_cap in (
+        (store.BOOK_PLATFORM_CRYPTO, store.CRYPTO_ACCOUNT_INITIAL_USD),
+        (store.BOOK_PLATFORM_US, store.US_ACCOUNT_INITIAL_USD),
+    ):
+        eq = store.book_account_equity(user_id, book_plat)
+        book_accounts.append(
+            {
+                "platform": book_plat,
+                "platform_label": store.BOOK_PLATFORM_LABELS.get(book_plat, book_plat),
+                "label": "账面账户",
+                "status": "ok",
+                "equity": eq,
+                "balance": eq,
+                "currency": "USD",
+                "address_mask": "",
+                "api_key_mask": "",
+                "demo": False,
+                "book": True,
+                "initial_capital": init_cap,
+                "error": "",
+            }
+        )
+        total_equity += float(eq or 0)
+    accounts = book_accounts + accounts
 
     # 持仓挂上观察库策略名（connected 配置）
     try:
@@ -305,11 +343,16 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
         for p in positions:
             p.setdefault("strategy_name", "")
 
+    exchange_ok = any(
+        a.get("status") == "ok" and not a.get("book")
+        for a in accounts
+    )
     return {
-        "connected": any(a.get("status") == "ok" for a in accounts),
+        "connected": exchange_ok,
         "accounts": accounts,
         "positions": positions,
         "total_equity": round(total_equity, 4),
+        "exchange_equity": round(exchange_equity, 4),
         "currency": "USD",
     }
 
@@ -379,6 +422,8 @@ def connect_exchange(
 
 def disconnect_exchange(user_id: int, platform: str) -> Dict[str, Any]:
     plat = _normalize_platform(platform)
+    if plat in (store.BOOK_PLATFORM_CRYPTO, store.BOOK_PLATFORM_US):
+        raise ValueError("账面账户不可断开，请在平台筛选中切换查看")
     if plat not in SUPPORTED and plat != "binance":
         raise ValueError("不支持的交易平台")
     ok = store.delete_exchange_binding(user_id, plat)
