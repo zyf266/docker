@@ -69,6 +69,8 @@ class PortalWatchConfig(StoreBase):
     require_long = Column(Boolean, nullable=False, default=False)
     require_2h = Column(Boolean, nullable=False, default=False)  # 2H 收盘站上日线 WMA15
     require_4h = Column(Boolean, nullable=False, default=False)  # 4H 收盘站上日线 WMA15
+    # 条件全满足时，观察库「状态」列展示的标签：空头 | 反弹 | 趋势
+    status_mode = Column(String(16), nullable=False, default="趋势")
     strategy_name = Column(String(80), nullable=False, default="")
     timeframe = Column(String(16), nullable=False, default="2h")
     size_mode = Column(String(16), nullable=False, default="percent")  # fixed | percent
@@ -80,6 +82,22 @@ class PortalWatchConfig(StoreBase):
     exchange = Column(String(32), nullable=False, default="")  # okx | hyperliquid | binance
     updated_at = Column(DateTime, default=datetime.now)
     __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_portal_watch_cfg"),)
+
+WATCH_STATUS_MODES = ("空头", "反弹", "趋势")
+
+
+def normalize_status_mode(raw: Any) -> str:
+    s = str(raw or "").strip()
+    if s in WATCH_STATUS_MODES:
+        return s
+    low = s.lower()
+    if low in ("bear", "short", "空", "bearish"):
+        return "空头"
+    if low in ("rebound", "bounce", "反弹中"):
+        return "反弹"
+    if low in ("trend", "趋势中", "trending"):
+        return "趋势"
+    return "趋势"
 
 
 class PortalExchangeBinding(StoreBase):
@@ -156,6 +174,10 @@ def _ensure_watch_config_columns(engine) -> None:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN require_2h TINYINT(1) NOT NULL DEFAULT 0")
         if "require_4h" not in existing:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN require_4h TINYINT(1) NOT NULL DEFAULT 0")
+        if "status_mode" not in existing:
+            alters.append(
+                "ALTER TABLE portal_watch_configs ADD COLUMN status_mode VARCHAR(16) NOT NULL DEFAULT '趋势'"
+            )
         for sql in alters:
             conn.execute(text(sql))
 
@@ -1122,6 +1144,7 @@ def _watch_config_dict(r: PortalWatchConfig) -> Dict[str, Any]:
         "require_long": bool(r.require_long),
         "require_2h": bool(getattr(r, "require_2h", False)),
         "require_4h": bool(getattr(r, "require_4h", False)),
+        "status_mode": normalize_status_mode(getattr(r, "status_mode", None)),
         "strategy_name": r.strategy_name or "",
         "timeframe": r.timeframe or "2h",
         "size_mode": r.size_mode or "percent",
@@ -1239,6 +1262,7 @@ def upsert_watch_gates(
     require_long: bool = False,
     require_2h: bool = False,
     require_4h: bool = False,
+    status_mode: str = "趋势",
 ) -> List[Dict[str, Any]]:
     """只保存观察条件（第一步），不改交易参数、不自动变 living/connected。"""
     cleaned = []
@@ -1248,6 +1272,7 @@ def upsert_watch_gates(
             cleaned.append(sym)
     if not cleaned:
         raise ValueError("请至少选择一个交易对")
+    mode_label = normalize_status_mode(status_mode)
     session = _session()
     try:
         out = []
@@ -1262,6 +1287,7 @@ def upsert_watch_gates(
             row.require_long = bool(require_long)
             row.require_2h = bool(require_2h)
             row.require_4h = bool(require_4h)
+            row.status_mode = mode_label
             # 仅条件保存：不强制 living；已 connected 保持
             cur = (getattr(row, "status", None) or "").strip().lower()
             if cur not in ("connected", "living"):
@@ -1295,6 +1321,7 @@ def upsert_watch_configs(
     exchanges: Optional[List[str]] = None,
     require_2h: bool = False,
     require_4h: bool = False,
+    status_mode: str = "趋势",
     gates_only: bool = False,
 ) -> List[Dict[str, Any]]:
     if gates_only:
@@ -1306,6 +1333,7 @@ def upsert_watch_configs(
             require_long=require_long,
             require_2h=require_2h,
             require_4h=require_4h,
+            status_mode=status_mode,
         )
     cleaned = []
     for raw in symbols or []:
@@ -1353,6 +1381,7 @@ def upsert_watch_configs(
             row.require_long = bool(require_long)
             row.require_2h = bool(require_2h)
             row.require_4h = bool(require_4h)
+            row.status_mode = normalize_status_mode(status_mode)
             row.strategy_name = name
             row.timeframe = tf
             row.size_mode = mode

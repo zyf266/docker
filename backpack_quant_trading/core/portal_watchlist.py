@@ -183,9 +183,16 @@ def _vs_daily_wma15(tf_closes: List[float], daily_closes: List[float]) -> str:
 
 
 def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """按勾选条件判断是否「可交易」（全部勾选条件均站上）。"""
+    """按勾选条件判断是否全部满足；满足时 status_label = 配置的空头/反弹/趋势。"""
     if not cfg:
-        return {"tradable": False, "gates": [], "missing": [], "configured": False}
+        return {
+            "tradable": False,
+            "gates": [],
+            "missing": [],
+            "configured": False,
+            "status_label": "",
+            "status_mode": "",
+        }
     gates = []
     missing = []
     if cfg.get("require_2h"):
@@ -200,20 +207,21 @@ def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dic
         gates.append("mid")
         if not metrics.get("mid_on"):
             missing.append("中强(MA30)")
-    if cfg.get("require_short"):
-        gates.append("short")
-        if not metrics.get("short_on"):
-            missing.append("短强(MA5)")
+    # MA5 / 短强已下线，忽略历史 require_short
     if cfg.get("require_long"):
         gates.append("long")
         if not metrics.get("long_on"):
             missing.append("长强(MA200)")
     configured = bool(gates)
+    ok = bool(configured and not missing)
+    mode = store.normalize_status_mode(cfg.get("status_mode"))
     return {
-        "tradable": bool(configured and not missing),
+        "tradable": ok,
         "gates": gates,
         "missing": missing,
         "configured": configured,
+        "status_mode": mode,
+        "status_label": mode if ok else "",
     }
 
 
@@ -630,6 +638,8 @@ def list_watchlist_board(
         metrics["tradable"] = gate["tradable"]
         metrics["tradable_missing"] = gate["missing"]
         metrics["gates_configured"] = gate["configured"]
+        metrics["status_mode"] = gate.get("status_mode") or ""
+        metrics["status_label"] = gate.get("status_label") or ""
         return metrics
 
     if with_metrics and len(favs) > 1:

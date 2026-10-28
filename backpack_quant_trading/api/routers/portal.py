@@ -29,11 +29,12 @@ class WatchAddIn(BaseModel):
 
 class WatchConfigIn(BaseModel):
     symbols: List[str] = Field(default_factory=list)
-    require_short: bool = True
+    require_short: bool = False  # MA5 已下线，默认不再要求
     require_mid: bool = True
     require_long: bool = False
     require_2h: bool = False
     require_4h: bool = False
+    status_mode: str = "趋势"  # 空头 | 反弹 | 趋势（条件全满足时状态列展示）
     strategy_name: str = ""
     timeframe: str = "2h"
     size_mode: str = "percent"  # fixed | percent
@@ -158,11 +159,12 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
         items = store.upsert_watch_configs(
             user["id"],
             raw_symbols,
-            require_short=body.require_short,
+            require_short=False,  # MA5 已从配置中移除
             require_mid=body.require_mid,
             require_long=body.require_long,
             require_2h=body.require_2h,
             require_4h=body.require_4h,
+            status_mode=body.status_mode,
             strategy_name=body.strategy_name,
             timeframe=body.timeframe,
             size_mode=body.size_mode,

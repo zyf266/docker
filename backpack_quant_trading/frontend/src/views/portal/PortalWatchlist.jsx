@@ -43,6 +43,12 @@ const SignalCell = ({ value }) => {
   return <span style={{ color: 'var(--qt-muted)' }}>{value || '—'}</span>
 }
 
+const STATUS_MODE_OPTIONS = [
+  { value: '空头', label: '空头' },
+  { value: '反弹', label: '反弹' },
+  { value: '趋势', label: '趋势' },
+]
+
 const StatusCell = ({ row, onConnect }) => {
   const st = (row?.config?.status || row?.status || '').toLowerCase()
   const plats = parseExchanges(row?.config?.exchange || row?.exchange || '')
@@ -50,28 +56,28 @@ const StatusCell = ({ row, onConnect }) => {
     .map((ex) => (ex === 'hyperliquid' ? 'Hype' : ex === 'okx' ? 'OKX' : ex))
     .join('+')
   const missing = row?.tradable_missing || []
-  if (row?.tradable) {
-    return (
-      <span className="qt-pill qt-pill-live" title="勾选条件均已站上">
-        <span className="qt-status-dot" />
-        可交易
-        {exTip ? ` · ${exTip}` : ''}
-      </span>
-    )
-  }
+  // 已配置站上条件：全部满足 → 显示空头/反弹/趋势；否则 —
   if (row?.gates_configured) {
-    return (
-      <button
-        type="button"
-        className="qt-status-btn"
-        onClick={() => onConnect?.(row)}
-        title={missing.length ? `未满足: ${missing.join('、')}` : '条件观察中'}
-      >
-        <span className="qt-pill qt-pill-off">
-          条件未满足
+    if (row?.tradable) {
+      const label = row.status_label || row.config?.status_mode || '趋势'
+      return (
+        <span
+          className="qt-pill qt-pill-live"
+          title={missing.length ? '' : `条件均已满足 · ${label}`}
+        >
+          <span className="qt-status-dot" />
+          {label}
           {exTip ? ` · ${exTip}` : ''}
         </span>
-      </button>
+      )
+    }
+    return (
+      <span
+        style={{ color: 'var(--qt-muted)' }}
+        title={missing.length ? `未满足: ${missing.join('、')}` : '条件未满足'}
+      >
+        —
+      </span>
     )
   }
   if (st === 'connected') {
@@ -104,6 +110,7 @@ const emptyConfig = {
   require_long: false,
   require_2h: true,
   require_4h: true,
+  status_mode: '趋势',
   strategy_name: STRATEGY_OPTIONS[0].value,
   timeframe: '2h',
   size_mode: 'percent',
@@ -244,7 +251,6 @@ const PortalWatchlist = ({ embedded = false }) => {
     return (items || []).filter((row) => {
       if (marketFilter === 'crypto' && row.market === 'us') return false
       if (marketFilter === 'us' && row.market !== 'us') return false
-      if (strengthFilter === 'short' && !row.short_on) return false
       if (strengthFilter === 'mid' && !row.mid_on) return false
       if (strengthFilter === 'long' && !row.long_on) return false
       if (!q) return true
@@ -293,14 +299,18 @@ const PortalWatchlist = ({ embedded = false }) => {
     }
     const seedStrategy = (seed?.strategy_name || '').trim()
     const strategyOk = STRATEGY_OPTIONS.some((o) => o.value === seedStrategy)
+    const seedMode = STATUS_MODE_OPTIONS.some((o) => o.value === seed?.status_mode)
+      ? seed.status_mode
+      : '趋势'
     setCfg({
       ...emptyConfig,
       ...(seed || {}),
-      require_short: seed?.require_short ?? false,
+      require_short: false,
       require_mid: seed?.require_mid ?? true,
       require_long: seed?.require_long ?? false,
       require_2h: seed?.require_2h ?? true,
       require_4h: seed?.require_4h ?? true,
+      status_mode: seedMode,
       strategy_name: strategyOk ? seedStrategy : STRATEGY_OPTIONS[0].value,
       timeframe: seed?.timeframe || '2h',
       size_mode: seed?.size_mode || 'percent',
@@ -378,8 +388,12 @@ const PortalWatchlist = ({ embedded = false }) => {
   }
 
   const onSaveGatesOnly = async () => {
-    if (!(cfg.require_short || cfg.require_mid || cfg.require_long || cfg.require_2h || cfg.require_4h)) {
+    if (!(cfg.require_mid || cfg.require_long || cfg.require_2h || cfg.require_4h)) {
       setCfgMsg('请至少勾选一个站上条件')
+      return
+    }
+    if (!STATUS_MODE_OPTIONS.some((o) => o.value === cfg.status_mode)) {
+      setCfgMsg('请选择状态：空头 / 反弹 / 趋势')
       return
     }
     setCfgBusy(true)
@@ -387,14 +401,15 @@ const PortalWatchlist = ({ embedded = false }) => {
     try {
       await saveWatchConfig({
         symbols: cfgSymbols,
-        require_short: !!cfg.require_short,
+        require_short: false,
         require_mid: !!cfg.require_mid,
         require_long: !!cfg.require_long,
         require_2h: !!cfg.require_2h,
         require_4h: !!cfg.require_4h,
+        status_mode: cfg.status_mode,
         gates_only: true,
       })
-      setCfgMsg('条件已保存。全部勾选项站上后才会显示「可交易」；交易参数可稍后在第二步配置。')
+      setCfgMsg(`条件已保存。全部勾选条件满足后，状态显示「${cfg.status_mode}」；否则为 —。交易参数可在第二步配置。`)
       await load({ force: true })
     } catch (e) {
       setCfgMsg(e?.response?.data?.detail || e?.message || '保存失败')
@@ -422,11 +437,12 @@ const PortalWatchlist = ({ embedded = false }) => {
     try {
       await saveWatchConfig({
         symbols: cfgSymbols,
-        require_short: !!cfg.require_short,
+        require_short: false,
         require_mid: !!cfg.require_mid,
         require_long: !!cfg.require_long,
         require_2h: !!cfg.require_2h,
         require_4h: !!cfg.require_4h,
+        status_mode: cfg.status_mode || '趋势',
         strategy_name: cfg.strategy_name,
         timeframe: cfg.timeframe,
         size_mode: cfg.size_mode,
@@ -474,8 +490,8 @@ const PortalWatchlist = ({ embedded = false }) => {
             <p className="qt-kicker">WATCHLIST</p>
             <h1 className="qt-title">标的观察库 · 概览</h1>
             <p className="qt-sub">
-              添加只写库、秒返回；指标默认读 Hyperliquid。勾选条件全部站上后才显示「可交易」；交易参数可分步配置。
-              TradingView webhook（策略名+币种+周期一致）在可交易且已连接时按仓位下单。
+              添加只写库、秒返回；指标默认读 Hyperliquid。勾选条件全部满足后，状态显示所选的空头/反弹/趋势，否则为 —。
+              TradingView webhook（策略名+币种+周期一致）在条件满足且已连接时按仓位下单。
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -496,7 +512,6 @@ const PortalWatchlist = ({ embedded = false }) => {
           </select>
           <select className="qt-select" value={strengthFilter} onChange={(e) => setStrengthFilter(e.target.value)}>
             <option value="all">强弱: 全部</option>
-            <option value="short">短强</option>
             <option value="mid">中强</option>
             <option value="long">长强</option>
           </select>
@@ -547,7 +562,6 @@ const PortalWatchlist = ({ embedded = false }) => {
                 <th>最新价</th>
                 <th>2h状态</th>
                 <th>4h状态</th>
-                <th>短强 (MA5)</th>
                 <th>中强 (MA30)</th>
                 <th>长强 (MA200)</th>
                 <th>状态</th>
@@ -557,7 +571,7 @@ const PortalWatchlist = ({ embedded = false }) => {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="qt-empty">
+                  <td colSpan={11} className="qt-empty">
                     {loading ? '加载中…' : '暂无标的，点击「添加标的」选择美股或币安交易对'}
                   </td>
                 </tr>
@@ -582,7 +596,6 @@ const PortalWatchlist = ({ embedded = false }) => {
                     <td>{fmtPrice(row.price)}</td>
                     <td><SignalCell value={row.signal_2h} /></td>
                     <td><SignalCell value={row.signal_4h} /></td>
-                    <td><Strength on={row.short_on} label="短强" /></td>
                     <td><Strength on={row.mid_on} label="中强" /></td>
                     <td><Strength on={row.long_on} label="长强" /></td>
                     <td><StatusCell row={row} onConnect={openConnect} /></td>
@@ -692,7 +705,7 @@ const PortalWatchlist = ({ embedded = false }) => {
             {cfgStep === 1 ? (
               <div>
                 <p className="qt-sub" style={{ marginTop: 0 }}>
-                  第一步：选定需要「站上」的条件（可多选；全部满足后状态才变「可交易」）。可先保存条件，交易参数稍后配置。
+                  第一步：选定需要「站上」的条件（可多选）。全部满足后，状态列显示下方所选标签；不满足则为 —。
                 </p>
                 <label className="qt-check">
                   <input
@@ -721,19 +734,25 @@ const PortalWatchlist = ({ embedded = false }) => {
                 <label className="qt-check">
                   <input
                     type="checkbox"
-                    checked={!!cfg.require_short}
-                    onChange={(e) => setCfg((prev) => ({ ...prev, require_short: e.target.checked }))}
-                  />
-                  短强 · 站上 MA5
-                </label>
-                <label className="qt-check">
-                  <input
-                    type="checkbox"
                     checked={!!cfg.require_long}
                     onChange={(e) => setCfg((prev) => ({ ...prev, require_long: e.target.checked }))}
                   />
                   长强 · 站上 MA200
                 </label>
+                <p className="qt-sub" style={{ margin: '14px 0 8px' }}>条件满足后显示的状态（单选）</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+                  {STATUS_MODE_OPTIONS.map((opt) => (
+                    <label key={opt.value} className="qt-check" style={{ marginRight: 4 }}>
+                      <input
+                        type="radio"
+                        name="watch-status-mode"
+                        checked={cfg.status_mode === opt.value}
+                        onChange={() => setCfg((prev) => ({ ...prev, status_mode: opt.value }))}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
                 {cfgMsg ? <p className="qt-sub" style={{ marginTop: 8 }}>{cfgMsg}</p> : null}
                 <div className="qt-modal-actions" style={{ gap: 8 }}>
                   <button
