@@ -191,16 +191,18 @@ def _leverage_from_cfg(cfg: Dict[str, Any], default: int = 5) -> int:
 
 
 def _check_ma_gate(cfg: Dict[str, Any], side: str) -> Tuple[bool, str]:
-    """买入前检查是否满足配置勾选的「站上 MA5/30/200」。卖出/平仓不校验。"""
+    """买入前检查勾选条件是否全部站上（含 2h/4h 相对日线 WMA15、中强等）。卖出/平仓不校验。"""
     if side != "BUY":
         return True, ""
     need_short = bool(cfg.get("require_short"))
     need_mid = bool(cfg.get("require_mid"))
     need_long = bool(cfg.get("require_long"))
-    if not (need_short or need_mid or need_long):
+    need_2h = bool(cfg.get("require_2h"))
+    need_4h = bool(cfg.get("require_4h"))
+    if not (need_short or need_mid or need_long or need_2h or need_4h):
         return True, ""
 
-    from backpack_quant_trading.core.portal_watchlist import compute_symbol_metrics
+    from backpack_quant_trading.core.portal_watchlist import compute_symbol_metrics, eval_tradable
 
     symbol = str(cfg.get("symbol") or "")
     try:
@@ -211,19 +213,15 @@ def _check_ma_gate(cfg: Dict[str, Any], side: str) -> Tuple[bool, str]:
     if metrics.get("error") and metrics.get("ma5") is None and metrics.get("ma30") is None:
         return False, f"均线数据不足: {metrics.get('error')}"
 
-    missing = []
-    if need_short and not metrics.get("short_on"):
-        missing.append("MA5")
-    if need_mid and not metrics.get("mid_on"):
-        missing.append("MA30")
-    if need_long and not metrics.get("long_on"):
-        missing.append("MA200")
-    if missing:
-        return False, (
-            f"未站上 {','.join(missing)}（price={metrics.get('price')}, "
-            f"MA5={metrics.get('ma5')}, MA30={metrics.get('ma30')}, MA200={metrics.get('ma200')}），拒绝开多"
-        )
-    return True, ""
+    gate = eval_tradable(cfg, metrics)
+    if gate["tradable"]:
+        return True, ""
+    missing = gate.get("missing") or []
+    return False, (
+        f"未满足可交易条件: {','.join(missing) or '未知'} "
+        f"（2h={metrics.get('signal_2h')}, 4h={metrics.get('signal_4h')}, "
+        f"mid={metrics.get('mid_on')}, wma15d={metrics.get('wma15_daily')}），拒绝开多"
+    )
 
 
 def _record_from_result(

@@ -1,7 +1,8 @@
 """标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 2h/4h 相对 WMA15 状态。
 
 列表默认只读库（秒开）；指标默认读 30 分钟缓存（内存+磁盘），仅 force 时重拉 K 线。
-变盘：2H/4H 收盘站上 WMA15；趋势：日线收盘 > MA30 → 钉钉提醒。
+变盘：2H/4H 收盘站上「日线 WMA15」；中强：日线收盘 > MA30。
+任一状态变化推钉钉。加密 K 线优先 Hyperliquid。
 """
 from __future__ import annotations
 
@@ -171,14 +172,49 @@ def wma(values: List[float], length: int) -> Optional[float]:
     return sum(float(v) * w for v, w in zip(window, weights)) / den
 
 
-def _wma15_status(closes: List[float]) -> str:
-    """2h/4h 状态：收盘是否站上 WMA15。"""
-    if len(closes) < 15:
+def _vs_daily_wma15(tf_closes: List[float], daily_closes: List[float]) -> str:
+    """2h/4h 状态：该周期最新收盘 vs 日线 WMA15（15 日均线）。"""
+    if not tf_closes:
         return "—"
-    w = wma(closes, 15)
-    if w is None:
+    daily_wma = wma(daily_closes, 15)
+    if daily_wma is None:
         return "—"
-    return "站上" if float(closes[-1]) >= float(w) else "未站上"
+    return "站上" if float(tf_closes[-1]) >= float(daily_wma) else "未站上"
+
+
+def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """按勾选条件判断是否「可交易」（全部勾选条件均站上）。"""
+    if not cfg:
+        return {"tradable": False, "gates": [], "missing": [], "configured": False}
+    gates = []
+    missing = []
+    if cfg.get("require_2h"):
+        gates.append("2h")
+        if str(metrics.get("signal_2h") or "") != "站上":
+            missing.append("2h状态")
+    if cfg.get("require_4h"):
+        gates.append("4h")
+        if str(metrics.get("signal_4h") or "") != "站上":
+            missing.append("4h状态")
+    if cfg.get("require_mid"):
+        gates.append("mid")
+        if not metrics.get("mid_on"):
+            missing.append("中强(MA30)")
+    if cfg.get("require_short"):
+        gates.append("short")
+        if not metrics.get("short_on"):
+            missing.append("短强(MA5)")
+    if cfg.get("require_long"):
+        gates.append("long")
+        if not metrics.get("long_on"):
+            missing.append("长强(MA200)")
+    configured = bool(gates)
+    return {
+        "tradable": bool(configured and not missing),
+        "gates": gates,
+        "missing": missing,
+        "configured": configured,
+    }
 
 
 def _load_status_state() -> Dict[str, Any]:
@@ -235,12 +271,15 @@ def maybe_notify_status_changes(metrics: Dict[str, Any]) -> None:
         prev_trend = prev.get("trend_on")
         alerts: List[str] = []
 
-        if cur_2h == "站上" and prev_2h and prev_2h != "站上":
-            alerts.append(f"【变盘·2H】{code}（{market}）2H 收盘站上 WMA15")
-        if cur_4h == "站上" and prev_4h and prev_4h != "站上":
-            alerts.append(f"【变盘·4H】{code}（{market}）4H 收盘站上 WMA15")
-        if cur_trend and prev_trend is False:
-            alerts.append(f"【趋势】{code}（{market}）日线收盘 > MA30，进入趋势状态")
+        # 任一变化即推（含站上↔未站上、中强真假切换）
+        if prev_2h and cur_2h != prev_2h and cur_2h != "—":
+            alerts.append(f"【2H状态】{code}（{market}）{prev_2h} → {cur_2h}（相对日线 WMA15）")
+        if prev_4h and cur_4h != prev_4h and cur_4h != "—":
+            alerts.append(f"【4H状态】{code}（{market}）{prev_4h} → {cur_4h}（相对日线 WMA15）")
+        if prev_trend is not None and bool(prev_trend) != cur_trend:
+            alerts.append(
+                f"【中强/趋势】{code}（{market}）日线{'站上' if cur_trend else '跌破'} MA30"
+            )
 
         state[key] = {
             "signal_2h": cur_2h,
@@ -301,7 +340,25 @@ def _closes_from_bars(bars: Optional[List[Dict[str, Any]]]) -> List[float]:
 
 
 def _fetch_crypto_klines(symbol: str, interval: str, limit: int = 250) -> Tuple[List[Dict[str, Any]], str]:
-    """优先合约；空结果再试现货（避免每次都打两遍）。"""
+    """优先 Hyperliquid；失败再回退币安合约/现货。"""
+    try:
+        from backpack_quant_trading.core.hyperliquid_klines import (
+            fetch_hl_klines_batch,
+            hl_bars_to_ohlcv,
+            to_hl_coin,
+        )
+
+        coin = to_hl_coin(symbol)
+        raw = fetch_hl_klines_batch(coin, interval, total_limit=max(limit, 80)) or []
+        if raw:
+            bars = hl_bars_to_ohlcv(raw)
+            # 统一 close 字段，兼容 _closes_from_bars
+            for b in bars:
+                if "close" not in b and "c" in b:
+                    b["close"] = b["c"]
+            return bars, "hyperliquid"
+    except Exception as exc:
+        logger.debug("hyperliquid %s %s: %s", symbol, interval, exc)
     try:
         bars = fetch_binance_klines(symbol, interval, limit=limit, market="futures") or []
         if bars:
@@ -417,10 +474,11 @@ def compute_symbol_metrics(
             k1d, src1 = f1.result()
             k2, src2 = f2.result()
             k4, src4 = f4.result()
-        m1d = _daily_stand(_closes_from_bars(k1d))
-        # 2h/4h 需要至少 15 根；拉多一点稳住 WMA15
-        sig2 = _wma15_status(_closes_from_bars(k2))
-        sig4 = _wma15_status(_closes_from_bars(k4))
+        closes_1d = _closes_from_bars(k1d)
+        m1d = _daily_stand(closes_1d)
+        # 2h/4h：收盘 vs 日线 WMA15（15日均线）
+        sig2 = _vs_daily_wma15(_closes_from_bars(k2), closes_1d)
+        sig4 = _vs_daily_wma15(_closes_from_bars(k4), closes_1d)
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
         if last_px is None and k2:
@@ -439,9 +497,10 @@ def compute_symbol_metrics(
             k1d, src1 = f1.result()
             k2, src2 = f2.result()
             k4, src4 = f4.result()
-        m1d = _daily_stand(_closes_from_bars(k1d))
-        sig2 = _wma15_status(_closes_from_bars(k2))
-        sig4 = _wma15_status(_closes_from_bars(k4))
+        closes_1d = _closes_from_bars(k1d)
+        m1d = _daily_stand(closes_1d)
+        sig2 = _vs_daily_wma15(_closes_from_bars(k2), closes_1d)
+        sig4 = _vs_daily_wma15(_closes_from_bars(k4), closes_1d)
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
         if last_px is None:
@@ -451,6 +510,7 @@ def compute_symbol_metrics(
                     last_px = closes[-1]
                     break
 
+    daily_wma15 = wma(closes_1d, 15) if closes_1d else None
     base.update({
         "price": last_px if last_px not in (None, 0) else None,
         "signal_2h": sig2,
@@ -461,6 +521,7 @@ def compute_symbol_metrics(
         "ma5": m1d.get("ma5"),
         "ma30": m1d.get("ma30"),
         "ma200": m1d.get("ma200"),
+        "wma15_daily": round(daily_wma15, 6) if daily_wma15 is not None else None,
         "error": m1d.get("error") or "",
         "data_source": "+".join(dict.fromkeys(sources)) if sources else "",
     })
@@ -563,7 +624,12 @@ def list_watchlist_board(
         metrics["id"] = fav["id"]
         if fav.get("name") and fav["name"] != fav["symbol"]:
             metrics["name"] = fav["name"]
-        metrics["config"] = cfg_map.get(normalize_pair(sym, market))
+        cfg = cfg_map.get(normalize_pair(sym, market))
+        metrics["config"] = cfg
+        gate = eval_tradable(cfg, metrics)
+        metrics["tradable"] = gate["tradable"]
+        metrics["tradable_missing"] = gate["missing"]
+        metrics["gates_configured"] = gate["configured"]
         return metrics
 
     if with_metrics and len(favs) > 1:
@@ -586,7 +652,7 @@ def list_watchlist_board(
         "force": bool(force),
         "cache_ttl_sec": int(_METRICS_TTL_SEC),
         "oldest_cache_age_sec": oldest,
-        "source": "binance(futures→spot)+massive→yahoo",
+        "source": "hyperliquid→binance+massive→yahoo",
     }
 
 

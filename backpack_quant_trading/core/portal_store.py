@@ -67,6 +67,8 @@ class PortalWatchConfig(StoreBase):
     require_short = Column(Boolean, nullable=False, default=True)
     require_mid = Column(Boolean, nullable=False, default=True)
     require_long = Column(Boolean, nullable=False, default=False)
+    require_2h = Column(Boolean, nullable=False, default=False)  # 2H 收盘站上日线 WMA15
+    require_4h = Column(Boolean, nullable=False, default=False)  # 4H 收盘站上日线 WMA15
     strategy_name = Column(String(80), nullable=False, default="")
     timeframe = Column(String(16), nullable=False, default="2h")
     size_mode = Column(String(16), nullable=False, default="percent")  # fixed | percent
@@ -150,6 +152,10 @@ def _ensure_watch_config_columns(engine) -> None:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN exchange VARCHAR(32) NOT NULL DEFAULT ''")
         if "leverage" not in existing:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN leverage INT NOT NULL DEFAULT 5")
+        if "require_2h" not in existing:
+            alters.append("ALTER TABLE portal_watch_configs ADD COLUMN require_2h TINYINT(1) NOT NULL DEFAULT 0")
+        if "require_4h" not in existing:
+            alters.append("ALTER TABLE portal_watch_configs ADD COLUMN require_4h TINYINT(1) NOT NULL DEFAULT 0")
         for sql in alters:
             conn.execute(text(sql))
 
@@ -267,12 +273,18 @@ def _trade_rows_for_view(
     strategy: str = "",
     status_ok_only: bool = False,
 ):
-    """个人交易所成交 + 全站共享账面成交。"""
+    """个人交易所成交 + 全站共享账面成交。
+
+    platform=connected / self → 仅自己连接的交易所成交（不含账面账户）
+    """
     plat = (platform or "").strip().lower()
     uid = int(user_id)
 
-    def _finish(q):
-        q = _apply_trade_filters(q, platform=platform, symbol=symbol, strategy=strategy)
+    def _finish(q, *, plat_override: Optional[str] = None):
+        q = _apply_trade_filters(
+            q, platform=plat_override if plat_override is not None else platform,
+            symbol=symbol, strategy=strategy,
+        )
         if status_ok_only:
             q = q.filter(PortalTrade.status == "ok")
         return q
@@ -280,6 +292,14 @@ def _trade_rows_for_view(
     if is_book_platform(plat):
         q = session.query(PortalTrade).filter(PortalTrade.user_id == BOOK_SHARED_USER_ID)
         return _finish(q).all()
+
+    # 自己连接的账户：仅本人交易所成交
+    if plat in ("connected", "self", "exchange", "自己连接", "自己连接的账户"):
+        q = session.query(PortalTrade).filter(
+            PortalTrade.user_id == uid,
+            ~PortalTrade.platform.in_(tuple(BOOK_PLATFORMS)),
+        )
+        return _finish(q, plat_override="").all()
 
     if plat and plat not in ("all", "全部"):
         q = session.query(PortalTrade).filter(PortalTrade.user_id == uid)
@@ -1100,6 +1120,8 @@ def _watch_config_dict(r: PortalWatchConfig) -> Dict[str, Any]:
         "require_short": bool(r.require_short),
         "require_mid": bool(r.require_mid),
         "require_long": bool(r.require_long),
+        "require_2h": bool(getattr(r, "require_2h", False)),
+        "require_4h": bool(getattr(r, "require_4h", False)),
         "strategy_name": r.strategy_name or "",
         "timeframe": r.timeframe or "2h",
         "size_mode": r.size_mode or "percent",
@@ -1208,6 +1230,54 @@ def _normalize_exchanges(raw) -> List[str]:
     return out
 
 
+def upsert_watch_gates(
+    user_id: int,
+    symbols: List[str],
+    *,
+    require_short: bool = False,
+    require_mid: bool = False,
+    require_long: bool = False,
+    require_2h: bool = False,
+    require_4h: bool = False,
+) -> List[Dict[str, Any]]:
+    """只保存观察条件（第一步），不改交易参数、不自动变 living/connected。"""
+    cleaned = []
+    for raw in symbols or []:
+        sym = (raw or "").strip().upper()
+        if sym and sym not in cleaned:
+            cleaned.append(sym)
+    if not cleaned:
+        raise ValueError("请至少选择一个交易对")
+    session = _session()
+    try:
+        out = []
+        now = datetime.now()
+        for sym in cleaned:
+            row = session.query(PortalWatchConfig).filter_by(user_id=user_id, symbol=sym).first()
+            if not row:
+                row = PortalWatchConfig(user_id=user_id, symbol=sym)
+                session.add(row)
+            row.require_short = bool(require_short)
+            row.require_mid = bool(require_mid)
+            row.require_long = bool(require_long)
+            row.require_2h = bool(require_2h)
+            row.require_4h = bool(require_4h)
+            # 仅条件保存：不强制 living；已 connected 保持
+            cur = (getattr(row, "status", None) or "").strip().lower()
+            if cur not in ("connected", "living"):
+                row.status = "watching"
+            row.updated_at = now
+            session.flush()
+            out.append(_watch_config_dict(row))
+        session.commit()
+        return out
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def upsert_watch_configs(
     user_id: int,
     symbols: List[str],
@@ -1223,7 +1293,20 @@ def upsert_watch_configs(
     stop_loss: str = "",
     leverage: int = 5,
     exchanges: Optional[List[str]] = None,
+    require_2h: bool = False,
+    require_4h: bool = False,
+    gates_only: bool = False,
 ) -> List[Dict[str, Any]]:
+    if gates_only:
+        return upsert_watch_gates(
+            user_id,
+            symbols,
+            require_short=require_short,
+            require_mid=require_mid,
+            require_long=require_long,
+            require_2h=require_2h,
+            require_4h=require_4h,
+        )
     cleaned = []
     for raw in symbols or []:
         sym = (raw or "").strip().upper()
@@ -1268,6 +1351,8 @@ def upsert_watch_configs(
             row.require_short = bool(require_short)
             row.require_mid = bool(require_mid)
             row.require_long = bool(require_long)
+            row.require_2h = bool(require_2h)
+            row.require_4h = bool(require_4h)
             row.strategy_name = name
             row.timeframe = tf
             row.size_mode = mode

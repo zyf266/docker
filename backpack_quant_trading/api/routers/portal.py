@@ -32,6 +32,8 @@ class WatchConfigIn(BaseModel):
     require_short: bool = True
     require_mid: bool = True
     require_long: bool = False
+    require_2h: bool = False
+    require_4h: bool = False
     strategy_name: str = ""
     timeframe: str = "2h"
     size_mode: str = "percent"  # fixed | percent
@@ -40,6 +42,7 @@ class WatchConfigIn(BaseModel):
     take_profit: str = ""  # 止盈 %
     stop_loss: str = ""  # 止损 %
     exchanges: List[str] = Field(default_factory=list)  # 下单平台多选：hyperliquid / okx
+    gates_only: bool = False  # True=只保存第一步条件，可不填策略/仓位
 
 
 class ExchangeConnectIn(BaseModel):
@@ -158,6 +161,8 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
             require_short=body.require_short,
             require_mid=body.require_mid,
             require_long=body.require_long,
+            require_2h=body.require_2h,
+            require_4h=body.require_4h,
             strategy_name=body.strategy_name,
             timeframe=body.timeframe,
             size_mode=body.size_mode,
@@ -166,6 +171,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
             take_profit=body.take_profit,
             stop_loss=body.stop_loss,
             exchanges=body.exchanges,
+            gates_only=bool(body.gates_only),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -366,7 +372,15 @@ def get_equity_curve(
     try:
         snap = exchange.fetch_balances(user["id"])
         accounts = snap.get("accounts") or []
-        if plat and plat not in ("all", "全部"):
+        if plat in ("connected", "self", "exchange", "自己连接", "自己连接的账户"):
+            current_equity = 0.0
+            for a in accounts:
+                if a.get("status") != "ok" or a.get("book"):
+                    continue
+                if store.is_book_platform(a.get("platform") or ""):
+                    continue
+                current_equity += float(a.get("equity") or 0)
+        elif plat and plat not in ("all", "全部"):
             for a in accounts:
                 if (a.get("platform") or "").lower() == plat and a.get("status") == "ok":
                     current_equity = a.get("equity")

@@ -44,9 +44,11 @@ const fmtRatio = (bucket) => {
   return r.toFixed(2)
 }
 
-const BOOK_PLATFORMS = [
-  { platform: 'crypto_account', platform_label: '加密账户' },
-  { platform: 'us_account', platform_label: '美股账户' },
+const VIEW_FILTER_OPTIONS = [
+  { value: 'all', label: '账户: 全部' },
+  { value: 'crypto_account', label: '加密账户' },
+  { value: 'us_account', label: '美股账户' },
+  { value: 'connected', label: '自己连接的账户' },
 ]
 
 const CURVE_DAY_OPTIONS = [
@@ -61,10 +63,12 @@ const platShort = (p) => {
   if (p === 'okx') return 'OKX'
   if (p === 'crypto_account') return '加密账户'
   if (p === 'us_account') return '美股账户'
+  if (p === 'connected') return '自己连接的账户'
   return (p || '').toUpperCase() || '—'
 }
 
 const isBookPlatform = (p) => p === 'crypto_account' || p === 'us_account'
+const isConnectedFilter = (p) => p === 'connected'
 
 const PortalAccount = () => {
   const [connectOpen, setConnectOpen] = useState(false)
@@ -77,7 +81,7 @@ const PortalAccount = () => {
     positions: [],
     total_equity: null,
   })
-  /** 多平台时左上角筛选：all | hyperliquid | okx … */
+  /** 账户筛选：all | crypto_account | us_account | connected */
   const [viewPlatform, setViewPlatform] = useState('all')
   const [tradeSymbol, setTradeSymbol] = useState('all')
   const [tradeStrategy, setTradeStrategy] = useState('all')
@@ -255,35 +259,19 @@ const PortalAccount = () => {
     [allOkAccounts],
   )
 
-  const platformOptions = useMemo(() => {
-    const seen = new Set()
-    const out = []
-    for (const a of [...BOOK_PLATFORMS, ...allOkAccounts]) {
-      const key = a.platform
-      if (!key || seen.has(key)) continue
-      seen.add(key)
-      out.push({
-        platform: key,
-        platform_label: a.platform_label || platShort(key),
-      })
-    }
-    return out
-  }, [allOkAccounts])
-
   const okAccounts = useMemo(() => {
     if (viewPlatform === 'all') return allOkAccounts
+    if (isConnectedFilter(viewPlatform)) return exchangeAccounts
     return allOkAccounts.filter((a) => a.platform === viewPlatform)
-  }, [allOkAccounts, viewPlatform])
-
-  const connectPanelAccounts = useMemo(() => {
-    const list = viewPlatform === 'all' ? allOkAccounts : okAccounts
-    return list
-  }, [viewPlatform, allOkAccounts, okAccounts])
+  }, [allOkAccounts, exchangeAccounts, viewPlatform])
 
   const positions = useMemo(() => {
     if (isBookPlatform(viewPlatform)) return []
     const all = snap.positions || []
     if (viewPlatform === 'all') return all
+    if (isConnectedFilter(viewPlatform)) {
+      return all.filter((p) => !isBookPlatform(p.platform || ''))
+    }
     return all.filter((p) => (p.platform || '') === viewPlatform)
   }, [snap.positions, viewPlatform])
 
@@ -293,9 +281,13 @@ const PortalAccount = () => {
       const sum = allOkAccounts.reduce((s, a) => s + (Number(a.equity) || 0), 0)
       return allOkAccounts.length ? sum : null
     }
+    if (isConnectedFilter(viewPlatform)) {
+      if (!exchangeAccounts.length) return null
+      return exchangeAccounts.reduce((s, a) => s + (Number(a.equity) || 0), 0)
+    }
     const acc = okAccounts[0]
     return acc?.equity ?? null
-  }, [snap.total_equity, viewPlatform, okAccounts, allOkAccounts])
+  }, [snap.total_equity, viewPlatform, okAccounts, allOkAccounts, exchangeAccounts])
 
   const hasLiveOrBook = allOkAccounts.length > 0 || snap.connected
   const platforms = exchangeAccounts.map((a) => a.platform)
@@ -345,19 +337,34 @@ const PortalAccount = () => {
           <p className="qt-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
             <select
               className="qt-select"
-              style={{ width: 'auto', minWidth: 140 }}
+              style={{ width: 'auto', minWidth: 160 }}
               value={viewPlatform}
               onChange={(e) => setViewPlatform(e.target.value)}
-              aria-label="选择平台"
+              aria-label="选择账户"
             >
-              <option value="all">平台: 全部</option>
-              {platformOptions.map((a) => (
-                <option key={a.platform} value={a.platform}>
-                  {a.platform_label || platShort(a.platform)}
-                </option>
+              {VIEW_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-            {snap.connected ? '已连接交易所 · 余额实时拉取' : '含账面账户；连接交易所后显示实时余额'}
+            <button
+              type="button"
+              className="portal-btn portal-btn-primary"
+              style={{ padding: '6px 14px', fontSize: 13 }}
+              onClick={() => setConnectOpen(true)}
+            >
+              添加账户
+            </button>
+            {hasLiveOrBook ? (
+              <button
+                type="button"
+                className="portal-btn portal-btn-ghost"
+                style={{ padding: '6px 12px', fontSize: 13 }}
+                onClick={() => { setLoading(true); loadBalances() }}
+              >
+                刷新
+              </button>
+            ) : null}
+            {snap.connected ? '已连接交易所 · 余额实时拉取' : '含账面账户；添加账户后显示实时余额'}
             <span className={`qt-pill ${snap.connected ? 'qt-pill-live' : 'qt-pill-off'}`}>
               {snap.connected ? '在线' : '未连接'}
             </span>
@@ -368,153 +375,95 @@ const PortalAccount = () => {
               <span className="qt-pill qt-pill-live">筛选 · {platShort(viewPlatform)}</span>
             ) : null}
           </p>
+          {error ? <p className="qt-down" style={{ marginTop: 8 }}>{error}</p> : null}
+          {isConnectedFilter(viewPlatform) && exchangeAccounts.length > 0 ? (
+            <div className="qt-balance-list" style={{ marginTop: 10, maxWidth: 560 }}>
+              {exchangeAccounts.map((acc) => (
+                <div className="qt-balance-row" key={acc.platform}>
+                  <div>
+                    <strong>{acc.platform_label || platShort(acc.platform)}</strong>
+                    {acc.address_mask || acc.api_key_mask ? (
+                      <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
+                        {acc.address_mask || acc.api_key_mask}
+                        {acc.demo ? ' · 模拟盘' : ''}
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="portal-btn portal-btn-ghost"
+                      style={{ marginTop: 6, padding: '2px 8px', fontSize: 12 }}
+                      disabled={disconnectBusy === acc.platform}
+                      onClick={() => onDisconnect(acc.platform)}
+                    >
+                      {disconnectBusy === acc.platform ? '断开中…' : '断开连接'}
+                    </button>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="qt-up" style={{ fontWeight: 700, fontSize: 16 }}>
+                      {fmtMoney(acc.equity)} {acc.currency || ''}
+                    </div>
+                    <div style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
+                      可用 {fmtMoney(acc.balance)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
         <Link className="portal-btn portal-btn-cyan" to="/portal/trades">查看交易记录</Link>
       </div>
 
-      <div className="qt-grid-2" style={{ marginBottom: 16 }}>
-        <section className="qt-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
-            <strong>净值曲线</strong>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {CURVE_DAY_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    className={`portal-btn ${curveDays === opt.value ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
-                    style={{ padding: '2px 10px', fontSize: 12 }}
-                    onClick={() => setCurveDays(opt.value)}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
-                {curveLoading
-                  ? '加载中…'
-                  : curve
-                    ? `${curveDays === 0 ? '全部' : `近 ${curve.days || curveDays} 日`} · 收益率 ${fmtSigned(curve.live_return_pct || 0)}%`
-                    : (curveErr || '—')}
-              </span>
-            </div>
-          </div>
-          <div ref={chartRef} className="qt-chart-live" />
-          <div className="qt-grid-4" style={{ marginTop: 14 }}>
-            <div>
-              <p className="qt-stat-label">账户权益</p>
-              <p className="qt-stat-value qt-up">
-                {filteredEquity != null ? `$ ${fmtMoney(filteredEquity)}` : '—'}
-              </p>
-            </div>
-            <div>
-              <p className="qt-stat-label">收益率</p>
-              <p className={`qt-stat-value ${(curve?.live_return_pct || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>
-                {curve ? `${fmtSigned(curve.live_return_pct || 0)}%` : '—'}
-              </p>
-            </div>
-            <div>
-              <p className="qt-stat-label">持仓数</p>
-              <p className="qt-stat-value">{positions.length}</p>
-            </div>
-            <div>
-              <p className="qt-stat-label">状态</p>
-              <p className="qt-stat-value">{loading ? '…' : (hasLiveOrBook ? 'LIVE' : 'IDLE')}</p>
-            </div>
-          </div>
-        </section>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <section className="qt-card">
-            <strong>一键连接</strong>
-            {loading ? (
-              <p className="qt-sub">正在读取账户…</p>
-            ) : connectPanelAccounts.length ? (
-              <div className="qt-balance-list">
-                {connectPanelAccounts.map((acc) => (
-                  <div className="qt-balance-row" key={acc.platform}>
-                    <div>
-                      <strong>{acc.platform_label}</strong>
-                      {acc.label ? (
-                        <span style={{ color: 'var(--qt-muted)', marginLeft: 8, fontSize: 12 }}>{acc.label}</span>
-                      ) : null}
-                      {acc.address_mask || acc.api_key_mask ? (
-                        <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
-                          {acc.address_mask || acc.api_key_mask}
-                          {acc.demo ? ' · 模拟盘' : ''}
-                        </div>
-                      ) : null}
-                      {acc.book || isBookPlatform(acc.platform) ? (
-                        <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 4 }}>
-                          本金 {fmtMoney(acc.initial_capital)} USD
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="portal-btn portal-btn-ghost"
-                          style={{ marginTop: 6, padding: '2px 8px', fontSize: 12 }}
-                          disabled={disconnectBusy === acc.platform}
-                          onClick={() => onDisconnect(acc.platform)}
-                        >
-                          {disconnectBusy === acc.platform ? '断开中…' : '断开连接'}
-                        </button>
-                      )}
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="qt-up" style={{ fontWeight: 700, fontSize: 18 }}>
-                        {fmtMoney(acc.equity)} {acc.currency || ''}
-                      </div>
-                      <div style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
-                        {acc.book || isBookPlatform(acc.platform) ? '账面权益' : `可用 ${fmtMoney(acc.balance)}`}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {(snap.accounts || []).filter((a) => a.status !== 'ok' && !a.book).map((acc) => (
-                  <p key={acc.platform} className="qt-down" style={{ margin: '8px 0 0', fontSize: 13 }}>
-                    {acc.platform_label}: {acc.error || '查询失败'}
-                    {' · '}
-                    <button
-                      type="button"
-                      className="portal-btn portal-btn-ghost"
-                      style={{ padding: '0 6px', fontSize: 12 }}
-                      onClick={() => onDisconnect(acc.platform)}
-                    >
-                      断开
-                    </button>
-                  </p>
-                ))}
-              </div>
-            ) : (
-              <div className="qt-steps">
-                <div>1. 一键连接 Hyperliquid / 欧意 OKX</div>
-                <div>2. 在观察库配置策略与下单平台</div>
-                <div>3. TradingView Webhook 自动跟单</div>
-              </div>
-            )}
-            {error ? <p className="qt-down" style={{ marginTop: 8 }}>{error}</p> : null}
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button
-                type="button"
-                className="portal-btn portal-btn-primary"
-                style={{ flex: 1 }}
-                onClick={() => setConnectOpen(true)}
-              >
-                一键连接
-              </button>
-              {hasLiveOrBook ? (
+      <section className="qt-card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
+          <strong>净值曲线</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {CURVE_DAY_OPTIONS.map((opt) => (
                 <button
+                  key={opt.value}
                   type="button"
-                  className="portal-btn portal-btn-ghost"
-                  onClick={() => { setLoading(true); loadBalances() }}
+                  className={`portal-btn ${curveDays === opt.value ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
+                  style={{ padding: '2px 10px', fontSize: 12 }}
+                  onClick={() => setCurveDays(opt.value)}
                 >
-                  刷新
+                  {opt.label}
                 </button>
-              ) : null}
+              ))}
             </div>
-          </section>
+            <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
+              {curveLoading
+                ? '加载中…'
+                : curve
+                  ? `${curveDays === 0 ? '全部' : `近 ${curve.days || curveDays} 日`} · 收益率 ${fmtSigned(curve.live_return_pct || 0)}%`
+                  : (curveErr || '—')}
+            </span>
+          </div>
         </div>
-      </div>
+        <div ref={chartRef} className="qt-chart-live" />
+        <div className="qt-grid-4" style={{ marginTop: 14 }}>
+          <div>
+            <p className="qt-stat-label">账户权益</p>
+            <p className="qt-stat-value qt-up">
+              {filteredEquity != null ? `$ ${fmtMoney(filteredEquity)}` : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="qt-stat-label">收益率</p>
+            <p className={`qt-stat-value ${(curve?.live_return_pct || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>
+              {curve ? `${fmtSigned(curve.live_return_pct || 0)}%` : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="qt-stat-label">持仓数</p>
+            <p className="qt-stat-value">{positions.length}</p>
+          </div>
+          <div>
+            <p className="qt-stat-label">状态</p>
+            <p className="qt-stat-value">{loading ? '…' : (hasLiveOrBook ? 'LIVE' : 'IDLE')}</p>
+          </div>
+        </div>
+      </section>
 
       <div className="qt-grid-4">
         <section className="qt-card">
@@ -564,7 +513,9 @@ const PortalAccount = () => {
             <p className="qt-empty" style={{ margin: '12px 0' }}>
               {isBookPlatform(viewPlatform)
                 ? '账面账户无实时持仓'
-                : (snap.connected ? '暂无持仓' : '连接交易所后显示持仓')}
+                : (snap.connected || isConnectedFilter(viewPlatform)
+                  ? '暂无持仓'
+                  : '添加账户后显示持仓')}
             </p>
           ) : (
             positions.map((row) => (
@@ -643,10 +594,10 @@ const PortalAccount = () => {
             <thead>
               <tr>
                 <th>时间</th>
-                <th>平台</th>
                 <th>币种</th>
                 <th>方向</th>
                 <th>动作</th>
+                <th>仓位</th>
                 <th>盈亏</th>
                 <th>策略</th>
                 <th>状态</th>
@@ -659,10 +610,16 @@ const PortalAccount = () => {
                 trades.slice(0, 30).map((row) => (
                   <tr key={row.id}>
                     <td>{row.created_at}</td>
-                    <td>{platShort(row.platform)}</td>
                     <td>{row.symbol}</td>
                     <td>{row.side === 'BUY' ? '多' : row.side === 'SELL' ? '空' : row.side}</td>
                     <td>{row.action === 'open' ? '开仓' : row.action === 'close' ? '平仓' : row.action}</td>
+                    <td>
+                      {row.margin != null && Number.isFinite(Number(row.margin))
+                        ? `$ ${fmtMoney(row.margin)}`
+                        : (row.quantity != null && Number.isFinite(Number(row.quantity))
+                          ? Number(row.quantity).toLocaleString('en-US', { maximumFractionDigits: 4 })
+                          : '—')}
+                    </td>
                     <td className={Number(row.pnl) >= 0 ? 'qt-up' : 'qt-down'}>{fmtSigned(row.pnl)}</td>
                     <td>{row.strategy_name || '—'}</td>
                     <td>{row.status}</td>

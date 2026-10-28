@@ -32,7 +32,6 @@ const PortalTrades = () => {
   const [strategy, setStrategy] = useState('all')
   const [items, setItems] = useState([])
   const [stats, setStats] = useState(null)
-  const [optPlatforms, setOptPlatforms] = useState([])
   const [optSymbols, setOptSymbols] = useState([])
   const [optStrategies, setOptStrategies] = useState([])
   const [loading, setLoading] = useState(true)
@@ -60,7 +59,6 @@ const PortalTrades = () => {
     getPortalTrades({})
       .then((res) => {
         const rows = res?.items || []
-        setOptPlatforms(Array.from(new Set(rows.map((r) => r.platform).filter(Boolean))))
         setOptSymbols(Array.from(new Set(rows.map((r) => r.symbol).filter(Boolean))))
         setOptStrategies(Array.from(new Set(rows.map((r) => r.strategy_name).filter(Boolean))))
       })
@@ -81,7 +79,7 @@ const PortalTrades = () => {
         <div>
           <p className="qt-kicker">LIVE TRADES</p>
           <h1 className="qt-title">实盘账户 · 交易记录</h1>
-          <p className="qt-sub">Webhook 跟单成交入库；可按平台 / 币种 / 策略筛选，并查看收益与盈亏比。</p>
+          <p className="qt-sub">Webhook 跟单成交入库；可按账户 / 币种 / 策略筛选，并查看收益与盈亏比。</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Link className="portal-btn portal-btn-ghost" to="/portal">返回实盘</Link>
@@ -125,12 +123,10 @@ const PortalTrades = () => {
       <section className="qt-card">
         <div className="qt-toolbar">
           <select className="qt-select" value={platform} onChange={(e) => setPlatform(e.target.value)}>
-            <option value="all">平台: 全部</option>
-            <option value="hyperliquid">Hyperliquid</option>
-            <option value="okx">OKX</option>
-            {optPlatforms.filter((p) => !['hyperliquid', 'okx'].includes(p)).map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
+            <option value="all">账户: 全部</option>
+            <option value="crypto_account">加密账户</option>
+            <option value="us_account">美股账户</option>
+            <option value="connected">自己连接的账户</option>
           </select>
           <select className="qt-select" value={symbol} onChange={(e) => setSymbol(e.target.value)}>
             <option value="all">币种: 全部</option>
@@ -157,11 +153,10 @@ const PortalTrades = () => {
             <thead>
               <tr>
                 <th>时间</th>
-                <th>平台</th>
                 <th>币种</th>
                 <th>方向</th>
                 <th>动作</th>
-                <th>数量</th>
+                <th>仓位</th>
                 <th>价格</th>
                 <th>盈亏</th>
                 <th>策略</th>
@@ -170,16 +165,19 @@ const PortalTrades = () => {
             </thead>
             <tbody>
               {items.length === 0 ? (
-                <tr><td colSpan={10}>暂无记录</td></tr>
+                <tr><td colSpan={9}>暂无记录</td></tr>
               ) : (
                 items.map((row) => (
                   <tr key={row.id}>
                     <td>{row.created_at}</td>
-                    <td>{row.platform === 'hyperliquid' ? 'Hype' : (row.platform || '—').toUpperCase()}</td>
                     <td>{row.symbol}</td>
                     <td>{row.side}</td>
                     <td>{row.action}</td>
-                    <td>{fmtNum(row.quantity)}</td>
+                    <td>
+                      {row.margin != null && Number.isFinite(Number(row.margin))
+                        ? fmtMoney(row.margin)
+                        : fmtNum(row.quantity)}
+                    </td>
                     <td>{fmtNum(row.price)}</td>
                     <td className={Number(row.pnl) >= 0 ? 'qt-up' : 'qt-down'}>{fmtMoney(row.pnl)}</td>
                     <td>{row.strategy_name || '—'}</td>
