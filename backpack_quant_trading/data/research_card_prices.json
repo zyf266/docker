@@ -1,124 +1,138 @@
 {
-  "updated_at": "2026-10-27 05:00:00",
+  "updated_at": "2026-10-28 05:00:00",
   "prices": {
     "NVDA": {
       "quote_symbol": "NVDA",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 216.0
+      "price": 216.0,
+      "stale": true
     },
     "INTC": {
       "quote_symbol": "INTC",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 90.47
+      "price": 90.47,
+      "stale": true
     },
     "GOOGL": {
       "quote_symbol": "GOOGL",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 316.8
+      "price": 316.8,
+      "stale": true
     },
     "MSFT": {
       "quote_symbol": "MSFT",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 532.6
+      "price": 532.6,
+      "stale": true
     },
     "MU": {
       "quote_symbol": "MU",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 903.7
+      "price": 903.7,
+      "stale": true
     },
     "MRVL": {
       "quote_symbol": "MRVL",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 233.78
+      "price": 233.78,
+      "stale": true
     },
     "CRDO": {
       "quote_symbol": "CRDO",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 151.15
+      "price": 151.15,
+      "stale": true
     },
     "SNDK": {
       "quote_symbol": "SNDK",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 1255.58
+      "price": 1255.58,
+      "stale": true
     },
     "IBM": {
       "quote_symbol": "IBM",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 253.44
+      "price": 253.44,
+      "stale": true
     },
     "NOK": {
       "quote_symbol": "NOK",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 8.64
+      "price": 8.64,
+      "stale": true
     },
     "RKLB": {
       "quote_symbol": "RKLB",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 53.82
+      "price": 53.82,
+      "stale": true
     },
     "CRCL": {
       "quote_symbol": "CRCL",
       "currency": "USD",
       "source": "yahoo",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 79.84
+      "price": 79.84,
+      "stale": true
     },
     "ETH": {
       "quote_symbol": "ETH-USD",
       "currency": "USD",
       "source": "hyperliquid",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 2305.05
+      "price": 2305.05,
+      "stale": true
     },
     "HYPE": {
       "quote_symbol": "HYPE-USD",
       "currency": "USD",
       "source": "hyperliquid",
       "fetched_at": "2026-10-27 05:00:00",
-      "price": 77.5855
+      "price": 77.5855,
+      "stale": true
     },
     "603986": {
       "quote_symbol": "603986.SH",
       "currency": "CNY",
-      "source": "eastmoney",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 276.45
+      "source": "sina",
+      "fetched_at": "2026-10-28 05:00:00",
+      "price": 268.98
     },
     "688146": {
       "quote_symbol": "688146.SH",
       "currency": "CNY",
-      "source": "eastmoney",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 143.92
+      "source": "sina",
+      "fetched_at": "2026-10-28 05:00:00",
+      "price": 136.7
     },
     "300308": {
       "quote_symbol": "300308.SZ",
       "currency": "CNY",
-      "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 594.5
+      "source": "sina",
+      "fetched_at": "2026-10-28 05:00:00",
+      "price": 577.0
     }
   }
 }

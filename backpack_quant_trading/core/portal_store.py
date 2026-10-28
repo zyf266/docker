@@ -186,9 +186,11 @@ def _trade_dict(r: "PortalTrade") -> Dict[str, Any]:
     }
 
 
-# 账面账户（非交易所连接）：加密账户 = ETH 200万 + HYPE 100万 CSV
+# 账面账户（非交易所连接）：全站共享，任意登录用户可见同一套数据
 BOOK_PLATFORM_CRYPTO = "crypto_account"
 BOOK_PLATFORM_US = "us_account"
+BOOK_PLATFORMS = frozenset({BOOK_PLATFORM_CRYPTO, BOOK_PLATFORM_US})
+BOOK_SHARED_USER_ID = 0  # 账面成交挂在此虚拟用户下
 BOOK_PLATFORM_LABELS = {
     BOOK_PLATFORM_CRYPTO: "加密账户",
     BOOK_PLATFORM_US: "美股账户",
@@ -196,6 +198,10 @@ BOOK_PLATFORM_LABELS = {
 CRYPTO_ACCOUNT_INITIAL_USD = 3_000_000.0  # ETH 200万 + HYPE 100万
 US_ACCOUNT_INITIAL_USD = 0.0
 CSV_IMPORT_DETAIL_PREFIX = "csv import"
+
+
+def is_book_platform(platform: str) -> bool:
+    return (platform or "").strip().lower() in BOOK_PLATFORMS
 
 
 def record_trade(
@@ -249,32 +255,80 @@ def record_trade(
         session.close()
 
 
+def _trade_rows_for_view(
+    session,
+    user_id: int,
+    *,
+    platform: str = "",
+    symbol: str = "",
+    strategy: str = "",
+    status_ok_only: bool = False,
+):
+    """个人交易所成交 + 全站共享账面成交。"""
+    plat = (platform or "").strip().lower()
+    uid = int(user_id)
+
+    def _finish(q):
+        q = _apply_trade_filters(q, platform=platform, symbol=symbol, strategy=strategy)
+        if status_ok_only:
+            q = q.filter(PortalTrade.status == "ok")
+        return q
+
+    if is_book_platform(plat):
+        q = session.query(PortalTrade).filter(PortalTrade.user_id == BOOK_SHARED_USER_ID)
+        return _finish(q).all()
+
+    if plat and plat not in ("all", "全部"):
+        q = session.query(PortalTrade).filter(PortalTrade.user_id == uid)
+        return _finish(q).all()
+
+    # 全部：本人非账面 + 共享账面
+    q_user = session.query(PortalTrade).filter(
+        PortalTrade.user_id == uid,
+        ~PortalTrade.platform.in_(tuple(BOOK_PLATFORMS)),
+    )
+    q_user = _apply_trade_filters(q_user, platform="", symbol=symbol, strategy=strategy)
+    if status_ok_only:
+        q_user = q_user.filter(PortalTrade.status == "ok")
+    q_book = session.query(PortalTrade).filter(
+        PortalTrade.user_id == BOOK_SHARED_USER_ID,
+        PortalTrade.platform.in_(tuple(BOOK_PLATFORMS)),
+    )
+    q_book = _apply_trade_filters(q_book, platform="", symbol=symbol, strategy=strategy)
+    if status_ok_only:
+        q_book = q_book.filter(PortalTrade.status == "ok")
+    return list(q_user.all()) + list(q_book.all())
+
+
 def sum_trade_pnl(user_id: int, *, platform: str = "") -> float:
-    """已实现盈亏合计（status=ok）。"""
+    """已实现盈亏合计（status=ok）；账面平台读共享数据。"""
     session = _session()
     try:
-        q = session.query(PortalTrade).filter(
-            PortalTrade.user_id == int(user_id),
-            PortalTrade.status == "ok",
+        rows = _trade_rows_for_view(
+            session, user_id, platform=platform, status_ok_only=True
         )
-        plat = (platform or "").strip().lower()
-        if plat and plat not in ("all", "全部"):
-            q = q.filter(PortalTrade.platform == plat)
-        total = 0.0
-        for r in q.all():
-            total += float(r.pnl or 0)
+        total = sum(float(r.pnl or 0) for r in rows)
         return round(total, 4)
     finally:
         session.close()
 
 
 def book_account_equity(user_id: int, platform: str) -> float:
-    """账面账户权益 = 初始本金 + 已实现盈亏。"""
+    """账面账户权益 = 初始本金 + 共享已实现盈亏（与登录用户无关）。"""
     plat = (platform or "").strip().lower()
+    # user_id 保留入参以兼容调用方，实际始终读共享库
+    _ = user_id
     if plat == BOOK_PLATFORM_CRYPTO:
-        return round(CRYPTO_ACCOUNT_INITIAL_USD + sum_trade_pnl(user_id, platform=plat), 4)
+        return round(
+            CRYPTO_ACCOUNT_INITIAL_USD
+            + sum_trade_pnl(BOOK_SHARED_USER_ID, platform=plat),
+            4,
+        )
     if plat == BOOK_PLATFORM_US:
-        return round(US_ACCOUNT_INITIAL_USD + sum_trade_pnl(user_id, platform=plat), 4)
+        return round(
+            US_ACCOUNT_INITIAL_USD + sum_trade_pnl(BOOK_SHARED_USER_ID, platform=plat),
+            4,
+        )
     return 0.0
 
 
@@ -366,15 +420,43 @@ def _iter_crypto_csv_rows():
                 yield symbol, capital, row
 
 
-def import_crypto_account_csv_trades(user_id: int, *, force: bool = False) -> Dict[str, Any]:
-    """将 eth/hype CSV 导入为 platform=crypto_account 的 portal_trades。
+def purge_per_user_book_trades() -> int:
+    """清理历史「按用户复制」的账面成交，只保留共享 user_id=0。"""
+    session = _session()
+    try:
+        n = (
+            session.query(PortalTrade)
+            .filter(
+                PortalTrade.platform.in_(tuple(BOOK_PLATFORMS)),
+                PortalTrade.user_id != BOOK_SHARED_USER_ID,
+            )
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+        return int(n or 0)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def import_crypto_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID, *, force: bool = False) -> Dict[str, Any]:
+    """将 eth/hype CSV 导入为全站共享 crypto_account（默认 user_id=0）。
 
     - 出场行写入净损益，进场行 pnl=0（避免双边双计）
     - detail 前缀 csv import，便于幂等清理
     """
-    uid = int(user_id)
+    uid = BOOK_SHARED_USER_ID  # 忽略入参，强制写入共享账户
+    _ = user_id
     session = _session()
     try:
+        # 顺带清掉旧的按用户副本，避免「全部」视图双计
+        session.query(PortalTrade).filter(
+            PortalTrade.platform.in_(tuple(BOOK_PLATFORMS)),
+            PortalTrade.user_id != BOOK_SHARED_USER_ID,
+        ).delete(synchronize_session=False)
+
         existing_q = session.query(PortalTrade).filter(
             PortalTrade.user_id == uid,
             PortalTrade.platform == BOOK_PLATFORM_CRYPTO,
@@ -382,10 +464,16 @@ def import_crypto_account_csv_trades(user_id: int, *, force: bool = False) -> Di
         )
         existing_n = existing_q.count()
         if existing_n and not force:
-            return {"ok": True, "skipped": True, "existing": existing_n, "imported": 0}
+            session.commit()
+            return {
+                "ok": True,
+                "skipped": True,
+                "existing": existing_n,
+                "imported": 0,
+                "shared_user_id": uid,
+            }
         if existing_n and force:
             existing_q.delete(synchronize_session=False)
-            session.commit()
 
         imported = 0
         skipped = 0
@@ -444,6 +532,7 @@ def import_crypto_account_csv_trades(user_id: int, *, force: bool = False) -> Di
             "parse_skipped": skipped,
             "platform": BOOK_PLATFORM_CRYPTO,
             "initial_capital": CRYPTO_ACCOUNT_INITIAL_USD,
+            "shared_user_id": uid,
         }
     except Exception:
         session.rollback()
@@ -452,10 +541,11 @@ def import_crypto_account_csv_trades(user_id: int, *, force: bool = False) -> Di
         session.close()
 
 
-def ensure_crypto_account_csv_trades(user_id: int) -> Dict[str, Any]:
-    """登录用户首次访问时自动灌入 CSV（已有则跳过）。"""
+def ensure_crypto_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID) -> Dict[str, Any]:
+    """确保全站共享加密账户 CSV 已导入（与当前登录用户无关）。"""
     try:
-        return import_crypto_account_csv_trades(user_id, force=False)
+        _ = user_id
+        return import_crypto_account_csv_trades(BOOK_SHARED_USER_ID, force=False)
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200]}
 
@@ -512,10 +602,20 @@ def list_trades(
 ) -> List[Dict[str, Any]]:
     session = _session()
     try:
-        q = session.query(PortalTrade).filter(PortalTrade.user_id == int(user_id))
-        q = _apply_trade_filters(q, platform=platform, symbol=symbol, strategy=strategy)
-        rows = q.order_by(PortalTrade.id.desc()).limit(max(1, min(int(limit or 200), 500))).all()
-        return [_trade_dict(r) for r in rows]
+        rows = _trade_rows_for_view(
+            session,
+            user_id,
+            platform=platform,
+            symbol=symbol,
+            strategy=strategy,
+        )
+        rows = sorted(
+            rows,
+            key=lambda r: (r.created_at or datetime.min, r.id or 0),
+            reverse=True,
+        )
+        lim = max(1, min(int(limit or 200), 500))
+        return [_trade_dict(r) for r in rows[:lim]]
     finally:
         session.close()
 
@@ -530,11 +630,14 @@ def trade_stats(
     """按筛选条件统计 7/30/180 天订单数、已实现盈亏与盈亏比。"""
     session = _session()
     try:
-        q = session.query(PortalTrade).filter(PortalTrade.user_id == int(user_id))
-        q = _apply_trade_filters(q, platform=platform, symbol=symbol, strategy=strategy)
-        # 只统计真实成交（ok），dry-run 不计入收益
-        q = q.filter(PortalTrade.status == "ok")
-        rows = q.all()
+        rows = _trade_rows_for_view(
+            session,
+            user_id,
+            platform=platform,
+            symbol=symbol,
+            strategy=strategy,
+            status_ok_only=True,
+        )
     finally:
         session.close()
 
@@ -1160,16 +1263,13 @@ def build_equity_curve(
     start_day = (now - timedelta(days=days - 1)).date()
     end_day = now.date()
 
+    plat = (platform or "").strip().lower()
     session = _session()
     try:
-        q = session.query(PortalTrade).filter(
-            PortalTrade.user_id == int(user_id),
-            PortalTrade.status == "ok",
+        rows = _trade_rows_for_view(
+            session, user_id, platform=plat, status_ok_only=True
         )
-        plat = (platform or "").strip().lower()
-        if plat and plat not in ("all", "全部"):
-            q = q.filter(PortalTrade.platform == plat)
-        rows = q.order_by(PortalTrade.created_at.asc()).all()
+        rows = sorted(rows, key=lambda r: (r.created_at or datetime.min, r.id or 0))
     finally:
         session.close()
 

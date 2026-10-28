@@ -325,6 +325,10 @@ def get_portal_trades(
     user: dict = Depends(require_user),
 ):
     """交易记录清单 + 7/30/180 天收益、盈亏比与订单统计（按筛选条件）。"""
+    try:
+        store.ensure_crypto_account_csv_trades(user["id"])
+    except Exception:
+        pass
     items = store.list_trades(
         user["id"], platform=platform, symbol=symbol, strategy=strategy, limit=limit
     )
