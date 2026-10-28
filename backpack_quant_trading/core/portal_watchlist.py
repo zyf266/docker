@@ -1,11 +1,13 @@
-"""标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 2h/4h 金叉死叉。
+"""标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 2h/4h 相对 WMA15 状态。
 
 列表默认只读库（秒开）；指标默认读 30 分钟缓存（内存+磁盘），仅 force 时重拉 K 线。
+变盘：2H/4H 收盘站上 WMA15；趋势：日线收盘 > MA30 → 钉钉提醒。
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -22,6 +24,13 @@ from backpack_quant_trading.core.ma_label_board import sma
 from backpack_quant_trading.core import portal_store as store
 
 logger = logging.getLogger(__name__)
+
+PORTAL_WATCH_DINGTALK_WEBHOOK = (
+    os.environ.get("PORTAL_WATCH_DINGTALK_WEBHOOK")
+    or "https://oapi.dingtalk.com/robot/send?access_token=8b44c3949d211969cb4ec04ac605b605c39d87cc404a200a2b45a19694660b82"
+).strip()
+_STATUS_STATE_PATH = Path(__file__).resolve().parents[1] / "data" / "portal_watch_status_state.json"
+_STATUS_STATE_LOCK = threading.Lock()
 
 _CRYPTO_HINTS = {
     "BTCUSDT": "比特币",
@@ -150,15 +159,101 @@ def display_code(symbol: str, market: str = "crypto") -> str:
     return sym[:-4] if sym.endswith("USDT") else sym
 
 
-def _cross_signal(closes: List[float]) -> str:
-    """2h/4h 金叉死叉只需 MA5/MA30，约 30 根即可。"""
-    if len(closes) < 30:
+def wma(values: List[float], length: int) -> Optional[float]:
+    """加权移动平均（最近一根权重最大）。"""
+    if length <= 0 or len(values) < length:
+        return None
+    window = values[-length:]
+    weights = list(range(1, length + 1))
+    den = float(sum(weights))
+    if den <= 0:
+        return None
+    return sum(float(v) * w for v, w in zip(window, weights)) / den
+
+
+def _wma15_status(closes: List[float]) -> str:
+    """2h/4h 状态：收盘是否站上 WMA15。"""
+    if len(closes) < 15:
         return "—"
-    ma5 = sma(closes, 5)
-    ma30 = sma(closes, 30)
-    if ma5 is None or ma30 is None:
+    w = wma(closes, 15)
+    if w is None:
         return "—"
-    return "金叉" if ma5 >= ma30 else "死叉"
+    return "站上" if float(closes[-1]) >= float(w) else "未站上"
+
+
+def _load_status_state() -> Dict[str, Any]:
+    try:
+        if _STATUS_STATE_PATH.is_file():
+            return json.loads(_STATUS_STATE_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("read watch status state failed: %s", exc)
+    return {}
+
+
+def _save_status_state(state: Dict[str, Any]) -> None:
+    try:
+        _STATUS_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _STATUS_STATE_PATH.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        logger.warning("write watch status state failed: %s", exc)
+
+
+def _send_watch_dingtalk(title: str, body: str) -> None:
+    wh = (PORTAL_WATCH_DINGTALK_WEBHOOK or "").strip()
+    if not wh:
+        return
+    try:
+        from backpack_quant_trading.core.stock_news_alert import send_dingtalk_markdown
+
+        ok, msg = send_dingtalk_markdown(wh, title=title, text=body)
+        if not ok:
+            logger.warning("portal watch dingtalk failed: %s", msg)
+    except Exception as exc:
+        logger.warning("portal watch dingtalk error: %s", exc)
+
+
+def maybe_notify_status_changes(metrics: Dict[str, Any]) -> None:
+    """变盘/趋势状态边沿触发钉钉（站上 WMA15 / 进入日线>MA30）。"""
+    code = str(metrics.get("code") or metrics.get("symbol") or "").upper()
+    if not code or metrics.get("error"):
+        return
+    market = "美股" if (metrics.get("market") or "") in ("us", "美股") else "加密"
+    key = f"{metrics.get('market') or 'crypto'}:{metrics.get('symbol') or code}"
+    cur_2h = str(metrics.get("signal_2h") or "—")
+    cur_4h = str(metrics.get("signal_4h") or "—")
+    cur_trend = bool(metrics.get("mid_on"))
+    px = metrics.get("price")
+
+    with _STATUS_STATE_LOCK:
+        state = _load_status_state()
+        prev = state.get(key) or {}
+        prev_2h = str(prev.get("signal_2h") or "")
+        prev_4h = str(prev.get("signal_4h") or "")
+        prev_trend = prev.get("trend_on")
+        alerts: List[str] = []
+
+        if cur_2h == "站上" and prev_2h and prev_2h != "站上":
+            alerts.append(f"【变盘·2H】{code}（{market}）2H 收盘站上 WMA15")
+        if cur_4h == "站上" and prev_4h and prev_4h != "站上":
+            alerts.append(f"【变盘·4H】{code}（{market}）4H 收盘站上 WMA15")
+        if cur_trend and prev_trend is False:
+            alerts.append(f"【趋势】{code}（{market}）日线收盘 > MA30，进入趋势状态")
+
+        state[key] = {
+            "signal_2h": cur_2h,
+            "signal_4h": cur_4h,
+            "trend_on": cur_trend,
+            "price": px,
+            "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        _save_status_state(state)
+
+    for line in alerts:
+        detail = f"{line}\n最新价: {px if px is not None else '—'}\n2H状态: {cur_2h} · 4H状态: {cur_4h} · 趋势(日>MA30): {'是' if cur_trend else '否'}"
+        _send_watch_dingtalk("观察库状态提醒", detail)
 
 
 def _daily_stand(closes: List[float]) -> Dict[str, Any]:
@@ -317,14 +412,15 @@ def compute_symbol_metrics(
         # 日线必须；2h/4h 并行且少根数，失败可空
         with ThreadPoolExecutor(max_workers=3) as pool:
             f1 = pool.submit(_fetch_us_klines, ticker, "1d", 220)
-            f2 = pool.submit(_fetch_us_klines, ticker, "2h", 60)
-            f4 = pool.submit(_fetch_us_klines, ticker, "4h", 60)
+            f2 = pool.submit(_fetch_us_klines, ticker, "2h", 80)
+            f4 = pool.submit(_fetch_us_klines, ticker, "4h", 80)
             k1d, src1 = f1.result()
             k2, src2 = f2.result()
             k4, src4 = f4.result()
         m1d = _daily_stand(_closes_from_bars(k1d))
-        sig2 = _cross_signal(_closes_from_bars(k2))
-        sig4 = _cross_signal(_closes_from_bars(k4))
+        # 2h/4h 需要至少 15 根；拉多一点稳住 WMA15
+        sig2 = _wma15_status(_closes_from_bars(k2))
+        sig4 = _wma15_status(_closes_from_bars(k4))
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
         if last_px is None and k2:
@@ -338,14 +434,14 @@ def compute_symbol_metrics(
             return base
         with ThreadPoolExecutor(max_workers=3) as pool:
             f1 = pool.submit(_fetch_crypto_klines, pair, "1d", 220)
-            f2 = pool.submit(_fetch_crypto_klines, pair, "2h", 60)
-            f4 = pool.submit(_fetch_crypto_klines, pair, "4h", 60)
+            f2 = pool.submit(_fetch_crypto_klines, pair, "2h", 80)
+            f4 = pool.submit(_fetch_crypto_klines, pair, "4h", 80)
             k1d, src1 = f1.result()
             k2, src2 = f2.result()
             k4, src4 = f4.result()
         m1d = _daily_stand(_closes_from_bars(k1d))
-        sig2 = _cross_signal(_closes_from_bars(k2))
-        sig4 = _cross_signal(_closes_from_bars(k4))
+        sig2 = _wma15_status(_closes_from_bars(k2))
+        sig4 = _wma15_status(_closes_from_bars(k4))
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
         if last_px is None:
@@ -371,6 +467,10 @@ def compute_symbol_metrics(
     _cache_put(cache_key, base)
     base["_from_cache"] = False
     base["_cache_age_sec"] = 0
+    try:
+        maybe_notify_status_changes(base)
+    except Exception as exc:
+        logger.debug("watch status notify skip: %s", exc)
     return base
 
 

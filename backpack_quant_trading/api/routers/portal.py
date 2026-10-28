@@ -326,7 +326,7 @@ def get_portal_trades(
 ):
     """交易记录清单 + 7/30/180 天收益、盈亏比与订单统计（按筛选条件）。"""
     try:
-        store.ensure_crypto_account_csv_trades(user["id"])
+        store.ensure_book_account_csv_trades(user["id"])
     except Exception:
         pass
     items = store.list_trades(
@@ -352,13 +352,13 @@ def equity_overlay_post(body: EquityIn, user: dict = Depends(require_user)):
 @router.get("/equity-curve")
 def get_equity_curve(
     platform: str = Query("", description="平台过滤，空=全部（含账面账户）"),
-    days: int = Query(30, ge=7, le=365),
+    days: int = Query(0, ge=0, le=9000, description="0=全部历史；30/180/360 为窗口"),
     user: dict = Depends(require_user),
 ):
     """净值曲线（按已实现盈亏重建；默认不含 BTC 基准）。"""
     plat = (platform or "").strip().lower()
     try:
-        store.ensure_crypto_account_csv_trades(user["id"])
+        store.ensure_book_account_csv_trades(user["id"])
     except Exception:
         pass
     current_equity = None

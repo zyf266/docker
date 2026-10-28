@@ -196,8 +196,11 @@ BOOK_PLATFORM_LABELS = {
     BOOK_PLATFORM_US: "美股账户",
 }
 CRYPTO_ACCOUNT_INITIAL_USD = 3_000_000.0  # ETH 200万 + HYPE 100万
-US_ACCOUNT_INITIAL_USD = 0.0
+US_ACCOUNT_INITIAL_USD = 5_000_000.0  # SOXL 全仓本金；CSV 单笔约半仓 ~250万
 CSV_IMPORT_DETAIL_PREFIX = "csv import"
+US_CSV_IMPORT_DETAIL_PREFIX = "csv import soxl"
+US_CSV_CUTOFF = datetime(2025, 5, 16)  # 仅导入 5.16 及之后
+US_STRATEGY_NAME = "美股追踪策略"
 
 
 def is_book_platform(platform: str) -> bool:
@@ -475,6 +478,21 @@ def import_crypto_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID, *, forc
         if existing_n and force:
             existing_q.delete(synchronize_session=False)
 
+        csv_files = _crypto_csv_candidates()
+        if not csv_files:
+            session.commit()
+            return {
+                "ok": False,
+                "skipped": False,
+                "imported": 0,
+                "error": (
+                    "未找到 eth/hype CSV（镜像可能被 .dockerignore 的 *.csv 排除）。"
+                    "请将 eth_200w.csv / hype_100w.csv 放到 "
+                    "backpack_quant_trading/data/ 后重试"
+                ),
+                "shared_user_id": uid,
+            }
+
         imported = 0
         skipped = 0
         for symbol, capital, row in _iter_crypto_csv_rows():
@@ -510,7 +528,7 @@ def import_crypto_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID, *, forc
                     symbol=symbol,
                     side=meta["side"],
                     action=action,
-                    strategy_name="CSV导入",
+                    strategy_name="加密追踪策略",
                     timeframe="",
                     price=price,
                     quantity=qty,
@@ -533,6 +551,7 @@ def import_crypto_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID, *, forc
             "platform": BOOK_PLATFORM_CRYPTO,
             "initial_capital": CRYPTO_ACCOUNT_INITIAL_USD,
             "shared_user_id": uid,
+            "csv_files": [str(p) for _, _, p in csv_files],
         }
     except Exception:
         session.rollback()
@@ -548,6 +567,150 @@ def ensure_crypto_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID) -> Dict
         return import_crypto_account_csv_trades(BOOK_SHARED_USER_ID, force=False)
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200]}
+
+
+def _soxl_csv_candidates():
+    import os
+    from pathlib import Path
+
+    root = _project_root()
+    pkg_data = Path(__file__).resolve().parents[1] / "data"
+    paths = [
+        os.environ.get("US_CSV_SOXL") or "",
+        str(pkg_data / "soxl_us.csv"),
+        str(root / "soxl_us.csv"),
+    ]
+    # 仓库根目录模糊匹配 soxl*.csv
+    try:
+        for p in sorted(root.glob("soxl*.csv")):
+            paths.append(str(p))
+    except Exception:
+        pass
+    for raw in paths:
+        if not raw:
+            continue
+        p = Path(raw)
+        if p.is_file():
+            return p
+    return None
+
+
+def import_us_account_csv_trades(*, force: bool = False) -> Dict[str, Any]:
+    """导入 SOXL CSV → 全站共享美股账户（5.16 之后；单笔半仓以 CSV 价值为准）。"""
+    import csv
+
+    uid = BOOK_SHARED_USER_ID
+    path = _soxl_csv_candidates()
+    session = _session()
+    try:
+        existing_q = session.query(PortalTrade).filter(
+            PortalTrade.user_id == uid,
+            PortalTrade.platform == BOOK_PLATFORM_US,
+            PortalTrade.detail.like(f"{US_CSV_IMPORT_DETAIL_PREFIX}%"),
+        )
+        existing_n = existing_q.count()
+        if existing_n and not force:
+            return {
+                "ok": True,
+                "skipped": True,
+                "existing": existing_n,
+                "imported": 0,
+                "shared_user_id": uid,
+            }
+        if not path:
+            return {
+                "ok": False,
+                "imported": 0,
+                "error": "未找到 soxl CSV（请放到 backpack_quant_trading/data/soxl_us.csv）",
+            }
+        if existing_n and force:
+            existing_q.delete(synchronize_session=False)
+
+        imported = 0
+        skipped = 0
+        with path.open(encoding="utf-8-sig", newline="") as fp:
+            for row in csv.DictReader(fp):
+                meta = _parse_csv_trade_type(str(row.get("类型") or ""))
+                if not meta:
+                    skipped += 1
+                    continue
+                dt_raw = str(row.get("日期和时间") or "").strip()
+                try:
+                    created = datetime.strptime(dt_raw, "%Y-%m-%d %H:%M")
+                except ValueError:
+                    try:
+                        created = datetime.strptime(dt_raw, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        skipped += 1
+                        continue
+                if created < US_CSV_CUTOFF:
+                    skipped += 1
+                    continue
+                trade_no = str(row.get("交易编号") or "").strip() or "0"
+                action = meta["action"]
+                pnl = _parse_csv_float(row.get("净损益 USD")) or _parse_csv_float(row.get("净损益 USDT")) or 0.0
+                if action == "open":
+                    pnl = 0.0
+                price = _parse_csv_float(row.get("价格 USD")) or _parse_csv_float(row.get("价格 USDT"))
+                qty = _parse_csv_float(row.get("大小（数量）"))
+                margin = _parse_csv_float(row.get("大小（价值）"))
+                signal = str(row.get("信号") or "").strip()
+                order_id = f"csv-SOXL-{trade_no}-{action}"[:80]
+                detail = f"{US_CSV_IMPORT_DETAIL_PREFIX} half_pos {signal}"[:255]
+                session.add(
+                    PortalTrade(
+                        user_id=uid,
+                        platform=BOOK_PLATFORM_US,
+                        symbol="SOXL",
+                        side=meta["side"],
+                        action=action,
+                        strategy_name=US_STRATEGY_NAME,
+                        timeframe="",
+                        price=price,
+                        quantity=qty,
+                        margin=margin,
+                        leverage=1,
+                        pnl=float(pnl),
+                        status="ok",
+                        detail=detail,
+                        order_id=order_id,
+                        created_at=created,
+                    )
+                )
+                imported += 1
+        session.commit()
+        return {
+            "ok": True,
+            "skipped": False,
+            "imported": imported,
+            "parse_skipped": skipped,
+            "platform": BOOK_PLATFORM_US,
+            "initial_capital": US_ACCOUNT_INITIAL_USD,
+            "csv_file": str(path),
+            "cutoff": US_CSV_CUTOFF.strftime("%Y-%m-%d"),
+            "note": "半仓：沿用 CSV 中约 250 万名义本金/笔",
+        }
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def ensure_us_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID) -> Dict[str, Any]:
+    try:
+        _ = user_id
+        return import_us_account_csv_trades(force=False)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
+
+
+def ensure_book_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID) -> Dict[str, Any]:
+    """加密 + 美股账面 CSV 一并确保。"""
+    return {
+        "crypto": ensure_crypto_account_csv_trades(user_id),
+        "us": ensure_us_account_csv_trades(user_id),
+    }
 
 
 def _apply_trade_filters(q, *, platform: str = "", symbol: str = "", strategy: str = ""):
@@ -568,21 +731,38 @@ def _apply_trade_filters(q, *, platform: str = "", symbol: str = "", strategy: s
     return q
 
 
-def _window_stats(subset) -> Dict[str, Any]:
+def _initial_capital_for_platform(platform: str = "") -> Optional[float]:
+    plat = (platform or "").strip().lower()
+    if plat == BOOK_PLATFORM_CRYPTO:
+        return CRYPTO_ACCOUNT_INITIAL_USD
+    if plat == BOOK_PLATFORM_US:
+        return US_ACCOUNT_INITIAL_USD
+    if plat in ("", "all", "全部"):
+        return CRYPTO_ACCOUNT_INITIAL_USD + US_ACCOUNT_INITIAL_USD
+    return None
+
+
+def _window_stats(subset, *, initial_capital: Optional[float] = None) -> Dict[str, Any]:
     wins = sum(float(r.pnl or 0) for r in subset if float(r.pnl or 0) > 0)
     losses = abs(sum(float(r.pnl or 0) for r in subset if float(r.pnl or 0) < 0))
+    pnl = round(sum(float(r.pnl or 0) for r in subset), 4)
     if losses > 0:
         ratio: Optional[float] = round(wins / losses, 4)
-        ratio_display = ratio
     elif wins > 0:
         ratio = None
-        ratio_display = None  # 前端显示 ∞
     else:
         ratio = None
-        ratio_display = None
+    ret = None
+    try:
+        cap = float(initial_capital) if initial_capital is not None else None
+    except (TypeError, ValueError):
+        cap = None
+    if cap and cap > 0:
+        ret = round(pnl / cap * 100.0, 4)
     return {
         "orders": len(subset),
-        "pnl": round(sum(float(r.pnl or 0) for r in subset), 4),
+        "pnl": pnl,
+        "return_pct": ret,
         "opens": sum(1 for r in subset if (r.action or "") == "open"),
         "closes": sum(1 for r in subset if (r.action or "") == "close"),
         "pnl_ratio": ratio,
@@ -641,16 +821,19 @@ def trade_stats(
     finally:
         session.close()
 
+    init_cap = _initial_capital_for_platform(platform)
     now = datetime.now()
     windows = {"7d": 7, "30d": 30, "180d": 180}
     out: Dict[str, Any] = {}
     for key, days in windows.items():
         since = now - timedelta(days=days)
         subset = [r for r in rows if r.created_at and r.created_at >= since]
-        out[key] = _window_stats(subset)
-    total = _window_stats(rows)
+        out[key] = _window_stats(subset, initial_capital=init_cap)
+    total = _window_stats(rows, initial_capital=init_cap)
     out["total_orders"] = total["orders"]
     out["total_pnl"] = total["pnl"]
+    out["return_pct"] = total.get("return_pct")
+    out["initial_capital"] = init_cap
     out["pnl_ratio"] = total["pnl_ratio"]
     out["pnl_ratio_infinite"] = total["pnl_ratio_infinite"]
     out["gross_profit"] = total["gross_profit"]
@@ -1258,10 +1441,9 @@ def build_equity_curve(
     - initial_capital：账面账户本金，无交易所权益时用作起点
     - *_index：归一化到起点=1
     """
-    days = max(7, min(int(days or 90), 365))
     now = datetime.now()
-    start_day = (now - timedelta(days=days - 1)).date()
     end_day = now.date()
+    raw_days = int(days if days is not None else 90)
 
     plat = (platform or "").strip().lower()
     session = _session()
@@ -1272,6 +1454,15 @@ def build_equity_curve(
         rows = sorted(rows, key=lambda r: (r.created_at or datetime.min, r.id or 0))
     finally:
         session.close()
+
+    # days<=0 或很大：全部历史（自首笔成交日起）
+    if raw_days <= 0 or raw_days >= 9000:
+        first = next((r.created_at.date() for r in rows if r.created_at), end_day)
+        days = max(7, (end_day - first).days + 1)
+        days = min(days, 3650)
+    else:
+        days = max(7, min(raw_days, 3650))
+    start_day = (now - timedelta(days=days - 1)).date()
 
     # 按日汇总已实现盈亏
     daily_pnl: Dict[str, float] = {}

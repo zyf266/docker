@@ -38,8 +38,8 @@ const Strength = ({ on, label }) => (
 )
 
 const SignalCell = ({ value }) => {
-  if (value === '金叉') return <span className="qt-up">金叉</span>
-  if (value === '死叉') return <span className="qt-down">死叉</span>
+  if (value === '站上' || value === '金叉') return <span className="qt-up">{value === '金叉' ? '金叉' : '站上'}</span>
+  if (value === '未站上' || value === '死叉') return <span className="qt-down">{value === '死叉' ? '死叉' : '未站上'}</span>
   return <span style={{ color: 'var(--qt-muted)' }}>{value || '—'}</span>
 }
 
@@ -487,8 +487,8 @@ const PortalWatchlist = ({ embedded = false }) => {
                 <th>名称</th>
                 <th>市场</th>
                 <th>最新价</th>
-                <th>2h信号</th>
-                <th>4h信号</th>
+                <th>2h状态</th>
+                <th>4h状态</th>
                 <th>短强 (MA5)</th>
                 <th>中强 (MA30)</th>
                 <th>长强 (MA200)</th>

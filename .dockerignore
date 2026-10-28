@@ -14,6 +14,10 @@ backpack_quant_trading/data/kline_cache/
 .vscode/
 *.pkl
 *.csv
+# 账面账户 CSV 必须进镜像，供正式服 import / ensure
+!backpack_quant_trading/data/eth_200w.csv
+!backpack_quant_trading/data/hype_100w.csv
+!backpack_quant_trading/data/soxl_us.csv
 *.pdf
 *.sql
 backtest_results/

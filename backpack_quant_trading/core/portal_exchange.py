@@ -228,11 +228,11 @@ def _secrets_from_binding(cfg: Dict[str, Any]) -> Dict[str, str]:
 
 def fetch_balances(user_id: int) -> Dict[str, Any]:
     """登录后拉已绑定交易所的真实余额/持仓，并附带账面账户（加密/美股）。"""
-    # 加密账户 CSV 幂等导入（首次访问自动灌入）
+    # 账面账户 CSV 幂等导入（加密 + 美股）
     try:
-        store.ensure_crypto_account_csv_trades(user_id)
+        store.ensure_book_account_csv_trades(user_id)
     except Exception as exc:
-        logger.warning("ensure crypto csv trades failed: %s", exc)
+        logger.warning("ensure book csv trades failed: %s", exc)
 
     rows = store.list_exchange_bindings(user_id)
     accounts: List[Dict[str, Any]] = []

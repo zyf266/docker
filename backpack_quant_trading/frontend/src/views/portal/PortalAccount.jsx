@@ -49,7 +49,12 @@ const BOOK_PLATFORMS = [
   { platform: 'us_account', platform_label: '美股账户' },
 ]
 
-const CURVE_DAY_OPTIONS = [30, 180, 360]
+const CURVE_DAY_OPTIONS = [
+  { value: 0, label: '全部' },
+  { value: 30, label: '30天' },
+  { value: 180, label: '180天' },
+  { value: 360, label: '360天' },
+]
 
 const platShort = (p) => {
   if (p === 'hyperliquid') return 'Hype'
@@ -83,7 +88,7 @@ const PortalAccount = () => {
   const [curve, setCurve] = useState(null)
   const [curveErr, setCurveErr] = useState('')
   const [curveLoading, setCurveLoading] = useState(false)
-  const [curveDays, setCurveDays] = useState(30)
+  const [curveDays, setCurveDays] = useState(0)
   const chartRef = useRef(null)
   const chartInst = useRef(null)
 
@@ -324,6 +329,9 @@ const PortalAccount = () => {
       </p>
       <p className="qt-sub" style={{ margin: 0 }}>
         {bucket.orders || 0} 笔 · 盈亏比 {fmtRatio(bucket)}
+        {bucket.return_pct != null && Number.isFinite(Number(bucket.return_pct))
+          ? ` · 收益率 ${fmtSigned(bucket.return_pct)}%`
+          : ''}
       </p>
     </div>
   )
@@ -370,15 +378,15 @@ const PortalAccount = () => {
             <strong>净值曲线</strong>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: 4 }}>
-                {CURVE_DAY_OPTIONS.map((d) => (
+                {CURVE_DAY_OPTIONS.map((opt) => (
                   <button
-                    key={d}
+                    key={opt.value}
                     type="button"
-                    className={`portal-btn ${curveDays === d ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
+                    className={`portal-btn ${curveDays === opt.value ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
                     style={{ padding: '2px 10px', fontSize: 12 }}
-                    onClick={() => setCurveDays(d)}
+                    onClick={() => setCurveDays(opt.value)}
                   >
-                    {d}天
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -386,7 +394,7 @@ const PortalAccount = () => {
                 {curveLoading
                   ? '加载中…'
                   : curve
-                    ? `近 ${curve.days || curveDays} 日 · ${fmtSigned(curve.live_return_pct || 0)}%`
+                    ? `${curveDays === 0 ? '全部' : `近 ${curve.days || curveDays} 日`} · 收益率 ${fmtSigned(curve.live_return_pct || 0)}%`
                     : (curveErr || '—')}
               </span>
             </div>
@@ -400,8 +408,10 @@ const PortalAccount = () => {
               </p>
             </div>
             <div>
-              <p className="qt-stat-label">已连接平台</p>
-              <p className="qt-stat-value qt-blue">{exchangeAccounts.length}</p>
+              <p className="qt-stat-label">收益率</p>
+              <p className={`qt-stat-value ${(curve?.live_return_pct || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>
+                {curve ? `${fmtSigned(curve.live_return_pct || 0)}%` : '—'}
+              </p>
             </div>
             <div>
               <p className="qt-stat-label">持仓数</p>
@@ -621,6 +631,9 @@ const PortalAccount = () => {
             </p>
             <p className="qt-sub" style={{ margin: 0 }}>
               {tradeStats?.total_orders || 0} 笔 · 盈亏比 {fmtRatio(tradeStats)}
+              {tradeStats?.return_pct != null && Number.isFinite(Number(tradeStats.return_pct))
+                ? ` · 收益率 ${fmtSigned(tradeStats.return_pct)}%`
+                : ''}
             </p>
           </div>
         </div>
