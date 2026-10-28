@@ -26,8 +26,12 @@ RUN set -eux; \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backpack_quant_trading/requirements.txt /app/backpack_quant_trading/requirements.txt
-# 国内 ECS 构建时走清华 PyPI 源，更稳
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+# 国内 ECS：清华源 + 优先 wheel，避免源码编译与宽松版本回退拖垮构建
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn \
+ && pip install --no-cache-dir --prefer-binary --default-timeout=120 \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
     --trusted-host pypi.tuna.tsinghua.edu.cn \
     -r /app/backpack_quant_trading/requirements.txt
 

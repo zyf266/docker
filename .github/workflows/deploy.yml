@@ -84,7 +84,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           debug: true
-          command_timeout: 45m
+          command_timeout: 60m
           script_stop: true
           script_path: deploy/remote-ci.sh
           envs: SKIP_MYSQL

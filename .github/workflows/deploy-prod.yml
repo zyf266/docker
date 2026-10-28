@@ -159,7 +159,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY_PROD }}
           port: ${{ secrets.SSH_PORT_PROD || 22 }}
           debug: true
-          command_timeout: 45m
+          # 全量 docker build+pip 偶发较慢；根因已用钉死 ccxt 缓解，超时略放宽兜底
+          command_timeout: 60m
           script_stop: true
           script_path: deploy/remote-ci.sh
           envs: SKIP_MYSQL,DEPLOY_ENV,DEPLOY_VERSION,DEPLOY_GIT_SHA
