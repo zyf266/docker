@@ -34,7 +34,9 @@ class WatchConfigIn(BaseModel):
     require_long: bool = False
     require_2h: bool = False
     require_4h: bool = False
-    status_mode: str = "趋势"  # 空头 | 反弹 | 趋势（条件全满足时状态列展示）
+    status_mode: str = "趋势"  # 兼容旧单配置
+    # 三套状态：{"趋势":{require_2h..},"反弹":{...},"空头":{...}}
+    status_profiles: Optional[Dict[str, Any]] = None
     strategy_name: str = ""
     timeframe: str = "2h"
     size_mode: str = "percent"  # fixed | percent
@@ -178,6 +180,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                         "require_2h": body.require_2h,
                         "require_4h": body.require_4h,
                         "status_mode": body.status_mode,
+                        "status_profiles": body.status_profiles,
                     },
                 )
             if not gates_only:
@@ -232,6 +235,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                 require_2h=body.require_2h,
                 require_4h=body.require_4h,
                 status_mode=body.status_mode,
+                status_profiles=body.status_profiles,
                 strategy_name=body.strategy_name,
                 timeframe=body.timeframe,
                 size_mode=body.size_mode,

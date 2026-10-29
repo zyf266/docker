@@ -49,6 +49,40 @@ const STATUS_MODE_OPTIONS = [
   { value: '空头', label: '空头' },
 ]
 
+const emptyStatusProfile = () => ({
+  require_2h: false,
+  require_4h: false,
+  require_mid: false,
+  require_long: false,
+})
+
+const emptyStatusProfiles = () => ({
+  趋势: { ...emptyStatusProfile(), require_2h: true, require_4h: true, require_mid: true },
+  反弹: { ...emptyStatusProfile(), require_2h: true },
+  空头: { ...emptyStatusProfile(), require_long: true },
+})
+
+const normalizeProfiles = (raw) => {
+  const base = emptyStatusProfiles()
+  if (!raw || typeof raw !== 'object') return base
+  for (const mode of ['趋势', '反弹', '空头']) {
+    const src = raw[mode] || {}
+    base[mode] = {
+      require_2h: !!src.require_2h,
+      require_4h: !!src.require_4h,
+      require_mid: !!src.require_mid,
+      require_long: !!src.require_long,
+    }
+  }
+  return base
+}
+
+const profilesConfigured = (profiles) =>
+  ['趋势', '反弹', '空头'].some((m) => {
+    const g = profiles?.[m] || {}
+    return g.require_2h || g.require_4h || g.require_mid || g.require_long
+  })
+
 /** 状态列排序：趋势 > 反弹 > 空头 > — */
 const statusSortRank = (row) => {
   if (!row?.tradable) return 3
@@ -121,6 +155,7 @@ const emptyConfig = {
   require_2h: true,
   require_4h: true,
   status_mode: '趋势',
+  status_profiles: emptyStatusProfiles(),
   strategy_name: STRATEGY_OPTIONS[0].value,
   timeframe: '2h',
   size_mode: 'percent',
@@ -312,6 +347,17 @@ const PortalWatchlist = ({ embedded = false }) => {
     const seedMode = STATUS_MODE_OPTIONS.some((o) => o.value === seed?.status_mode)
       ? seed.status_mode
       : '趋势'
+    let profiles = normalizeProfiles(seed?.status_profiles)
+    if (!profilesConfigured(profiles) && (seed?.require_2h || seed?.require_4h || seed?.require_mid || seed?.require_long)) {
+      profiles = normalizeProfiles({
+        [seedMode]: {
+          require_2h: !!seed.require_2h,
+          require_4h: !!seed.require_4h,
+          require_mid: !!seed.require_mid,
+          require_long: !!seed.require_long,
+        },
+      })
+    }
     return {
       ...emptyConfig,
       ...(seed || {}),
@@ -321,6 +367,7 @@ const PortalWatchlist = ({ embedded = false }) => {
       require_2h: seed?.require_2h ?? true,
       require_4h: seed?.require_4h ?? true,
       status_mode: seedMode,
+      status_profiles: profiles,
       strategy_name: strategyOk ? seedStrategy : STRATEGY_OPTIONS[0].value,
       timeframe: seed?.timeframe || '2h',
       size_mode: seed?.size_mode || 'percent',
@@ -436,12 +483,9 @@ const PortalWatchlist = ({ embedded = false }) => {
   }
 
   const onSaveStatusBatch = async () => {
-    if (!(cfg.require_mid || cfg.require_long || cfg.require_2h || cfg.require_4h)) {
-      setCfgMsg('请至少勾选一个站上条件')
-      return
-    }
-    if (!STATUS_MODE_OPTIONS.some((o) => o.value === cfg.status_mode)) {
-      setCfgMsg('请选择状态：趋势 / 反弹 / 空头')
+    const profiles = normalizeProfiles(cfg.status_profiles)
+    if (!profilesConfigured(profiles)) {
+      setCfgMsg('请至少为「趋势 / 反弹 / 空头」中的一套勾选站上条件')
       return
     }
     setCfgBusy(true)
@@ -452,20 +496,35 @@ const PortalWatchlist = ({ embedded = false }) => {
         market: cfgMarket,
         config_kind: 'status',
         require_short: false,
-        require_mid: !!cfg.require_mid,
-        require_long: !!cfg.require_long,
-        require_2h: !!cfg.require_2h,
-        require_4h: !!cfg.require_4h,
-        status_mode: cfg.status_mode,
+        require_mid: !!profiles[cfg.status_mode]?.require_mid,
+        require_long: !!profiles[cfg.status_mode]?.require_long,
+        require_2h: !!profiles[cfg.status_mode]?.require_2h,
+        require_4h: !!profiles[cfg.status_mode]?.require_4h,
+        status_mode: cfg.status_mode || '趋势',
+        status_profiles: profiles,
         gates_only: true,
       })
-      setCfgMsg(`已保存「${cfgMarket === 'us' ? '美股' : '加密'}」状态配置；同市场新标的将默认继承。`)
+      setCfgMsg(`已保存「${cfgMarket === 'us' ? '美股' : '加密'}」三套状态配置；同市场新标的将默认继承。`)
       await load({ force: true })
     } catch (e) {
       setCfgMsg(e?.response?.data?.detail || e?.message || '保存失败')
     } finally {
       setCfgBusy(false)
     }
+  }
+
+  const setProfileGate = (key, checked) => {
+    const mode = cfg.status_mode || '趋势'
+    setCfg((prev) => ({
+      ...prev,
+      status_profiles: {
+        ...normalizeProfiles(prev.status_profiles),
+        [mode]: {
+          ...normalizeProfiles(prev.status_profiles)[mode],
+          [key]: checked,
+        },
+      },
+    }))
   }
 
   const onSaveTradeConfig = async () => {
@@ -787,54 +846,62 @@ const PortalWatchlist = ({ embedded = false }) => {
             {cfgMode === 'status' || cfgStep === 1 ? (
               <div>
                 <p className="qt-sub" style={{ marginTop: 0 }}>
-                  选定需要「站上」的条件（可多选）。全部满足后，状态列显示下方所选标签；不满足则为 —。
+                  趋势 / 反弹 / 空头是三套独立配置：点下方标签切换，再勾选该状态下的「站上」条件。判定优先级：趋势 → 反弹 → 空头；都不满足显示 —。
                 </p>
-                <label className="qt-check">
-                  <input
-                    type="checkbox"
-                    checked={!!cfg.require_2h}
-                    onChange={(e) => setCfg((prev) => ({ ...prev, require_2h: e.target.checked }))}
-                  />
-                  2h状态 · 2H收盘站上日线 WMA15
-                </label>
-                <label className="qt-check">
-                  <input
-                    type="checkbox"
-                    checked={!!cfg.require_4h}
-                    onChange={(e) => setCfg((prev) => ({ ...prev, require_4h: e.target.checked }))}
-                  />
-                  4h状态 · 4H收盘站上日线 WMA15
-                </label>
-                <label className="qt-check">
-                  <input
-                    type="checkbox"
-                    checked={!!cfg.require_mid}
-                    onChange={(e) => setCfg((prev) => ({ ...prev, require_mid: e.target.checked }))}
-                  />
-                  中强 · 日线站上 MA30
-                </label>
-                <label className="qt-check">
-                  <input
-                    type="checkbox"
-                    checked={!!cfg.require_long}
-                    onChange={(e) => setCfg((prev) => ({ ...prev, require_long: e.target.checked }))}
-                  />
-                  长强 · 站上 MA200
-                </label>
-                <p className="qt-sub" style={{ margin: '14px 0 8px' }}>条件满足后显示的状态（单选）</p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                   {STATUS_MODE_OPTIONS.map((opt) => (
-                    <label key={opt.value} className="qt-check" style={{ marginRight: 4 }}>
-                      <input
-                        type="radio"
-                        name="watch-status-mode"
-                        checked={cfg.status_mode === opt.value}
-                        onChange={() => setCfg((prev) => ({ ...prev, status_mode: opt.value }))}
-                      />
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`portal-btn ${cfg.status_mode === opt.value ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
+                      onClick={() => setCfg((prev) => ({ ...prev, status_mode: opt.value }))}
+                    >
                       {opt.label}
-                    </label>
+                    </button>
                   ))}
                 </div>
+                <p className="qt-sub" style={{ margin: '0 0 8px' }}>
+                  正在编辑「{cfg.status_mode || '趋势'}」的站上条件（可多选）
+                </p>
+                {(() => {
+                  const g = normalizeProfiles(cfg.status_profiles)[cfg.status_mode || '趋势'] || emptyStatusProfile()
+                  return (
+                    <>
+                      <label className="qt-check">
+                        <input
+                          type="checkbox"
+                          checked={!!g.require_2h}
+                          onChange={(e) => setProfileGate('require_2h', e.target.checked)}
+                        />
+                        2h状态 · 2H收盘站上日线 WMA15
+                      </label>
+                      <label className="qt-check">
+                        <input
+                          type="checkbox"
+                          checked={!!g.require_4h}
+                          onChange={(e) => setProfileGate('require_4h', e.target.checked)}
+                        />
+                        4h状态 · 4H收盘站上日线 WMA15
+                      </label>
+                      <label className="qt-check">
+                        <input
+                          type="checkbox"
+                          checked={!!g.require_mid}
+                          onChange={(e) => setProfileGate('require_mid', e.target.checked)}
+                        />
+                        中强 · 日线站上 MA30
+                      </label>
+                      <label className="qt-check">
+                        <input
+                          type="checkbox"
+                          checked={!!g.require_long}
+                          onChange={(e) => setProfileGate('require_long', e.target.checked)}
+                        />
+                        长强 · 站上 MA200
+                      </label>
+                    </>
+                  )
+                })()}
                 {cfgMsg ? <p className="qt-sub" style={{ marginTop: 8 }}>{cfgMsg}</p> : null}
                 <div className="qt-modal-actions" style={{ gap: 8 }}>
                   <button
@@ -843,7 +910,7 @@ const PortalWatchlist = ({ embedded = false }) => {
                     disabled={cfgBusy}
                     onClick={onSaveStatusBatch}
                   >
-                    {cfgBusy ? '保存中…' : '保存状态配置'}
+                    {cfgBusy ? '保存中…' : '保存三套状态配置'}
                   </button>
                 </div>
               </div>

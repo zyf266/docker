@@ -252,31 +252,35 @@ const PortalAccount = () => {
     [allOkAccounts],
   )
 
-  /** 芯片列表：账面始终显示；OKX/Hype 等仅已连接时显示 */
-  const accountChips = useMemo(() => {
-    const chips = []
+  /** 账户卡片：账面始终显示；OKX/Hype 等仅已连接时显示。三行：名称 / id / 余额 */
+  const accountCards = useMemo(() => {
+    const cards = []
     for (const a of allOkAccounts) {
       if (isBookPlatform(a.platform)) {
-        chips.push({
+        cards.push({
           platform: a.platform,
-          label: platShort(a.platform),
+          title: a.platform === 'crypto_account' ? 'Binance Crypto' : 'Binance 美股',
           accountId: a.account_id || (a.platform === 'crypto_account' ? 'crypto' : 'us'),
+          balance: a.equity,
+          currency: a.currency || 'USD',
         })
       }
     }
-    // 保证加密/美股顺序
-    chips.sort((x, y) => {
+    cards.sort((x, y) => {
       const order = { crypto_account: 0, us_account: 1 }
       return (order[x.platform] ?? 9) - (order[y.platform] ?? 9)
     })
     for (const a of exchangeAccounts) {
-      chips.push({
+      cards.push({
         platform: a.platform,
-        label: platShort(a.platform),
+        title: platShort(a.platform),
         accountId: a.account_id || a.address_mask || a.api_key_mask || a.platform,
+        balance: a.equity ?? a.balance,
+        currency: a.currency || '',
+        canDisconnect: true,
       })
     }
-    return chips
+    return cards
   }, [allOkAccounts, exchangeAccounts])
 
   const okAccounts = useMemo(
@@ -295,12 +299,6 @@ const PortalAccount = () => {
   }, [okAccounts])
 
   const hasLiveOrBook = allOkAccounts.length > 0 || snap.connected
-  const selectedExchangeAcc = useMemo(
-    () => (isExchangePlatform(viewPlatform)
-      ? exchangeAccounts.find((a) => a.platform === viewPlatform) || null
-      : null),
-    [exchangeAccounts, viewPlatform],
-  )
   const s7 = tradeStats?.['7d'] || {}
   const s30 = tradeStats?.['30d'] || {}
   const s180 = tradeStats?.['180d'] || {}
@@ -344,27 +342,68 @@ const PortalAccount = () => {
         <div>
           <p className="qt-kicker">LIVE ACCOUNT</p>
           <h1 className="qt-title">AI 实盘主账户</h1>
-          <p className="qt-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-            {accountChips.map((chip) => (
-              <button
-                key={chip.platform}
-                type="button"
-                className={`portal-btn ${viewPlatform === chip.platform ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
-                style={{ padding: '6px 12px', fontSize: 13 }}
-                onClick={() => setViewPlatform(chip.platform)}
-                title={`切换到 ${chip.label}`}
-              >
-                {chip.label} id:{chip.accountId}
-              </button>
-            ))}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'stretch', marginTop: 8 }}>
+            {accountCards.map((card) => {
+              const active = viewPlatform === card.platform
+              return (
+                <button
+                  key={card.platform}
+                  type="button"
+                  onClick={() => setViewPlatform(card.platform)}
+                  className="qt-card"
+                  style={{
+                    minWidth: 168,
+                    maxWidth: 220,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    padding: '12px 14px',
+                    margin: 0,
+                    border: active ? '1px solid #4ade80' : '1px solid rgba(148,163,184,0.25)',
+                    background: active ? 'rgba(74,222,128,0.08)' : undefined,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{card.title}</div>
+                  <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 6 }}>
+                    id: {card.accountId}
+                  </div>
+                  <div className="qt-up" style={{ fontWeight: 700, fontSize: 16, marginTop: 8 }}>
+                    {card.balance != null ? `$ ${fmtMoney(card.balance)}` : '—'}
+                    {card.currency ? ` ${card.currency}` : ''}
+                  </div>
+                  {card.canDisconnect ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="portal-btn portal-btn-ghost"
+                      style={{ marginTop: 8, padding: '2px 8px', fontSize: 12, display: 'inline-block' }}
+                      disabled={disconnectBusy === card.platform}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDisconnect(card.platform)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.stopPropagation()
+                          onDisconnect(card.platform)
+                        }
+                      }}
+                    >
+                      {disconnectBusy === card.platform ? '断开中…' : '断开'}
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
             <button
               type="button"
               className="portal-btn portal-btn-primary"
-              style={{ padding: '6px 14px', fontSize: 13 }}
+              style={{ alignSelf: 'center', padding: '10px 14px' }}
               onClick={() => setConnectOpen(true)}
             >
               添加账户
             </button>
+          </div>
+          <p className="qt-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 10 }}>
             {hasLiveOrBook ? (
               <button
                 type="button"
@@ -381,38 +420,6 @@ const PortalAccount = () => {
             </span>
           </p>
           {error ? <p className="qt-down" style={{ marginTop: 8 }}>{error}</p> : null}
-          {selectedExchangeAcc ? (
-            <div className="qt-balance-list" style={{ marginTop: 10, maxWidth: 560 }}>
-              <div className="qt-balance-row">
-                <div>
-                  <strong>{selectedExchangeAcc.platform_label || platShort(selectedExchangeAcc.platform)}</strong>
-                  {selectedExchangeAcc.address_mask || selectedExchangeAcc.api_key_mask ? (
-                    <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
-                      {selectedExchangeAcc.address_mask || selectedExchangeAcc.api_key_mask}
-                      {selectedExchangeAcc.demo ? ' · 模拟盘' : ''}
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="portal-btn portal-btn-ghost"
-                    style={{ marginTop: 6, padding: '2px 8px', fontSize: 12 }}
-                    disabled={disconnectBusy === selectedExchangeAcc.platform}
-                    onClick={() => onDisconnect(selectedExchangeAcc.platform)}
-                  >
-                    {disconnectBusy === selectedExchangeAcc.platform ? '断开中…' : '断开连接'}
-                  </button>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="qt-up" style={{ fontWeight: 700, fontSize: 16 }}>
-                    {fmtMoney(selectedExchangeAcc.equity)} {selectedExchangeAcc.currency || ''}
-                  </div>
-                  <div style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
-                    可用 {fmtMoney(selectedExchangeAcc.balance)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
         <Link className="portal-btn portal-btn-cyan" to="/portal/trades">查看交易记录</Link>
       </div>
@@ -601,14 +608,15 @@ const PortalAccount = () => {
                 <th>方向</th>
                 <th>动作</th>
                 <th>仓位</th>
+                <th>开仓价</th>
+                <th>平仓价</th>
                 <th>盈亏</th>
                 <th>策略</th>
-                <th>状态</th>
               </tr>
             </thead>
             <tbody>
               {trades.length === 0 ? (
-                <tr><td colSpan={8}>暂无交易记录（Webhook 跟单成功后写入）</td></tr>
+                <tr><td colSpan={9}>暂无交易记录（Webhook 跟单成功后写入）</td></tr>
               ) : (
                 trades.slice(0, 30).map((row) => (
                   <tr key={row.id}>
@@ -623,9 +631,18 @@ const PortalAccount = () => {
                           ? Number(row.quantity).toLocaleString('en-US', { maximumFractionDigits: 4 })
                           : '—')}
                     </td>
+                    <td>
+                      {row.action === 'open' && row.price != null && Number.isFinite(Number(row.price))
+                        ? fmtMoney(row.price)
+                        : '—'}
+                    </td>
+                    <td>
+                      {row.action === 'close' && row.price != null && Number.isFinite(Number(row.price))
+                        ? fmtMoney(row.price)
+                        : '—'}
+                    </td>
                     <td className={Number(row.pnl) >= 0 ? 'qt-up' : 'qt-down'}>{fmtSigned(row.pnl)}</td>
                     <td>{row.strategy_name || '—'}</td>
-                    <td>{row.status}</td>
                   </tr>
                 ))
               )}

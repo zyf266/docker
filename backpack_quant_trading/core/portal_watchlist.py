@@ -182,8 +182,31 @@ def _vs_daily_wma15(tf_closes: List[float], daily_closes: List[float]) -> str:
     return "站上" if float(tf_closes[-1]) >= float(daily_wma) else "未站上"
 
 
+def _profile_gate_check(gates: Dict[str, Any], metrics: Dict[str, Any]) -> tuple:
+    """返回 (used_gate_keys, missing_labels)。"""
+    used = []
+    missing = []
+    if gates.get("require_2h"):
+        used.append("2h")
+        if str(metrics.get("signal_2h") or "") != "站上":
+            missing.append("2h状态")
+    if gates.get("require_4h"):
+        used.append("4h")
+        if str(metrics.get("signal_4h") or "") != "站上":
+            missing.append("4h状态")
+    if gates.get("require_mid"):
+        used.append("mid")
+        if not metrics.get("mid_on"):
+            missing.append("中强(MA30)")
+    if gates.get("require_long"):
+        used.append("long")
+        if not metrics.get("long_on"):
+            missing.append("长强(MA200)")
+    return used, missing
+
+
 def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """按勾选条件判断是否全部满足；满足时 status_label = 配置的空头/反弹/趋势。"""
+    """三套状态配置：按 趋势>反弹>空头 优先级，先满足者显示该标签；都不满足为 —。"""
     if not cfg:
         return {
             "tradable": False,
@@ -193,31 +216,43 @@ def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dic
             "status_label": "",
             "status_mode": "",
         }
-    gates = []
-    missing = []
-    if cfg.get("require_2h"):
-        gates.append("2h")
-        if str(metrics.get("signal_2h") or "") != "站上":
-            missing.append("2h状态")
-    if cfg.get("require_4h"):
-        gates.append("4h")
-        if str(metrics.get("signal_4h") or "") != "站上":
-            missing.append("4h状态")
-    if cfg.get("require_mid"):
-        gates.append("mid")
-        if not metrics.get("mid_on"):
-            missing.append("中强(MA30)")
-    # MA5 / 短强已下线，忽略历史 require_short
-    if cfg.get("require_long"):
-        gates.append("long")
-        if not metrics.get("long_on"):
-            missing.append("长强(MA200)")
-    configured = bool(gates)
+    profiles = store.normalize_status_profiles(cfg.get("status_profiles"))
+    if store.status_profiles_configured(profiles):
+        configured = True
+        last_missing = []
+        last_gates = []
+        for mode in store.WATCH_STATUS_MODES:  # 趋势 → 反弹 → 空头
+            g = profiles.get(mode) or {}
+            used, missing = _profile_gate_check(g, metrics)
+            if not used:
+                continue
+            last_gates, last_missing = used, missing
+            if not missing:
+                return {
+                    "tradable": True,
+                    "gates": used,
+                    "missing": [],
+                    "configured": True,
+                    "status_mode": mode,
+                    "status_label": mode,
+                }
+        return {
+            "tradable": False,
+            "gates": last_gates,
+            "missing": last_missing,
+            "configured": configured,
+            "status_mode": "",
+            "status_label": "",
+        }
+
+    # 兼容旧版单配置
+    used, missing = _profile_gate_check(cfg, metrics)
+    configured = bool(used)
     ok = bool(configured and not missing)
     mode = store.normalize_status_mode(cfg.get("status_mode"))
     return {
         "tradable": ok,
-        "gates": gates,
+        "gates": used,
         "missing": missing,
         "configured": configured,
         "status_mode": mode,
@@ -702,7 +737,15 @@ def add_watch_symbol(
     try:
         mkt = "us" if is_us else "crypto"
         default = store.get_watch_market_default(user_id, mkt)
-        if default and (
+        profiles = store.normalize_status_profiles(default.get("status_profiles") if default else None)
+        if default and store.status_profiles_configured(profiles):
+            store.upsert_watch_gates(
+                user_id,
+                [item["symbol"]],
+                status_profiles=profiles,
+            )
+            item["config"] = {"status_profiles": profiles}
+        elif default and (
             default.get("require_2h")
             or default.get("require_4h")
             or default.get("require_mid")

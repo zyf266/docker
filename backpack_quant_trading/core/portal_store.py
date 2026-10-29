@@ -69,8 +69,10 @@ class PortalWatchConfig(StoreBase):
     require_long = Column(Boolean, nullable=False, default=False)
     require_2h = Column(Boolean, nullable=False, default=False)  # 2H 收盘站上日线 WMA15
     require_4h = Column(Boolean, nullable=False, default=False)  # 4H 收盘站上日线 WMA15
-    # 条件全满足时，观察库「状态」列展示的标签：空头 | 反弹 | 趋势
+    # 条件全满足时，观察库「状态」列展示的标签：空头 | 反弹 | 趋势（兼容旧单配置）
     status_mode = Column(String(16), nullable=False, default="趋势")
+    # 三套状态配置 JSON：{"趋势":{require_2h..},"反弹":{...},"空头":{...}}
+    status_profiles = Column(Text, nullable=False, default="{}")
     strategy_name = Column(String(80), nullable=False, default="")
     timeframe = Column(String(16), nullable=False, default="2h")
     size_mode = Column(String(16), nullable=False, default="percent")  # fixed | percent
@@ -83,7 +85,8 @@ class PortalWatchConfig(StoreBase):
     updated_at = Column(DateTime, default=datetime.now)
     __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_portal_watch_cfg"),)
 
-WATCH_STATUS_MODES = ("空头", "反弹", "趋势")
+# 判定优先级顺序：趋势 → 反弹 → 空头（eval_tradable 按此顺序取首个满足）
+WATCH_STATUS_MODES = ("趋势", "反弹", "空头")
 
 
 def normalize_status_mode(raw: Any) -> str:
@@ -98,6 +101,51 @@ def normalize_status_mode(raw: Any) -> str:
     if low in ("trend", "趋势中", "trending"):
         return "趋势"
     return "趋势"
+
+
+def _empty_status_profile() -> Dict[str, bool]:
+    return {
+        "require_2h": False,
+        "require_4h": False,
+        "require_mid": False,
+        "require_long": False,
+        "require_short": False,
+    }
+
+
+def normalize_status_profiles(raw: Any) -> Dict[str, Dict[str, bool]]:
+    """趋势/反弹/空头 各一套站上条件。"""
+    data = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw or "{}")
+        except Exception:
+            data = {}
+    if not isinstance(data, dict):
+        data = {}
+    out: Dict[str, Dict[str, bool]] = {}
+    for mode in WATCH_STATUS_MODES:
+        src = data.get(mode) if isinstance(data.get(mode), dict) else {}
+        out[mode] = {
+            "require_2h": bool(src.get("require_2h")),
+            "require_4h": bool(src.get("require_4h")),
+            "require_mid": bool(src.get("require_mid")),
+            "require_long": bool(src.get("require_long")),
+            "require_short": False,
+        }
+    return out
+
+
+def status_profiles_configured(profiles: Optional[Dict[str, Any]]) -> bool:
+    for mode in WATCH_STATUS_MODES:
+        g = (profiles or {}).get(mode) or {}
+        if any(g.get(k) for k in ("require_2h", "require_4h", "require_mid", "require_long")):
+            return True
+    return False
+
+
+def dump_status_profiles(profiles: Any) -> str:
+    return json.dumps(normalize_status_profiles(profiles), ensure_ascii=False)
 
 
 class PortalExchangeBinding(StoreBase):
@@ -177,6 +225,10 @@ def _ensure_watch_config_columns(engine) -> None:
         if "status_mode" not in existing:
             alters.append(
                 "ALTER TABLE portal_watch_configs ADD COLUMN status_mode VARCHAR(16) NOT NULL DEFAULT '趋势'"
+            )
+        if "status_profiles" not in existing:
+            alters.append(
+                "ALTER TABLE portal_watch_configs ADD COLUMN status_profiles TEXT NULL"
             )
         for sql in alters:
             conn.execute(text(sql))
@@ -293,11 +345,33 @@ def save_watch_market_default(
     cur["market"] = mkt
     if gates:
         cur["require_short"] = False
-        cur["require_mid"] = bool(gates.get("require_mid"))
-        cur["require_long"] = bool(gates.get("require_long"))
-        cur["require_2h"] = bool(gates.get("require_2h"))
-        cur["require_4h"] = bool(gates.get("require_4h"))
-        cur["status_mode"] = normalize_status_mode(gates.get("status_mode"))
+        if gates.get("status_profiles") is not None:
+            profiles = normalize_status_profiles(gates.get("status_profiles"))
+            cur["status_profiles"] = profiles
+            # 兼容旧字段：取优先级最高且已配置的一套写入 require_*
+            for mode in WATCH_STATUS_MODES:
+                g = profiles.get(mode) or {}
+                if any(g.get(k) for k in ("require_2h", "require_4h", "require_mid", "require_long")):
+                    cur["require_mid"] = bool(g.get("require_mid"))
+                    cur["require_long"] = bool(g.get("require_long"))
+                    cur["require_2h"] = bool(g.get("require_2h"))
+                    cur["require_4h"] = bool(g.get("require_4h"))
+                    cur["status_mode"] = mode
+                    break
+        else:
+            cur["require_mid"] = bool(gates.get("require_mid"))
+            cur["require_long"] = bool(gates.get("require_long"))
+            cur["require_2h"] = bool(gates.get("require_2h"))
+            cur["require_4h"] = bool(gates.get("require_4h"))
+            cur["status_mode"] = normalize_status_mode(gates.get("status_mode"))
+            cur["status_profiles"] = normalize_status_profiles({
+                normalize_status_mode(gates.get("status_mode")): {
+                    "require_mid": cur["require_mid"],
+                    "require_long": cur["require_long"],
+                    "require_2h": cur["require_2h"],
+                    "require_4h": cur["require_4h"],
+                }
+            })
     if trade:
         if trade.get("strategy_name") is not None:
             cur["strategy_name"] = str(trade.get("strategy_name") or "").strip()
@@ -883,6 +957,26 @@ def _initial_capital_for_platform(platform: str = "") -> Optional[float]:
     return None
 
 
+def _symbol_position_capital(subset) -> Optional[float]:
+    """单币种仓位基数：开仓 margin 的均值（如固定半仓 200 万则约为 200 万）。"""
+    opens = [
+        abs(float(r.margin))
+        for r in subset
+        if (r.action or "") == "open"
+        and r.margin is not None
+        and abs(float(r.margin or 0)) > 0
+    ]
+    if not opens:
+        opens = [
+            abs(float(r.margin))
+            for r in subset
+            if r.margin is not None and abs(float(r.margin or 0)) > 0
+        ]
+    if not opens:
+        return None
+    return round(sum(opens) / len(opens), 4)
+
+
 def _window_stats(subset, *, initial_capital: Optional[float] = None) -> Dict[str, Any]:
     wins = sum(float(r.pnl or 0) for r in subset if float(r.pnl or 0) > 0)
     losses = abs(sum(float(r.pnl or 0) for r in subset if float(r.pnl or 0) < 0))
@@ -904,6 +998,7 @@ def _window_stats(subset, *, initial_capital: Optional[float] = None) -> Dict[st
         "orders": len(subset),
         "pnl": pnl,
         "return_pct": ret,
+        "capital_base": cap,
         "opens": sum(1 for r in subset if (r.action or "") == "open"),
         "closes": sum(1 for r in subset if (r.action or "") == "close"),
         "pnl_ratio": ratio,
@@ -963,18 +1058,24 @@ def trade_stats(
         session.close()
 
     init_cap = _initial_capital_for_platform(platform)
+    # 筛了单币种：收益率 = 该币收益 / 该币仓位(开仓 margin 均值)
+    sym = (symbol or "").strip()
+    use_pos_cap = bool(sym) and sym.upper() not in ("ALL", "全部")
     now = datetime.now()
     windows = {"7d": 7, "30d": 30, "180d": 180}
     out: Dict[str, Any] = {}
     for key, days in windows.items():
         since = now - timedelta(days=days)
         subset = [r for r in rows if r.created_at and r.created_at >= since]
-        out[key] = _window_stats(subset, initial_capital=init_cap)
-    total = _window_stats(rows, initial_capital=init_cap)
+        cap = (_symbol_position_capital(subset) if use_pos_cap else None) or init_cap
+        out[key] = _window_stats(subset, initial_capital=cap)
+    total_cap = (_symbol_position_capital(rows) if use_pos_cap else None) or init_cap
+    total = _window_stats(rows, initial_capital=total_cap)
     out["total_orders"] = total["orders"]
     out["total_pnl"] = total["pnl"]
     out["return_pct"] = total.get("return_pct")
-    out["initial_capital"] = init_cap
+    out["initial_capital"] = total_cap
+    out["capital_mode"] = "position" if use_pos_cap else "account"
     out["pnl_ratio"] = total["pnl_ratio"]
     out["pnl_ratio_infinite"] = total["pnl_ratio_infinite"]
     out["gross_profit"] = total["gross_profit"]
@@ -1244,6 +1345,7 @@ def _watch_config_dict(r: PortalWatchConfig) -> Dict[str, Any]:
         "require_2h": bool(getattr(r, "require_2h", False)),
         "require_4h": bool(getattr(r, "require_4h", False)),
         "status_mode": normalize_status_mode(getattr(r, "status_mode", None)),
+        "status_profiles": normalize_status_profiles(getattr(r, "status_profiles", None) or "{}"),
         "strategy_name": r.strategy_name or "",
         "timeframe": r.timeframe or "2h",
         "size_mode": r.size_mode or "percent",
@@ -1362,6 +1464,7 @@ def upsert_watch_gates(
     require_2h: bool = False,
     require_4h: bool = False,
     status_mode: str = "趋势",
+    status_profiles: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     """只保存观察条件（第一步），不改交易参数、不自动变 living/connected。"""
     cleaned = []
@@ -1371,7 +1474,29 @@ def upsert_watch_gates(
             cleaned.append(sym)
     if not cleaned:
         raise ValueError("请至少选择一个交易对")
-    mode_label = normalize_status_mode(status_mode)
+    if status_profiles is not None:
+        profiles = normalize_status_profiles(status_profiles)
+        mode_label = "趋势"
+        for mode in WATCH_STATUS_MODES:
+            g = profiles.get(mode) or {}
+            if any(g.get(k) for k in ("require_2h", "require_4h", "require_mid", "require_long")):
+                mode_label = mode
+                require_mid = bool(g.get("require_mid"))
+                require_long = bool(g.get("require_long"))
+                require_2h = bool(g.get("require_2h"))
+                require_4h = bool(g.get("require_4h"))
+                break
+    else:
+        mode_label = normalize_status_mode(status_mode)
+        profiles = normalize_status_profiles({
+            mode_label: {
+                "require_mid": require_mid,
+                "require_long": require_long,
+                "require_2h": require_2h,
+                "require_4h": require_4h,
+            }
+        })
+    profiles_json = dump_status_profiles(profiles)
     session = _session()
     try:
         out = []
@@ -1381,12 +1506,13 @@ def upsert_watch_gates(
             if not row:
                 row = PortalWatchConfig(user_id=user_id, symbol=sym)
                 session.add(row)
-            row.require_short = bool(require_short)
+            row.require_short = False
             row.require_mid = bool(require_mid)
             row.require_long = bool(require_long)
             row.require_2h = bool(require_2h)
             row.require_4h = bool(require_4h)
             row.status_mode = mode_label
+            row.status_profiles = profiles_json
             # 仅条件保存：不强制 living；已 connected 保持
             cur = (getattr(row, "status", None) or "").strip().lower()
             if cur not in ("connected", "living"):
@@ -1421,6 +1547,7 @@ def upsert_watch_configs(
     require_2h: bool = False,
     require_4h: bool = False,
     status_mode: str = "趋势",
+    status_profiles: Optional[Any] = None,
     gates_only: bool = False,
 ) -> List[Dict[str, Any]]:
     if gates_only:
@@ -1433,6 +1560,7 @@ def upsert_watch_configs(
             require_2h=require_2h,
             require_4h=require_4h,
             status_mode=status_mode,
+            status_profiles=status_profiles,
         )
     cleaned = []
     for raw in symbols or []:
@@ -1481,6 +1609,8 @@ def upsert_watch_configs(
             row.require_2h = bool(require_2h)
             row.require_4h = bool(require_4h)
             row.status_mode = normalize_status_mode(status_mode)
+            if status_profiles is not None:
+                row.status_profiles = dump_status_profiles(status_profiles)
             row.strategy_name = name
             row.timeframe = tf
             row.size_mode = mode

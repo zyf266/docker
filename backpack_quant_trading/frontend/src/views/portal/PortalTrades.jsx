@@ -157,10 +157,10 @@ const PortalTrades = () => {
                 <th>方向</th>
                 <th>动作</th>
                 <th>仓位</th>
-                <th>价格</th>
+                <th>开仓价</th>
+                <th>平仓价</th>
                 <th>盈亏</th>
                 <th>策略</th>
-                <th>状态</th>
               </tr>
             </thead>
             <tbody>
@@ -178,10 +178,18 @@ const PortalTrades = () => {
                         ? fmtMoney(row.margin)
                         : fmtNum(row.quantity)}
                     </td>
-                    <td>{fmtNum(row.price)}</td>
+                    <td>
+                      {row.action === 'open' && row.price != null && Number.isFinite(Number(row.price))
+                        ? fmtNum(row.price)
+                        : '—'}
+                    </td>
+                    <td>
+                      {row.action === 'close' && row.price != null && Number.isFinite(Number(row.price))
+                        ? fmtNum(row.price)
+                        : '—'}
+                    </td>
                     <td className={Number(row.pnl) >= 0 ? 'qt-up' : 'qt-down'}>{fmtMoney(row.pnl)}</td>
                     <td>{row.strategy_name || '—'}</td>
-                    <td>{row.status}</td>
                   </tr>
                 ))
               )}
