@@ -253,6 +253,7 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
             "currency": "USD",
             "address_mask": cfg.get("address_mask") or "",
             "api_key_mask": cfg.get("api_key_mask") or "",
+            "account_id": cfg.get("address_mask") or cfg.get("api_key_mask") or plat,
             "demo": bool(cfg.get("demo")),
             "error": "",
         }
@@ -264,12 +265,14 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
                     raise ValueError("缺少 Hyperliquid 私钥")
                 meta = _verify_hyperliquid(pk)
                 equity = float(meta.get("equity") or meta.get("balance") or 0)
+                mask = _mask_addr(meta.get("address") or cfg.get("address") or "")
                 item.update({
                     "status": "ok",
                     "equity": equity,
                     "balance": float(meta.get("balance") or 0),
                     "currency": meta.get("currency") or "USDC",
-                    "address_mask": _mask_addr(meta.get("address") or cfg.get("address") or ""),
+                    "address_mask": mask,
+                    "account_id": mask or plat,
                 })
                 total_equity += equity
                 exchange_equity += equity
@@ -283,11 +286,14 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
                     raise ValueError("缺少 OKX 凭证")
                 meta = _verify_okx(key, sec, pwd, demo=bool(cfg.get("demo")))
                 equity = float(meta.get("equity") or 0)
+                key_mask = cfg.get("api_key_mask") or _mask_key(key)
                 item.update({
                     "status": "ok",
                     "equity": equity,
                     "balance": float(meta.get("balance") or equity),
                     "currency": meta.get("currency") or "USDT",
+                    "api_key_mask": key_mask,
+                    "account_id": key_mask or plat,
                 })
                 total_equity += equity
                 exchange_equity += equity
@@ -299,6 +305,8 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
             logger.warning("拉取余额失败 platform=%s: %s", plat, exc)
             item["error"] = str(exc)[:200]
 
+        if not item.get("account_id"):
+            item["account_id"] = item.get("address_mask") or item.get("api_key_mask") or plat
         accounts.append(item)
 
     # 账面账户：加密（CSV）+ 美股（占位），排在交易所前面便于筛选
@@ -319,6 +327,7 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
                 "currency": "USD",
                 "address_mask": "",
                 "api_key_mask": "",
+                "account_id": "crypto" if book_plat == store.BOOK_PLATFORM_CRYPTO else "us",
                 "demo": False,
                 "book": True,
                 "initial_capital": init_cap,

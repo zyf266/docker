@@ -44,10 +44,20 @@ const SignalCell = ({ value }) => {
 }
 
 const STATUS_MODE_OPTIONS = [
-  { value: '空头', label: '空头' },
-  { value: '反弹', label: '反弹' },
   { value: '趋势', label: '趋势' },
+  { value: '反弹', label: '反弹' },
+  { value: '空头', label: '空头' },
 ]
+
+/** 状态列排序：趋势 > 反弹 > 空头 > — */
+const statusSortRank = (row) => {
+  if (!row?.tradable) return 3
+  const label = row.status_label || row.config?.status_mode || ''
+  if (label === '趋势') return 0
+  if (label === '反弹') return 1
+  if (label === '空头') return 2
+  return 3
+}
 
 const StatusCell = ({ row, onConnect }) => {
   const st = (row?.config?.status || row?.status || '').toLowerCase()
@@ -165,6 +175,9 @@ const PortalWatchlist = ({ embedded = false }) => {
 
   const [cfgOpen, setCfgOpen] = useState(false)
   const [cfgStep, setCfgStep] = useState(1)
+  /** status=批量状态 | trade=批量/单币交易 */
+  const [cfgMode, setCfgMode] = useState('status')
+  const [cfgMarket, setCfgMarket] = useState('crypto')
   const [cfgSymbols, setCfgSymbols] = useState([])
   const [cfg, setCfg] = useState(emptyConfig)
   const [cfgBusy, setCfgBusy] = useState(false)
@@ -248,13 +261,18 @@ const PortalWatchlist = ({ embedded = false }) => {
 
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase()
-    return (items || []).filter((row) => {
+    const rows = (items || []).filter((row) => {
       if (marketFilter === 'crypto' && row.market === 'us') return false
       if (marketFilter === 'us' && row.market !== 'us') return false
       if (strengthFilter === 'mid' && !row.mid_on) return false
       if (strengthFilter === 'long' && !row.long_on) return false
       if (!q) return true
       return `${row.code || ''} ${row.symbol || ''} ${row.name || ''}`.toUpperCase().includes(q)
+    })
+    return rows.sort((a, b) => {
+      const d = statusSortRank(a) - statusSortRank(b)
+      if (d !== 0) return d
+      return String(a.code || a.symbol || '').localeCompare(String(b.code || b.symbol || ''))
     })
   }, [items, marketFilter, strengthFilter, query])
 
@@ -284,25 +302,17 @@ const PortalWatchlist = ({ embedded = false }) => {
     }
   }, [])
 
-  const openConfig = async (symbols, seed) => {
-    const list = Array.from(new Set(symbols.filter(Boolean)))
-    if (!list.length) return
-    setCfgSymbols(list)
-    const items = await loadBindings()
+  const buildCfgFromSeed = (seed, boundItems) => {
     const seedEx = parseExchanges(seed?.exchange || seed?.exchanges || '')
-    const boundIds = items.map((b) => String(b.platform || '').toLowerCase()).filter(Boolean)
+    const boundIds = (boundItems || []).map((b) => String(b.platform || '').toLowerCase()).filter(Boolean)
     let exchanges = seedEx.filter((p) => boundIds.includes(p))
-    if (!exchanges.length && boundIds.length === 1) {
-      exchanges = [...boundIds]
-    } else if (!exchanges.length && boundIds.length > 1 && seedEx.length) {
-      exchanges = seedEx.filter((p) => boundIds.includes(p))
-    }
+    if (!exchanges.length && boundIds.length === 1) exchanges = [...boundIds]
     const seedStrategy = (seed?.strategy_name || '').trim()
     const strategyOk = STRATEGY_OPTIONS.some((o) => o.value === seedStrategy)
     const seedMode = STATUS_MODE_OPTIONS.some((o) => o.value === seed?.status_mode)
       ? seed.status_mode
       : '趋势'
-    setCfg({
+    return {
       ...emptyConfig,
       ...(seed || {}),
       require_short: false,
@@ -319,8 +329,46 @@ const PortalWatchlist = ({ embedded = false }) => {
       take_profit: seed?.take_profit || '',
       stop_loss: seed?.stop_loss || '',
       exchanges,
-    })
+    }
+  }
+
+  /** 批量状态配置（市场级，新标的会继承） */
+  const openStatusBatch = async () => {
+    const mkt = marketFilter === 'us' ? 'us' : 'crypto'
+    const seedRow = (items || []).find((r) => (mkt === 'us' ? r.market === 'us' : r.market !== 'us') && r.config)
+    const bound = await loadBindings()
+    setCfgMode('status')
+    setCfgMarket(mkt)
+    setCfgSymbols([])
+    setCfg(buildCfgFromSeed(seedRow?.config, bound))
     setCfgStep(1)
+    setCfgMsg('')
+    setCfgOpen(true)
+  }
+
+  /** 批量交易配置（市场级） */
+  const openTradeBatch = async () => {
+    const mkt = marketFilter === 'us' ? 'us' : 'crypto'
+    const seedRow = (items || []).find((r) => (mkt === 'us' ? r.market === 'us' : r.market !== 'us') && r.config)
+    const bound = await loadBindings()
+    setCfgMode('trade')
+    setCfgMarket(mkt)
+    setCfgSymbols([])
+    setCfg(buildCfgFromSeed(seedRow?.config, bound))
+    setCfgStep(2)
+    setCfgMsg('')
+    setCfgOpen(true)
+  }
+
+  /** 单币种：仅交易配置 */
+  const openTradeSingle = async (row) => {
+    if (!row?.symbol) return
+    const bound = await loadBindings()
+    setCfgMode('trade')
+    setCfgMarket(row.market === 'us' ? 'us' : 'crypto')
+    setCfgSymbols([row.symbol])
+    setCfg(buildCfgFromSeed(row.config, bound))
+    setCfgStep(2)
     setCfgMsg('')
     setCfgOpen(true)
   }
@@ -387,20 +435,22 @@ const PortalWatchlist = ({ embedded = false }) => {
     setConnectOpen(true)
   }
 
-  const onSaveGatesOnly = async () => {
+  const onSaveStatusBatch = async () => {
     if (!(cfg.require_mid || cfg.require_long || cfg.require_2h || cfg.require_4h)) {
       setCfgMsg('请至少勾选一个站上条件')
       return
     }
     if (!STATUS_MODE_OPTIONS.some((o) => o.value === cfg.status_mode)) {
-      setCfgMsg('请选择状态：空头 / 反弹 / 趋势')
+      setCfgMsg('请选择状态：趋势 / 反弹 / 空头')
       return
     }
     setCfgBusy(true)
     setCfgMsg('')
     try {
       await saveWatchConfig({
-        symbols: cfgSymbols,
+        symbols: [],
+        market: cfgMarket,
+        config_kind: 'status',
         require_short: false,
         require_mid: !!cfg.require_mid,
         require_long: !!cfg.require_long,
@@ -409,7 +459,7 @@ const PortalWatchlist = ({ embedded = false }) => {
         status_mode: cfg.status_mode,
         gates_only: true,
       })
-      setCfgMsg(`条件已保存。全部勾选条件满足后，状态显示「${cfg.status_mode}」；否则为 —。交易参数可在第二步配置。`)
+      setCfgMsg(`已保存「${cfgMarket === 'us' ? '美股' : '加密'}」状态配置；同市场新标的将默认继承。`)
       await load({ force: true })
     } catch (e) {
       setCfgMsg(e?.response?.data?.detail || e?.message || '保存失败')
@@ -418,25 +468,28 @@ const PortalWatchlist = ({ embedded = false }) => {
     }
   }
 
-  const onSaveConfig = async () => {
+  const onSaveTradeConfig = async () => {
     if (!STRATEGY_OPTIONS.some((o) => o.value === cfg.strategy_name)) {
       setCfgMsg('请选择策略名称')
       return
     }
     const boundIds = bindings.map((b) => String(b.platform || '').toLowerCase()).filter(Boolean)
-    let selected = parseExchanges(cfg.exchanges).filter((p) => boundIds.includes(p))
-    if (boundIds.length === 1 && !selected.length) {
-      selected = [...boundIds]
+    let selectedEx = parseExchanges(cfg.exchanges).filter((p) => boundIds.includes(p))
+    if (boundIds.length === 1 && !selectedEx.length) {
+      selectedEx = [...boundIds]
     }
-    if (boundIds.length > 0 && selected.length === 0) {
+    if (boundIds.length > 0 && selectedEx.length === 0) {
       setCfgMsg('请至少选择一个已连接的下单平台')
       return
     }
+    const isBatch = !cfgSymbols.length
     setCfgBusy(true)
     setCfgMsg('')
     try {
       await saveWatchConfig({
         symbols: cfgSymbols,
+        market: isBatch ? cfgMarket : '',
+        config_kind: 'trade',
         require_short: false,
         require_mid: !!cfg.require_mid,
         require_long: !!cfg.require_long,
@@ -450,14 +503,13 @@ const PortalWatchlist = ({ embedded = false }) => {
         leverage: Number(cfg.leverage) > 0 ? Number(cfg.leverage) : 5,
         take_profit: cfg.take_profit,
         stop_loss: cfg.stop_loss,
-        exchanges: selected,
+        exchanges: selectedEx,
         gates_only: false,
       })
       setCfgOpen(false)
       await load({ force: true })
-      // 未连接任何平台 → 保存后弹出连接；已选平台则已是 connected
-      if (!boundIds.length || !selected.length) {
-        setConnectSymbols([...cfgSymbols])
+      if (!boundIds.length || !selectedEx.length) {
+        setConnectSymbols(cfgSymbols.length ? [...cfgSymbols] : [])
         setConnectOpen(true)
       }
     } catch (e) {
@@ -532,10 +584,16 @@ const PortalWatchlist = ({ embedded = false }) => {
           <button
             type="button"
             className="portal-btn portal-btn-primary"
-            disabled={!selected.length}
-            onClick={() => openConfig(selected)}
+            onClick={openStatusBatch}
           >
-            批量配置 ({selected.length})
+            状态配置
+          </button>
+          <button
+            type="button"
+            className="portal-btn portal-btn-primary"
+            onClick={openTradeBatch}
+          >
+            交易配置
           </button>
           <span style={{ marginLeft: 'auto', color: 'var(--qt-muted)', fontSize: 12 }}>
             <span className="qt-pill qt-pill-live">●</span>
@@ -604,9 +662,9 @@ const PortalWatchlist = ({ embedded = false }) => {
                         type="button"
                         className="portal-btn portal-btn-ghost"
                         style={{ padding: '4px 10px' }}
-                        onClick={() => openConfig([row.symbol], row.config)}
+                        onClick={() => openTradeSingle(row)}
                       >
-                        配置
+                        交易配置
                       </button>
                       <button
                         type="button"
@@ -694,18 +752,42 @@ const PortalWatchlist = ({ embedded = false }) => {
           <div className="qt-modal">
             <div className="qt-modal-head">
               <strong>
-                配置面板 · 第 {cfgStep} / 2 步
+                {cfgMode === 'status' ? '状态配置（批量）' : (cfgSymbols.length ? '交易配置' : '交易配置（批量）')}
                 <span style={{ color: 'var(--qt-muted)', fontWeight: 500, marginLeft: 8 }}>
-                  {cfgSymbols.map((s) => s.replace(/USDT$/, '')).join('、')}
+                  {cfgSymbols.length
+                    ? cfgSymbols.map((s) => s.replace(/USDT$/, '')).join('、')
+                    : (cfgMarket === 'us' ? '美股市场' : '加密市场')}
                 </span>
               </strong>
               <button type="button" className="portal-btn portal-btn-ghost" onClick={() => setCfgOpen(false)}>关闭</button>
             </div>
 
-            {cfgStep === 1 ? (
+            {!cfgSymbols.length ? (
+              <div className="qt-toolbar" style={{ marginBottom: 12 }}>
+                <button
+                  type="button"
+                  className={`portal-btn ${cfgMarket === 'crypto' ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
+                  onClick={() => setCfgMarket('crypto')}
+                >
+                  加密
+                </button>
+                <button
+                  type="button"
+                  className={`portal-btn ${cfgMarket === 'us' ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
+                  onClick={() => setCfgMarket('us')}
+                >
+                  美股
+                </button>
+                <span className="qt-sub" style={{ margin: 0, fontSize: 12 }}>
+                  保存后对该市场全部标的生效；新加标的默认继承状态配置
+                </span>
+              </div>
+            ) : null}
+
+            {cfgMode === 'status' || cfgStep === 1 ? (
               <div>
                 <p className="qt-sub" style={{ marginTop: 0 }}>
-                  第一步：选定需要「站上」的条件（可多选）。全部满足后，状态列显示下方所选标签；不满足则为 —。
+                  选定需要「站上」的条件（可多选）。全部满足后，状态列显示下方所选标签；不满足则为 —。
                 </p>
                 <label className="qt-check">
                   <input
@@ -757,21 +839,18 @@ const PortalWatchlist = ({ embedded = false }) => {
                 <div className="qt-modal-actions" style={{ gap: 8 }}>
                   <button
                     type="button"
-                    className="portal-btn portal-btn-ghost"
+                    className="portal-btn portal-btn-primary"
                     disabled={cfgBusy}
-                    onClick={onSaveGatesOnly}
+                    onClick={onSaveStatusBatch}
                   >
-                    {cfgBusy ? '保存中…' : '仅保存条件'}
-                  </button>
-                  <button type="button" className="portal-btn portal-btn-primary" onClick={() => setCfgStep(2)}>
-                    下一步（交易配置）
+                    {cfgBusy ? '保存中…' : '保存状态配置'}
                   </button>
                 </div>
               </div>
             ) : (
               <div>
                 <p className="qt-sub" style={{ marginTop: 0 }}>
-                  第二步：策略、下单平台、K 线与仓位（策略逻辑对齐原交易册三策略；TradingView 策略名须一致）
+                  策略、下单平台、K 线与仓位（TradingView 策略名须一致）
                 </p>
                 <label className="qt-field">
                   策略名称
@@ -884,11 +963,8 @@ const PortalWatchlist = ({ embedded = false }) => {
                 </label>
                 {cfgMsg ? <p className="qt-down">{cfgMsg}</p> : null}
                 <div className="qt-modal-actions">
-                  <button type="button" className="portal-btn portal-btn-ghost" onClick={() => setCfgStep(1)}>
-                    返回上一步
-                  </button>
-                  <button type="button" className="portal-btn portal-btn-primary" disabled={cfgBusy} onClick={onSaveConfig}>
-                    {cfgBusy ? '保存中…' : '保存配置'}
+                  <button type="button" className="portal-btn portal-btn-primary" disabled={cfgBusy} onClick={onSaveTradeConfig}>
+                    {cfgBusy ? '保存中…' : '保存交易配置'}
                   </button>
                 </div>
               </div>

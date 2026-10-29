@@ -698,4 +698,33 @@ def add_watch_symbol(
     item["id"] = fav["id"]
     item["name"] = display_name
     item["saved"] = True
+    # 新标的继承该市场已保存的默认状态（及可选交易）配置
+    try:
+        mkt = "us" if is_us else "crypto"
+        default = store.get_watch_market_default(user_id, mkt)
+        if default and (
+            default.get("require_2h")
+            or default.get("require_4h")
+            or default.get("require_mid")
+            or default.get("require_long")
+        ):
+            store.upsert_watch_gates(
+                user_id,
+                [item["symbol"]],
+                require_short=False,
+                require_mid=bool(default.get("require_mid")),
+                require_long=bool(default.get("require_long")),
+                require_2h=bool(default.get("require_2h")),
+                require_4h=bool(default.get("require_4h")),
+                status_mode=default.get("status_mode") or "趋势",
+            )
+            item["config"] = {
+                "require_mid": bool(default.get("require_mid")),
+                "require_long": bool(default.get("require_long")),
+                "require_2h": bool(default.get("require_2h")),
+                "require_4h": bool(default.get("require_4h")),
+                "status_mode": store.normalize_status_mode(default.get("status_mode")),
+            }
+    except Exception as exc:
+        logger.debug("apply market default skip: %s", exc)
     return item

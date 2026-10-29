@@ -44,18 +44,6 @@ const fmtRatio = (bucket) => {
   return r.toFixed(2)
 }
 
-/** 账面账户固定项；交易所用真实平台名（OKX / Hype），不再用「自己连接的账户」 */
-const BOOK_FILTER_OPTIONS = [
-  { value: 'crypto_account', label: '加密账户' },
-  { value: 'us_account', label: '美股账户' },
-]
-
-const EXCHANGE_FILTER_OPTIONS = [
-  { value: 'okx', label: 'OKX' },
-  { value: 'hyperliquid', label: 'Hype' },
-  { value: 'binance', label: 'Binance' },
-]
-
 const CURVE_DAY_OPTIONS = [
   { value: 0, label: '全部' },
   { value: 30, label: '30天' },
@@ -264,23 +252,32 @@ const PortalAccount = () => {
     [allOkAccounts],
   )
 
-  const viewFilterOptions = useMemo(() => {
-    const seen = new Set(BOOK_FILTER_OPTIONS.map((o) => o.value))
-    const out = [...BOOK_FILTER_OPTIONS]
-    // 固定展示 OKX / Hype；已连接的其它交易所也挂上
-    for (const opt of EXCHANGE_FILTER_OPTIONS) {
-      if (seen.has(opt.value)) continue
-      seen.add(opt.value)
-      out.push(opt)
+  /** 芯片列表：账面始终显示；OKX/Hype 等仅已连接时显示 */
+  const accountChips = useMemo(() => {
+    const chips = []
+    for (const a of allOkAccounts) {
+      if (isBookPlatform(a.platform)) {
+        chips.push({
+          platform: a.platform,
+          label: platShort(a.platform),
+          accountId: a.account_id || (a.platform === 'crypto_account' ? 'crypto' : 'us'),
+        })
+      }
     }
+    // 保证加密/美股顺序
+    chips.sort((x, y) => {
+      const order = { crypto_account: 0, us_account: 1 }
+      return (order[x.platform] ?? 9) - (order[y.platform] ?? 9)
+    })
     for (const a of exchangeAccounts) {
-      const key = a.platform
-      if (!key || seen.has(key)) continue
-      seen.add(key)
-      out.push({ value: key, label: platShort(key) })
+      chips.push({
+        platform: a.platform,
+        label: platShort(a.platform),
+        accountId: a.account_id || a.address_mask || a.api_key_mask || a.platform,
+      })
     }
-    return out
-  }, [exchangeAccounts])
+    return chips
+  }, [allOkAccounts, exchangeAccounts])
 
   const okAccounts = useMemo(
     () => allOkAccounts.filter((a) => a.platform === viewPlatform),
@@ -298,7 +295,6 @@ const PortalAccount = () => {
   }, [okAccounts])
 
   const hasLiveOrBook = allOkAccounts.length > 0 || snap.connected
-  const platforms = exchangeAccounts.map((a) => a.platform)
   const selectedExchangeAcc = useMemo(
     () => (isExchangePlatform(viewPlatform)
       ? exchangeAccounts.find((a) => a.platform === viewPlatform) || null
@@ -349,17 +345,18 @@ const PortalAccount = () => {
           <p className="qt-kicker">LIVE ACCOUNT</p>
           <h1 className="qt-title">AI 实盘主账户</h1>
           <p className="qt-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-            <select
-              className="qt-select"
-              style={{ width: 'auto', minWidth: 160 }}
-              value={viewPlatform}
-              onChange={(e) => setViewPlatform(e.target.value)}
-              aria-label="选择账户"
-            >
-              {viewFilterOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            {accountChips.map((chip) => (
+              <button
+                key={chip.platform}
+                type="button"
+                className={`portal-btn ${viewPlatform === chip.platform ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
+                style={{ padding: '6px 12px', fontSize: 13 }}
+                onClick={() => setViewPlatform(chip.platform)}
+                title={`切换到 ${chip.label}`}
+              >
+                {chip.label} id:{chip.accountId}
+              </button>
+            ))}
             <button
               type="button"
               className="portal-btn portal-btn-primary"
@@ -382,10 +379,6 @@ const PortalAccount = () => {
             <span className={`qt-pill ${snap.connected ? 'qt-pill-live' : 'qt-pill-off'}`}>
               {snap.connected ? '在线' : '未连接'}
             </span>
-            {platforms.includes('okx') ? <span className="qt-pill qt-pill-crypto">OKX</span> : null}
-            {platforms.includes('hyperliquid') ? <span className="qt-pill qt-pill-us">Hyperliquid</span> : null}
-            {platforms.includes('binance') ? <span className="qt-pill qt-pill-crypto">Binance</span> : null}
-            <span className="qt-pill qt-pill-live">筛选 · {platShort(viewPlatform)}</span>
           </p>
           {error ? <p className="qt-down" style={{ marginTop: 8 }}>{error}</p> : null}
           {selectedExchangeAcc ? (

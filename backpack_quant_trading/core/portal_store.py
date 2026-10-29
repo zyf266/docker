@@ -223,8 +223,8 @@ BOOK_PLATFORM_LABELS = {
     BOOK_PLATFORM_CRYPTO: "加密账户",
     BOOK_PLATFORM_US: "美股账户",
 }
-CRYPTO_ACCOUNT_INITIAL_USD = 3_000_000.0  # ETH 200万 + HYPE 100万
-US_ACCOUNT_INITIAL_USD = 5_000_000.0  # SOXL 全仓本金；CSV 单笔约半仓 ~250万
+CRYPTO_ACCOUNT_INITIAL_USD = 5_000_000.0  # 加密账面本金 500 万（仓位仍按成交记录）
+US_ACCOUNT_INITIAL_USD = 5_000_000.0  # 美股账面本金 500 万；CSV 单笔约半仓 ~250万
 CSV_IMPORT_DETAIL_PREFIX = "csv import"
 US_CSV_IMPORT_DETAIL_PREFIX = "csv import soxl"
 US_CSV_CUTOFF = datetime(2025, 5, 16)  # 仅导入 5.16 及之后
@@ -233,6 +233,105 @@ US_STRATEGY_NAME = "美股追踪策略"
 
 def is_book_platform(platform: str) -> bool:
     return (platform or "").strip().lower() in BOOK_PLATFORMS
+
+
+# 观察库：按市场（加密/美股）保存的默认状态配置，新加标的自动继承
+_MARKET_DEFAULTS_PATH = None
+
+
+def _market_defaults_path():
+    global _MARKET_DEFAULTS_PATH
+    if _MARKET_DEFAULTS_PATH is None:
+        from pathlib import Path
+
+        _MARKET_DEFAULTS_PATH = (
+            Path(__file__).resolve().parents[1] / "data" / "portal_watch_market_defaults.json"
+        )
+    return _MARKET_DEFAULTS_PATH
+
+
+def _norm_watch_market(market: str) -> str:
+    return "us" if (market or "").strip().lower() in ("us", "美股") else "crypto"
+
+
+def _load_market_defaults() -> Dict[str, Any]:
+    path = _market_defaults_path()
+    try:
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_market_defaults(data: Dict[str, Any]) -> None:
+    path = _market_defaults_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def get_watch_market_default(user_id: int, market: str) -> Optional[Dict[str, Any]]:
+    key = f"{int(user_id)}:{_norm_watch_market(market)}"
+    row = _load_market_defaults().get(key)
+    return dict(row) if isinstance(row, dict) else None
+
+
+def save_watch_market_default(
+    user_id: int,
+    market: str,
+    *,
+    gates: Optional[Dict[str, Any]] = None,
+    trade: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """保存某用户某市场的默认配置（状态 / 交易可分别更新）。"""
+    mkt = _norm_watch_market(market)
+    key = f"{int(user_id)}:{mkt}"
+    data = _load_market_defaults()
+    cur = dict(data.get(key) or {})
+    cur["market"] = mkt
+    if gates:
+        cur["require_short"] = False
+        cur["require_mid"] = bool(gates.get("require_mid"))
+        cur["require_long"] = bool(gates.get("require_long"))
+        cur["require_2h"] = bool(gates.get("require_2h"))
+        cur["require_4h"] = bool(gates.get("require_4h"))
+        cur["status_mode"] = normalize_status_mode(gates.get("status_mode"))
+    if trade:
+        if trade.get("strategy_name") is not None:
+            cur["strategy_name"] = str(trade.get("strategy_name") or "").strip()
+        if trade.get("timeframe") is not None:
+            cur["timeframe"] = str(trade.get("timeframe") or "2h").strip() or "2h"
+        if trade.get("size_mode") is not None:
+            cur["size_mode"] = str(trade.get("size_mode") or "percent")
+        if trade.get("size_value") is not None:
+            cur["size_value"] = str(trade.get("size_value") or "10")
+        if trade.get("leverage") is not None:
+            try:
+                cur["leverage"] = int(trade.get("leverage") or 5)
+            except (TypeError, ValueError):
+                cur["leverage"] = 5
+        if trade.get("take_profit") is not None:
+            cur["take_profit"] = str(trade.get("take_profit") or "")
+        if trade.get("stop_loss") is not None:
+            cur["stop_loss"] = str(trade.get("stop_loss") or "")
+        if trade.get("exchanges") is not None:
+            cur["exchanges"] = _normalize_exchanges(trade.get("exchanges"))
+            cur["exchange"] = ",".join(cur["exchanges"])
+    cur["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    data[key] = cur
+    _save_market_defaults(data)
+    return cur
+
+
+def list_favorite_symbols_by_market(user_id: int, market: str) -> List[str]:
+    mkt = _norm_watch_market(market)
+    return [
+        f["symbol"]
+        for f in list_favorites(user_id)
+        if _norm_watch_market(f.get("market") or "crypto") == mkt
+    ]
 
 
 def record_trade(

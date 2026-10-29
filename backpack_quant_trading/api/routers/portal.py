@@ -44,6 +44,10 @@ class WatchConfigIn(BaseModel):
     stop_loss: str = ""  # 止损 %
     exchanges: List[str] = Field(default_factory=list)  # 下单平台多选：hyperliquid / okx
     gates_only: bool = False  # True=只保存第一步条件，可不填策略/仓位
+    # crypto | us：批量应用到该市场全部标的，并记为该市场默认（新标的继承）
+    market: str = ""
+    # status=只状态；trade=只交易；空/full=按 gates_only
+    config_kind: str = ""
 
 
 class ExchangeConnectIn(BaseModel):
@@ -149,6 +153,10 @@ def delete_watchlist(symbol: str, user: dict = Depends(require_user)):
 @router.post("/watchlist/config")
 def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user)):
     try:
+        kind = (body.config_kind or "").strip().lower()
+        gates_only = bool(body.gates_only) or kind == "status"
+        trade_only = kind == "trade"
+        mkt = (body.market or "").strip().lower()
         raw_symbols = []
         for s in body.symbols:
             s = (s or "").strip().upper()
@@ -156,25 +164,84 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                 continue
             # 带 USDT 当加密，否则原样（美股代码）
             raw_symbols.append(watchlist.normalize_crypto_pair(s) if s.endswith("USDT") or len(s) > 5 else s)
-        items = store.upsert_watch_configs(
-            user["id"],
-            raw_symbols,
-            require_short=False,  # MA5 已从配置中移除
-            require_mid=body.require_mid,
-            require_long=body.require_long,
-            require_2h=body.require_2h,
-            require_4h=body.require_4h,
-            status_mode=body.status_mode,
-            strategy_name=body.strategy_name,
-            timeframe=body.timeframe,
-            size_mode=body.size_mode,
-            size_value=body.size_value,
-            leverage=body.leverage,
-            take_profit=body.take_profit,
-            stop_loss=body.stop_loss,
-            exchanges=body.exchanges,
-            gates_only=bool(body.gates_only),
-        )
+        if mkt in ("crypto", "us", "加密", "美股"):
+            raw_symbols = store.list_favorite_symbols_by_market(user["id"], mkt)
+            if not raw_symbols:
+                raise ValueError("该市场暂无标的，请先添加后再批量配置")
+            if gates_only or not trade_only:
+                store.save_watch_market_default(
+                    user["id"],
+                    mkt,
+                    gates={
+                        "require_mid": body.require_mid,
+                        "require_long": body.require_long,
+                        "require_2h": body.require_2h,
+                        "require_4h": body.require_4h,
+                        "status_mode": body.status_mode,
+                    },
+                )
+            if not gates_only:
+                store.save_watch_market_default(
+                    user["id"],
+                    mkt,
+                    trade={
+                        "strategy_name": body.strategy_name,
+                        "timeframe": body.timeframe,
+                        "size_mode": body.size_mode,
+                        "size_value": body.size_value,
+                        "leverage": body.leverage,
+                        "take_profit": body.take_profit,
+                        "stop_loss": body.stop_loss,
+                        "exchanges": body.exchanges,
+                    },
+                )
+        if trade_only and not gates_only:
+            # 只更新交易参数：先取已有 gates，避免覆盖状态条件
+            existing = {c["symbol"]: c for c in store.list_watch_configs(user["id"])}
+            items = []
+            for sym in raw_symbols:
+                seed = existing.get(sym) or {}
+                items.extend(
+                    store.upsert_watch_configs(
+                        user["id"],
+                        [sym],
+                        require_short=False,
+                        require_mid=bool(seed.get("require_mid", body.require_mid)),
+                        require_long=bool(seed.get("require_long", body.require_long)),
+                        require_2h=bool(seed.get("require_2h", body.require_2h)),
+                        require_4h=bool(seed.get("require_4h", body.require_4h)),
+                        status_mode=seed.get("status_mode") or body.status_mode,
+                        strategy_name=body.strategy_name,
+                        timeframe=body.timeframe,
+                        size_mode=body.size_mode,
+                        size_value=body.size_value,
+                        leverage=body.leverage,
+                        take_profit=body.take_profit,
+                        stop_loss=body.stop_loss,
+                        exchanges=body.exchanges,
+                        gates_only=False,
+                    )
+                )
+        else:
+            items = store.upsert_watch_configs(
+                user["id"],
+                raw_symbols,
+                require_short=False,
+                require_mid=body.require_mid,
+                require_long=body.require_long,
+                require_2h=body.require_2h,
+                require_4h=body.require_4h,
+                status_mode=body.status_mode,
+                strategy_name=body.strategy_name,
+                timeframe=body.timeframe,
+                size_mode=body.size_mode,
+                size_value=body.size_value,
+                leverage=body.leverage,
+                take_profit=body.take_profit,
+                stop_loss=body.stop_loss,
+                exchanges=body.exchanges,
+                gates_only=gates_only,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "items": items}
