@@ -44,11 +44,16 @@ const fmtRatio = (bucket) => {
   return r.toFixed(2)
 }
 
-const VIEW_FILTER_OPTIONS = [
-  { value: 'all', label: '账户: 全部' },
+/** 账面账户固定项；交易所用真实平台名（OKX / Hype），不再用「自己连接的账户」 */
+const BOOK_FILTER_OPTIONS = [
   { value: 'crypto_account', label: '加密账户' },
   { value: 'us_account', label: '美股账户' },
-  { value: 'connected', label: '自己连接的账户' },
+]
+
+const EXCHANGE_FILTER_OPTIONS = [
+  { value: 'okx', label: 'OKX' },
+  { value: 'hyperliquid', label: 'Hype' },
+  { value: 'binance', label: 'Binance' },
 ]
 
 const CURVE_DAY_OPTIONS = [
@@ -61,14 +66,14 @@ const CURVE_DAY_OPTIONS = [
 const platShort = (p) => {
   if (p === 'hyperliquid') return 'Hype'
   if (p === 'okx') return 'OKX'
+  if (p === 'binance') return 'Binance'
   if (p === 'crypto_account') return '加密账户'
   if (p === 'us_account') return '美股账户'
-  if (p === 'connected') return '自己连接的账户'
   return (p || '').toUpperCase() || '—'
 }
 
 const isBookPlatform = (p) => p === 'crypto_account' || p === 'us_account'
-const isConnectedFilter = (p) => p === 'connected'
+const isExchangePlatform = (p) => ['okx', 'hyperliquid', 'binance'].includes(p)
 
 const PortalAccount = () => {
   const [connectOpen, setConnectOpen] = useState(false)
@@ -81,8 +86,8 @@ const PortalAccount = () => {
     positions: [],
     total_equity: null,
   })
-  /** 账户筛选：all | crypto_account | us_account | connected */
-  const [viewPlatform, setViewPlatform] = useState('all')
+  /** 账户筛选：crypto_account | us_account | okx | hyperliquid | …（无「全部」） */
+  const [viewPlatform, setViewPlatform] = useState('crypto_account')
   const [tradeSymbol, setTradeSymbol] = useState('all')
   const [tradeStrategy, setTradeStrategy] = useState('all')
   const [trades, setTrades] = useState([])
@@ -121,7 +126,7 @@ const PortalAccount = () => {
     setTradeErr('')
     try {
       const res = await getPortalTrades({
-        platform: viewPlatform === 'all' ? '' : viewPlatform,
+        platform: viewPlatform,
         symbol: tradeSymbol === 'all' ? '' : tradeSymbol,
         strategy: tradeStrategy === 'all' ? '' : tradeStrategy,
       })
@@ -164,7 +169,7 @@ const PortalAccount = () => {
     setCurveErr('')
     try {
       const res = await getEquityCurve({
-        platform: viewPlatform === 'all' ? '' : viewPlatform,
+        platform: viewPlatform,
         days: curveDays,
       })
       setCurve(res)
@@ -259,38 +264,47 @@ const PortalAccount = () => {
     [allOkAccounts],
   )
 
-  const okAccounts = useMemo(() => {
-    if (viewPlatform === 'all') return allOkAccounts
-    if (isConnectedFilter(viewPlatform)) return exchangeAccounts
-    return allOkAccounts.filter((a) => a.platform === viewPlatform)
-  }, [allOkAccounts, exchangeAccounts, viewPlatform])
+  const viewFilterOptions = useMemo(() => {
+    const seen = new Set(BOOK_FILTER_OPTIONS.map((o) => o.value))
+    const out = [...BOOK_FILTER_OPTIONS]
+    // 固定展示 OKX / Hype；已连接的其它交易所也挂上
+    for (const opt of EXCHANGE_FILTER_OPTIONS) {
+      if (seen.has(opt.value)) continue
+      seen.add(opt.value)
+      out.push(opt)
+    }
+    for (const a of exchangeAccounts) {
+      const key = a.platform
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push({ value: key, label: platShort(key) })
+    }
+    return out
+  }, [exchangeAccounts])
+
+  const okAccounts = useMemo(
+    () => allOkAccounts.filter((a) => a.platform === viewPlatform),
+    [allOkAccounts, viewPlatform],
+  )
 
   const positions = useMemo(() => {
     if (isBookPlatform(viewPlatform)) return []
-    const all = snap.positions || []
-    if (viewPlatform === 'all') return all
-    if (isConnectedFilter(viewPlatform)) {
-      return all.filter((p) => !isBookPlatform(p.platform || ''))
-    }
-    return all.filter((p) => (p.platform || '') === viewPlatform)
+    return (snap.positions || []).filter((p) => (p.platform || '') === viewPlatform)
   }, [snap.positions, viewPlatform])
 
   const filteredEquity = useMemo(() => {
-    if (viewPlatform === 'all') {
-      if (snap.total_equity != null) return snap.total_equity
-      const sum = allOkAccounts.reduce((s, a) => s + (Number(a.equity) || 0), 0)
-      return allOkAccounts.length ? sum : null
-    }
-    if (isConnectedFilter(viewPlatform)) {
-      if (!exchangeAccounts.length) return null
-      return exchangeAccounts.reduce((s, a) => s + (Number(a.equity) || 0), 0)
-    }
     const acc = okAccounts[0]
     return acc?.equity ?? null
-  }, [snap.total_equity, viewPlatform, okAccounts, allOkAccounts, exchangeAccounts])
+  }, [okAccounts])
 
   const hasLiveOrBook = allOkAccounts.length > 0 || snap.connected
   const platforms = exchangeAccounts.map((a) => a.platform)
+  const selectedExchangeAcc = useMemo(
+    () => (isExchangePlatform(viewPlatform)
+      ? exchangeAccounts.find((a) => a.platform === viewPlatform) || null
+      : null),
+    [exchangeAccounts, viewPlatform],
+  )
   const s7 = tradeStats?.['7d'] || {}
   const s30 = tradeStats?.['30d'] || {}
   const s180 = tradeStats?.['180d'] || {}
@@ -304,7 +318,7 @@ const PortalAccount = () => {
       const res = await disconnectExchange(platform)
       if (res?.balances) applySnap(res.balances)
       else await loadBalances()
-      if (viewPlatform === platform) setViewPlatform('all')
+      if (viewPlatform === platform) setViewPlatform('crypto_account')
       await loadTrades()
     } catch (e) {
       setError(e?.response?.data?.detail || e?.message || '断开失败')
@@ -342,7 +356,7 @@ const PortalAccount = () => {
               onChange={(e) => setViewPlatform(e.target.value)}
               aria-label="选择账户"
             >
-              {VIEW_FILTER_OPTIONS.map((opt) => (
+              {viewFilterOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
@@ -371,43 +385,39 @@ const PortalAccount = () => {
             {platforms.includes('okx') ? <span className="qt-pill qt-pill-crypto">OKX</span> : null}
             {platforms.includes('hyperliquid') ? <span className="qt-pill qt-pill-us">Hyperliquid</span> : null}
             {platforms.includes('binance') ? <span className="qt-pill qt-pill-crypto">Binance</span> : null}
-            {viewPlatform !== 'all' ? (
-              <span className="qt-pill qt-pill-live">筛选 · {platShort(viewPlatform)}</span>
-            ) : null}
+            <span className="qt-pill qt-pill-live">筛选 · {platShort(viewPlatform)}</span>
           </p>
           {error ? <p className="qt-down" style={{ marginTop: 8 }}>{error}</p> : null}
-          {isConnectedFilter(viewPlatform) && exchangeAccounts.length > 0 ? (
+          {selectedExchangeAcc ? (
             <div className="qt-balance-list" style={{ marginTop: 10, maxWidth: 560 }}>
-              {exchangeAccounts.map((acc) => (
-                <div className="qt-balance-row" key={acc.platform}>
-                  <div>
-                    <strong>{acc.platform_label || platShort(acc.platform)}</strong>
-                    {acc.address_mask || acc.api_key_mask ? (
-                      <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
-                        {acc.address_mask || acc.api_key_mask}
-                        {acc.demo ? ' · 模拟盘' : ''}
-                      </div>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="portal-btn portal-btn-ghost"
-                      style={{ marginTop: 6, padding: '2px 8px', fontSize: 12 }}
-                      disabled={disconnectBusy === acc.platform}
-                      onClick={() => onDisconnect(acc.platform)}
-                    >
-                      {disconnectBusy === acc.platform ? '断开中…' : '断开连接'}
-                    </button>
+              <div className="qt-balance-row">
+                <div>
+                  <strong>{selectedExchangeAcc.platform_label || platShort(selectedExchangeAcc.platform)}</strong>
+                  {selectedExchangeAcc.address_mask || selectedExchangeAcc.api_key_mask ? (
+                    <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
+                      {selectedExchangeAcc.address_mask || selectedExchangeAcc.api_key_mask}
+                      {selectedExchangeAcc.demo ? ' · 模拟盘' : ''}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="portal-btn portal-btn-ghost"
+                    style={{ marginTop: 6, padding: '2px 8px', fontSize: 12 }}
+                    disabled={disconnectBusy === selectedExchangeAcc.platform}
+                    onClick={() => onDisconnect(selectedExchangeAcc.platform)}
+                  >
+                    {disconnectBusy === selectedExchangeAcc.platform ? '断开中…' : '断开连接'}
+                  </button>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="qt-up" style={{ fontWeight: 700, fontSize: 16 }}>
+                    {fmtMoney(selectedExchangeAcc.equity)} {selectedExchangeAcc.currency || ''}
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div className="qt-up" style={{ fontWeight: 700, fontSize: 16 }}>
-                      {fmtMoney(acc.equity)} {acc.currency || ''}
-                    </div>
-                    <div style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
-                      可用 {fmtMoney(acc.balance)}
-                    </div>
+                  <div style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
+                    可用 {fmtMoney(selectedExchangeAcc.balance)}
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
           ) : null}
         </div>
@@ -513,7 +523,7 @@ const PortalAccount = () => {
             <p className="qt-empty" style={{ margin: '12px 0' }}>
               {isBookPlatform(viewPlatform)
                 ? '账面账户无实时持仓'
-                : (snap.connected || isConnectedFilter(viewPlatform)
+                : (snap.connected || isExchangePlatform(viewPlatform)
                   ? '暂无持仓'
                   : '添加账户后显示持仓')}
             </p>

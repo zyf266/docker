@@ -27,7 +27,7 @@ const fmtRatio = (bucket) => {
 }
 
 const PortalTrades = () => {
-  const [platform, setPlatform] = useState('all')
+  const [platform, setPlatform] = useState('crypto_account')
   const [symbol, setSymbol] = useState('all')
   const [strategy, setStrategy] = useState('all')
   const [items, setItems] = useState([])
@@ -42,7 +42,7 @@ const PortalTrades = () => {
     setError('')
     try {
       const res = await getPortalTrades({
-        platform: platform === 'all' ? '' : platform,
+        platform,
         symbol: symbol === 'all' ? '' : symbol,
         strategy: strategy === 'all' ? '' : strategy,
       })
@@ -123,10 +123,10 @@ const PortalTrades = () => {
       <section className="qt-card">
         <div className="qt-toolbar">
           <select className="qt-select" value={platform} onChange={(e) => setPlatform(e.target.value)}>
-            <option value="all">账户: 全部</option>
             <option value="crypto_account">加密账户</option>
             <option value="us_account">美股账户</option>
-            <option value="connected">自己连接的账户</option>
+            <option value="okx">OKX</option>
+            <option value="hyperliquid">Hype</option>
           </select>
           <select className="qt-select" value={symbol} onChange={(e) => setSymbol(e.target.value)}>
             <option value="all">币种: 全部</option>
