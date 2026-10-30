@@ -226,13 +226,13 @@ def _secrets_from_binding(cfg: Dict[str, Any]) -> Dict[str, str]:
     return secrets
 
 
-def fetch_balances(user_id: int) -> Dict[str, Any]:
-    """登录后拉已绑定交易所的真实余额/持仓，并附带账面账户（加密/美股）。"""
-    # 账面账户 CSV 幂等导入（加密 + 美股）
-    try:
-        store.ensure_book_account_csv_trades(user_id)
-    except Exception as exc:
-        logger.warning("ensure book csv trades failed: %s", exc)
+def fetch_balances(user_id: int, *, include_book: bool = False) -> Dict[str, Any]:
+    """登录后拉已绑定交易所余额/持仓；账面加密/美股仅管理员可见。"""
+    if include_book:
+        try:
+            store.ensure_book_account_csv_trades(user_id)
+        except Exception as exc:
+            logger.warning("ensure book csv trades failed: %s", exc)
 
     rows = store.list_exchange_bindings(user_id)
     accounts: List[Dict[str, Any]] = []
@@ -309,38 +309,43 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
             item["account_id"] = item.get("address_mask") or item.get("api_key_mask") or plat
         accounts.append(item)
 
-    # 账面账户：加密（CSV）+ 美股（占位），排在交易所前面便于筛选
-    book_accounts: List[Dict[str, Any]] = []
-    for book_plat, init_cap in (
-        (store.BOOK_PLATFORM_CRYPTO, store.CRYPTO_ACCOUNT_INITIAL_USD),
-        (store.BOOK_PLATFORM_US, store.US_ACCOUNT_INITIAL_USD),
-    ):
-        eq = store.book_account_equity(user_id, book_plat)
-        book_accounts.append(
-            {
-                "platform": book_plat,
-                "platform_label": store.BOOK_PLATFORM_LABELS.get(book_plat, book_plat),
-                "label": "账面账户",
-                "status": "ok",
-                "equity": eq,
-                "balance": eq,
-                "currency": "USD",
-                "address_mask": "",
-                "api_key_mask": "",
-                "account_id": _book_display_id(book_plat),
-                "demo": False,
-                "book": True,
-                "initial_capital": init_cap,
-                "error": "",
-            }
-        )
-        total_equity += float(eq or 0)
-    accounts = book_accounts + accounts
+    # 账面账户仅管理员：加密 / 美股，排在交易所前面
+    if include_book:
+        book_accounts: List[Dict[str, Any]] = []
+        for book_plat in (store.BOOK_PLATFORM_CRYPTO, store.BOOK_PLATFORM_US):
+            init_cap = store.get_book_initial_capital(book_plat)
+            eq = store.book_account_equity(user_id, book_plat)
+            book_accounts.append(
+                {
+                    "platform": book_plat,
+                    "platform_label": store.BOOK_PLATFORM_LABELS.get(book_plat, book_plat),
+                    "label": "账面账户",
+                    "status": "ok",
+                    "equity": eq,
+                    "balance": eq,
+                    "currency": "USD",
+                    "address_mask": "",
+                    "api_key_mask": "",
+                    "account_id": _book_display_id(book_plat),
+                    "demo": False,
+                    "book": True,
+                    "initial_capital": init_cap,
+                    "error": "",
+                }
+            )
+            total_equity += float(eq or 0)
+        accounts = book_accounts + accounts
+        try:
+            positions.extend(store.list_book_open_positions(""))
+        except Exception as exc:
+            logger.warning("账面持仓还原失败: %s", exc)
 
-    # 持仓挂上观察库策略名（connected 配置）
+    # 持仓挂上观察库策略名（connected 配置）；账面仓已自带 strategy_name
     try:
         cfgs = store.list_connected_watch_configs(user_id)
         for p in positions:
+            if p.get("book") and p.get("strategy_name"):
+                continue
             name = store.match_strategy_for_position(
                 cfgs,
                 symbol=str(p.get("symbol") or ""),

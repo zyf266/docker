@@ -127,7 +127,7 @@ const Login = () => {
                     name="username"
                     value={form.username}
                     onChange={handleChange}
-                    placeholder="用户名"
+                    placeholder="号码"
                     disabled={loading}
                   />
                 </div>
@@ -186,7 +186,7 @@ const Login = () => {
                     name="username"
                     value={form.username}
                     onChange={handleChange}
-                    placeholder="用户名"
+                    placeholder="号码（登录账号）"
                     disabled={loading}
                   />
                 </div>

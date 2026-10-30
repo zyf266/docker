@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import * as echarts from 'echarts'
 import {
   disconnectExchange,
   getEquityCurve,
   getExchangeBalances,
   getPortalTrades,
+  getTvWebhookHint,
 } from '../../api/portal'
+import { isAdminRole, readStoredUser } from '../../utils/authRole'
 import PortalConnectModal from './PortalConnectModal'
 import PortalWatchlist from './PortalWatchlist'
 
@@ -75,14 +76,16 @@ const PortalAccount = () => {
     total_equity: null,
   })
   /** 账户筛选：crypto_account | us_account | okx | hyperliquid | …（无「全部」） */
-  const [viewPlatform, setViewPlatform] = useState('crypto_account')
+  const [viewPlatform, setViewPlatform] = useState('')
   const [tradeSymbol, setTradeSymbol] = useState('all')
   const [tradeStrategy, setTradeStrategy] = useState('all')
   const [trades, setTrades] = useState([])
   const [tradeStats, setTradeStats] = useState(null)
   const [tradeOpts, setTradeOpts] = useState({ symbols: [], strategies: [] })
   const [tradeErr, setTradeErr] = useState('')
+  const [webhookHint, setWebhookHint] = useState('')
   const [curve, setCurve] = useState(null)
+  const isAdmin = useMemo(() => isAdminRole(readStoredUser()?.role), [])
   const [curveErr, setCurveErr] = useState('')
   const [curveLoading, setCurveLoading] = useState(false)
   const [curveDays, setCurveDays] = useState(0)
@@ -111,6 +114,11 @@ const PortalAccount = () => {
   }, [])
 
   const loadTrades = useCallback(async () => {
+    if (!viewPlatform) {
+      setTrades([])
+      setTradeStats(null)
+      return
+    }
     setTradeErr('')
     try {
       const res = await getPortalTrades({
@@ -122,21 +130,25 @@ const PortalAccount = () => {
       setTradeStats(res?.stats || null)
     } catch (e) {
       setTradeErr(e?.response?.data?.detail || e?.message || '交易记录加载失败')
+      setTrades([])
+      setTradeStats(null)
     }
   }, [viewPlatform, tradeSymbol, tradeStrategy])
 
   useEffect(() => {
     loadBalances()
-    getPortalTrades({})
-      .then((res) => {
-        const items = res?.items || []
-        setTradeOpts({
-          symbols: Array.from(new Set(items.map((r) => r.symbol).filter(Boolean))),
-          strategies: Array.from(new Set(items.map((r) => r.strategy_name).filter(Boolean))),
+    if (isAdmin) {
+      getTvWebhookHint()
+        .then((res) => {
+          const p = res?.book_journal?.path || '/api/portal/book-trade-webhook'
+          const origin = window.location.origin
+          setWebhookHint(`${origin}${p.startsWith('/') ? p : `/${p}`}`)
         })
-      })
-      .catch(() => {})
-  }, [loadBalances])
+        .catch(() => {
+          setWebhookHint(`${window.location.origin}/api/portal/book-trade-webhook`)
+        })
+    }
+  }, [loadBalances, isAdmin])
 
   useEffect(() => {
     if (window.location.hash === '#portal-watchlist') {
@@ -152,7 +164,24 @@ const PortalAccount = () => {
     loadTrades()
   }, [loadTrades])
 
+  useEffect(() => {
+    if (!viewPlatform) return
+    getPortalTrades({ platform: viewPlatform })
+      .then((res) => {
+        const items = res?.items || []
+        setTradeOpts({
+          symbols: Array.from(new Set(items.map((r) => r.symbol).filter(Boolean))),
+          strategies: Array.from(new Set(items.map((r) => r.strategy_name).filter(Boolean))),
+        })
+      })
+      .catch(() => {})
+  }, [viewPlatform])
+
   const loadCurve = useCallback(async () => {
+    if (!viewPlatform) {
+      setCurve(null)
+      return
+    }
     setCurveLoading(true)
     setCurveErr('')
     try {
@@ -172,6 +201,16 @@ const PortalAccount = () => {
   useEffect(() => {
     loadCurve()
   }, [loadCurve])
+
+  useEffect(() => {
+    const onCap = () => {
+      loadBalances()
+      loadTrades()
+      loadCurve()
+    }
+    window.addEventListener('portal-book-capital-updated', onCap)
+    return () => window.removeEventListener('portal-book-capital-updated', onCap)
+  }, [loadBalances, loadTrades, loadCurve])
 
   useEffect(() => {
     const el = chartRef.current
@@ -289,7 +328,6 @@ const PortalAccount = () => {
   )
 
   const positions = useMemo(() => {
-    if (isBookPlatform(viewPlatform)) return []
     return (snap.positions || []).filter((p) => (p.platform || '') === viewPlatform)
   }, [snap.positions, viewPlatform])
 
@@ -299,9 +337,16 @@ const PortalAccount = () => {
   }, [okAccounts])
 
   const hasLiveOrBook = allOkAccounts.length > 0 || snap.connected
-  const s7 = tradeStats?.['7d'] || {}
-  const s30 = tradeStats?.['30d'] || {}
-  const s180 = tradeStats?.['180d'] || {}
+
+  useEffect(() => {
+    if (!accountCards.length) {
+      if (viewPlatform) setViewPlatform('')
+      return
+    }
+    if (!accountCards.some((c) => c.platform === viewPlatform)) {
+      setViewPlatform(accountCards[0].platform)
+    }
+  }, [accountCards, viewPlatform])
 
   const onDisconnect = async (platform) => {
     if (!platform) return
@@ -312,7 +357,7 @@ const PortalAccount = () => {
       const res = await disconnectExchange(platform)
       if (res?.balances) applySnap(res.balances)
       else await loadBalances()
-      if (viewPlatform === platform) setViewPlatform('crypto_account')
+      if (viewPlatform === platform) setViewPlatform('')
       await loadTrades()
     } catch (e) {
       setError(e?.response?.data?.detail || e?.message || '断开失败')
@@ -320,21 +365,6 @@ const PortalAccount = () => {
       setDisconnectBusy('')
     }
   }
-
-  const StatPeriod = ({ label, bucket }) => (
-    <div>
-      <p className="qt-stat-label">{label}</p>
-      <p className={`qt-stat-value ${(bucket.pnl || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>
-        {fmtSigned(bucket.pnl || 0)}
-      </p>
-      <p className="qt-sub" style={{ margin: 0 }}>
-        {bucket.orders || 0} 笔 · 盈亏比 {fmtRatio(bucket)}
-        {bucket.return_pct != null && Number.isFinite(Number(bucket.return_pct))
-          ? ` · 收益率 ${fmtSigned(bucket.return_pct)}%`
-          : ''}
-      </p>
-    </div>
-  )
 
   return (
     <div>
@@ -362,7 +392,7 @@ const PortalAccount = () => {
                 >
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{card.title}</div>
                   <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 6 }}>
-                    id: {card.accountId}
+                    号码: {card.accountId}
                   </div>
                   <div className="qt-up" style={{ fontWeight: 700, fontSize: 16, marginTop: 8 }}>
                     {card.balance != null ? `$ ${fmtMoney(card.balance)}` : '—'}
@@ -412,14 +442,13 @@ const PortalAccount = () => {
                 刷新
               </button>
             ) : null}
-            {snap.connected ? '已连接交易所 · 余额实时拉取' : '含账面账户；添加账户后显示实时余额'}
+            {snap.connected ? '已连接交易所 · 余额实时拉取' : '添加账户后显示实时余额'}
             <span className={`qt-pill ${snap.connected ? 'qt-pill-live' : 'qt-pill-off'}`}>
               {snap.connected ? '在线' : '未连接'}
             </span>
           </p>
           {error ? <p className="qt-down" style={{ marginTop: 8 }}>{error}</p> : null}
         </div>
-        <Link className="portal-btn portal-btn-cyan" to="/portal/trades">查看交易记录</Link>
       </div>
 
       <section className="qt-card" style={{ marginBottom: 16 }}>
@@ -520,24 +549,30 @@ const PortalAccount = () => {
           {positions.length === 0 ? (
             <p className="qt-empty" style={{ margin: '12px 0' }}>
               {isBookPlatform(viewPlatform)
-                ? '账面账户无实时持仓'
+                ? '暂无持仓（TV 开仓信号写入后显示）'
                 : (snap.connected || isExchangePlatform(viewPlatform)
                   ? '暂无持仓'
                   : '添加账户后显示持仓')}
             </p>
           ) : (
             positions.map((row) => (
-              <div className="qt-pos-row" key={`${row.platform}-${row.symbol}-${row.side}`}>
+              <div className="qt-pos-row" key={`${row.platform}-${row.symbol}-${row.side}-${row.opened_at || ''}`}>
                 <div>
                   <strong>{row.symbol}</strong>
                   {' '}
-                  <span className={`qt-pill ${row.side === 'Long' ? 'qt-pill-long' : 'qt-pill-short'}`}>
-                    {row.side}
+                  <span className={`qt-pill ${row.side === 'Long' || row.side === 'BUY' ? 'qt-pill-long' : 'qt-pill-short'}`}>
+                    {row.side === 'BUY' ? 'Long' : row.side === 'SELL' ? 'Short' : row.side}
                   </span>
                   {row.platform ? (
                     <span style={{ color: 'var(--qt-muted)', fontSize: 11, marginLeft: 6 }}>
-                      {platShort(row.platform)}
+                      {isBookPlatform(row.platform) ? '账面' : platShort(row.platform)}
                     </span>
+                  ) : null}
+                  {row.entry_price != null ? (
+                    <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
+                      开仓价 {fmtMoney(row.entry_price)}
+                      {row.margin != null ? ` · 仓位 $ ${fmtMoney(row.margin)}` : ''}
+                    </div>
                   ) : null}
                   {row.strategy_name ? (
                     <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
@@ -557,8 +592,16 @@ const PortalAccount = () => {
       <section className="qt-card" style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <strong>交易记录清单</strong>
-          <Link className="portal-btn portal-btn-ghost" to="/portal/trades">完整列表</Link>
+          <button type="button" className="portal-btn portal-btn-ghost" onClick={() => { loadTrades(); loadBalances() }}>
+            刷新
+          </button>
         </div>
+        {isAdmin && webhookHint ? (
+          <p className="qt-sub" style={{ marginTop: 8, wordBreak: 'break-all' }}>
+            账面 TV Webhook（只记账）：
+            <code style={{ color: '#4ade80' }}>{webhookHint}</code>
+          </p>
+        ) : null}
         <div className="qt-toolbar" style={{ marginTop: 12 }}>
           <select className="qt-select" value={tradeSymbol} onChange={(e) => setTradeSymbol(e.target.value)}>
             <option value="all">币种: 全部</option>
@@ -571,18 +614,27 @@ const PortalAccount = () => {
             {tradeOpts.strategies.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
-            {['自适应做多策略', '自适应做空策略', '自适应平仓策略']
-              .filter((s) => !tradeOpts.strategies.includes(s))
-              .map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
           </select>
-          <button type="button" className="portal-btn portal-btn-ghost" onClick={loadTrades}>刷新</button>
         </div>
         <div className="qt-grid-4" style={{ margin: '12px 0' }}>
-          <StatPeriod label="7 天收益 / 订单" bucket={s7} />
-          <StatPeriod label="30 天收益 / 订单" bucket={s30} />
-          <StatPeriod label="180 天收益 / 订单" bucket={s180} />
+          {['7d', '30d', '180d'].map((key) => {
+            const bucket = tradeStats?.[key] || {}
+            const label = key === '7d' ? '7 天收益 / 订单' : key === '30d' ? '30 天收益 / 订单' : '180 天收益 / 订单'
+            return (
+              <div key={key}>
+                <p className="qt-stat-label">{label}</p>
+                <p className={`qt-stat-value ${(bucket.pnl || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>
+                  {fmtSigned(bucket.pnl || 0)}
+                </p>
+                <p className="qt-sub" style={{ margin: 0 }}>
+                  {bucket.orders || 0} 笔 · 盈亏比 {fmtRatio(bucket)}
+                  {bucket.return_pct != null && Number.isFinite(Number(bucket.return_pct))
+                    ? ` · 收益率 ${fmtSigned(bucket.return_pct)}%`
+                    : ''}
+                </p>
+              </div>
+            )
+          })}
           <div>
             <p className="qt-stat-label">筛选内累计</p>
             <p className={`qt-stat-value ${(tradeStats?.total_pnl || 0) >= 0 ? 'qt-up' : 'qt-down'}`}>
@@ -614,9 +666,9 @@ const PortalAccount = () => {
             </thead>
             <tbody>
               {trades.length === 0 ? (
-                <tr><td colSpan={9}>暂无交易记录（Webhook 跟单成功后写入）</td></tr>
+                <tr><td colSpan={9}>暂无交易记录</td></tr>
               ) : (
-                trades.slice(0, 30).map((row) => (
+                trades.slice(0, 50).map((row) => (
                   <tr key={row.id}>
                     <td>{row.created_at}</td>
                     <td>{row.symbol}</td>
@@ -625,9 +677,7 @@ const PortalAccount = () => {
                     <td>
                       {row.margin != null && Number.isFinite(Number(row.margin))
                         ? `$ ${fmtMoney(row.margin)}`
-                        : (row.quantity != null && Number.isFinite(Number(row.quantity))
-                          ? Number(row.quantity).toLocaleString('en-US', { maximumFractionDigits: 4 })
-                          : '—')}
+                        : '—'}
                     </td>
                     <td>
                       {row.action === 'open' && row.price != null && Number.isFinite(Number(row.price))

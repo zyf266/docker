@@ -504,7 +504,7 @@ const PortalWatchlist = ({ embedded = false }) => {
         status_profiles: profiles,
         gates_only: true,
       })
-      setCfgMsg(`已保存「${cfgMarket === 'us' ? '美股' : '加密'}」三套状态配置；同市场新标的将默认继承。`)
+      setCfgOpen(false)
       await load({ force: true })
     } catch (e) {
       setCfgMsg(e?.response?.data?.detail || e?.message || '保存失败')
@@ -585,7 +585,7 @@ const PortalWatchlist = ({ embedded = false }) => {
           <div>
             <strong style={{ fontSize: 16 }}>标的观察库</strong>
             <p className="qt-sub" style={{ margin: '4px 0 0' }}>
-              配置策略与平台后，Webhook 自动跟单；下方为交易记录清单
+              配置策略与平台后，Webhook 自动跟单
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

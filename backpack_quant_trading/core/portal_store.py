@@ -275,8 +275,8 @@ BOOK_PLATFORM_LABELS = {
     BOOK_PLATFORM_CRYPTO: "加密账户",
     BOOK_PLATFORM_US: "美股账户",
 }
-CRYPTO_ACCOUNT_INITIAL_USD = 5_000_000.0  # 加密账面本金 500 万（仓位仍按成交记录）
-US_ACCOUNT_INITIAL_USD = 5_000_000.0  # 美股账面本金 500 万；CSV 单笔约半仓 ~250万
+CRYPTO_ACCOUNT_INITIAL_USD = 5_000_000.0  # 加密账面默认本金 500 万（可被管理员缩放覆盖）
+US_ACCOUNT_INITIAL_USD = 5_000_000.0  # 美股账面默认本金 500 万
 CSV_IMPORT_DETAIL_PREFIX = "csv import"
 US_CSV_IMPORT_DETAIL_PREFIX = "csv import soxl"
 US_CSV_CUTOFF = datetime(2025, 5, 16)  # 仅导入 5.16 及之后
@@ -285,6 +285,134 @@ US_STRATEGY_NAME = "美股追踪策略"
 
 def is_book_platform(platform: str) -> bool:
     return (platform or "").strip().lower() in BOOK_PLATFORMS
+
+
+def _book_capital_path():
+    from pathlib import Path
+
+    return Path(__file__).resolve().parents[1] / "data" / "portal_book_capital.json"
+
+
+def _load_book_capital_file() -> Dict[str, Any]:
+    path = _book_capital_path()
+    try:
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_book_capital_file(data: Dict[str, Any]) -> None:
+    path = _book_capital_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def get_book_initial_capital(platform: str) -> float:
+    """账面账户当前初始本金（管理员可缩放；默认 500 万）。"""
+    plat = (platform or "").strip().lower()
+    data = _load_book_capital_file()
+    raw = data.get(plat)
+    try:
+        if raw is not None and float(raw) > 0:
+            return float(raw)
+    except (TypeError, ValueError):
+        pass
+    if plat == BOOK_PLATFORM_CRYPTO:
+        return float(CRYPTO_ACCOUNT_INITIAL_USD)
+    if plat == BOOK_PLATFORM_US:
+        return float(US_ACCOUNT_INITIAL_USD)
+    return 0.0
+
+
+def parse_capital_amount(raw: Any) -> float:
+    """解析本金：支持 200w / 200W / 200万 / 2000000。"""
+    s = str(raw or "").strip().replace(",", "").replace(" ", "").lower()
+    if not s:
+        raise ValueError("本金不能为空")
+    mult = 1.0
+    if s.endswith("万"):
+        mult = 10_000.0
+        s = s[:-1]
+    elif s.endswith("w"):
+        mult = 10_000.0
+        s = s[:-1]
+    try:
+        val = float(s) * mult
+    except (TypeError, ValueError) as exc:
+        raise ValueError("本金格式无效，例：200w 或 2000000") from exc
+    if val <= 0:
+        raise ValueError("本金须大于 0")
+    return val
+
+
+def resolve_book_platform_from_market(market: str) -> str:
+    m = (market or "").strip().lower()
+    if m in ("crypto", "加密", "crypto_account", "binance crypto", "加密账户"):
+        return BOOK_PLATFORM_CRYPTO
+    if m in ("us", "美股", "us_account", "binance 美股", "美股账户"):
+        return BOOK_PLATFORM_US
+    raise ValueError("市场仅支持：加密 / 美股")
+
+
+def scale_book_account_capital(market: str, new_capital_raw: Any) -> Dict[str, Any]:
+    """按比例缩放账面成交的 margin/pnl，并更新该市场初始本金。
+
+    例：原 500w → 200w，则 factor=0.4；仓位与盈亏同比例缩放，价格等其它字段不变。
+    """
+    plat = resolve_book_platform_from_market(market)
+    new_cap = parse_capital_amount(new_capital_raw)
+    old_cap = get_book_initial_capital(plat)
+    if old_cap <= 0:
+        raise ValueError("当前本金无效，无法缩放")
+    factor = new_cap / old_cap
+    if abs(factor - 1.0) < 1e-12:
+        return {
+            "ok": True,
+            "platform": plat,
+            "old_capital": old_cap,
+            "new_capital": new_cap,
+            "factor": 1.0,
+            "updated_rows": 0,
+        }
+
+    session = _session()
+    updated = 0
+    try:
+        rows = (
+            session.query(PortalTrade)
+            .filter(
+                PortalTrade.user_id == BOOK_SHARED_USER_ID,
+                PortalTrade.platform == plat,
+            )
+            .all()
+        )
+        for r in rows:
+            if r.margin is not None:
+                r.margin = round(float(r.margin) * factor, 4)
+            r.pnl = round(float(r.pnl or 0) * factor, 4)
+            updated += 1
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+    data = _load_book_capital_file()
+    data[plat] = new_cap
+    _save_book_capital_file(data)
+    return {
+        "ok": True,
+        "platform": plat,
+        "old_capital": old_cap,
+        "new_capital": new_cap,
+        "factor": round(factor, 8),
+        "updated_rows": updated,
+    }
 
 
 # 观察库：按市场（加密/美股）保存的默认状态配置，新加标的自动继承
@@ -459,6 +587,238 @@ def record_trade(
         session.close()
 
 
+def _parse_optional_float(raw: Any) -> Optional[float]:
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(str(raw).replace(",", "").replace("%", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _norm_book_trade_action(payload: Dict[str, Any]) -> str:
+    """open | close"""
+    raw = str(
+        payload.get("动作")
+        or payload.get("action")
+        or payload.get("trade_action")
+        or payload.get("order_action")
+        or ""
+    ).strip().lower()
+    if raw in ("open", "开仓", "entry", "enter"):
+        return "open"
+    if raw in ("close", "平仓", "exit", "flat"):
+        return "close"
+    # TradingView strategy.order.action: buy/sell 需结合仓位变化推断；默认开仓
+    sig = str(
+        payload.get("方向")
+        or payload.get("操作")
+        or payload.get("signal")
+        or payload.get("side")
+        or ""
+    ).strip().lower()
+    if sig in ("close", "平仓", "flat"):
+        return "close"
+    pos = str(payload.get("position") or payload.get("仓位状态") or "").strip().lower()
+    if pos in ("flat", "0", "平", "平仓"):
+        return "close"
+    # 先前仓位>0 且操作为反向 → 常见平仓写法
+    try:
+        prev = float(payload.get("先前仓位大小") or payload.get("prev_position") or 0)
+        if prev != 0 and sig in ("buy", "sell", "long", "short", "多", "空"):
+            # TV 常在平仓时仍发 buy/sell；若显式带 pnl 则当平仓
+            if payload.get("pnl") is not None or payload.get("盈亏") is not None:
+                return "close"
+    except (TypeError, ValueError):
+        pass
+    return "open"
+
+
+def _norm_book_trade_side(payload: Dict[str, Any], *, action: str) -> str:
+    raw = str(
+        payload.get("方向")
+        or payload.get("操作")
+        or payload.get("signal")
+        or payload.get("side")
+        or payload.get("action")
+        or ""
+    ).strip().lower()
+    if raw in ("buy", "long", "开多", "做多", "多"):
+        return "BUY"
+    if raw in ("sell", "short", "开空", "做空", "空"):
+        return "SELL"
+    # 平仓时可从持仓方向推断
+    pos_side = str(payload.get("position_side") or payload.get("持仓方向") or "").lower()
+    if pos_side in ("long", "多"):
+        return "BUY" if action == "open" else "SELL"
+    if pos_side in ("short", "空"):
+        return "SELL" if action == "open" else "BUY"
+    return "BUY"
+
+
+def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """TradingView → 只记账面交易清单（不下真实交易所单）。
+
+    写入共享 crypto_account / us_account；开仓会出现在账面「当前持仓」。
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("请求体须为 JSON 对象")
+
+    market_raw = str(
+        payload.get("market")
+        or payload.get("市场")
+        or payload.get("account")
+        or payload.get("平台")
+        or "加密"
+    )
+    try:
+        platform = resolve_book_platform_from_market(market_raw)
+    except ValueError:
+        # 无明确市场时：美股代码无 USDT 后缀倾向 us
+        sym0 = str(payload.get("交易品种") or payload.get("symbol") or "").upper()
+        platform = (
+            BOOK_PLATFORM_US
+            if sym0 and not sym0.endswith("USDT") and "/" not in sym0 and len(sym0) <= 6
+            else BOOK_PLATFORM_CRYPTO
+        )
+
+    symbol = str(
+        payload.get("交易品种") or payload.get("symbol") or payload.get("ticker") or payload.get("coin") or ""
+    ).strip().upper()
+    if not symbol:
+        raise ValueError("缺少 symbol / 交易品种")
+    if platform == BOOK_PLATFORM_CRYPTO and not symbol.endswith("USDT") and symbol.isalpha():
+        symbol = f"{symbol}USDT"
+
+    action = _norm_book_trade_action(payload)
+    side = _norm_book_trade_side(payload, action=action)
+    strategy_name = str(
+        payload.get("策略名称")
+        or payload.get("strategy_name")
+        or payload.get("strategy")
+        or ("美股追踪策略" if platform == BOOK_PLATFORM_US else "加密追踪策略")
+    ).strip()
+    timeframe = str(
+        payload.get("周期") or payload.get("timeframe") or payload.get("interval") or ""
+    ).strip()
+    price = _parse_optional_float(
+        payload.get("价格") or payload.get("price") or payload.get("close") or payload.get("open_price")
+    )
+    margin = _parse_optional_float(
+        payload.get("仓位")
+        or payload.get("margin")
+        or payload.get("size_value")
+        or payload.get("大小（价值）")
+        or payload.get("value")
+    )
+    quantity = _parse_optional_float(
+        payload.get("数量") or payload.get("quantity") or payload.get("qty") or payload.get("contracts")
+    )
+    pnl = _parse_optional_float(payload.get("盈亏") or payload.get("pnl") or payload.get("profit"))
+    if action == "open":
+        pnl = 0.0
+    elif pnl is None:
+        pnl = 0.0
+
+    # 仓位缺省：按当前本金一半（与历史半仓习惯接近）
+    if margin is None or margin <= 0:
+        init_cap = get_book_initial_capital(platform)
+        margin = round(init_cap * 0.4, 4) if init_cap > 0 else None
+
+    row = record_trade(
+        BOOK_SHARED_USER_ID,
+        platform=platform,
+        symbol=symbol,
+        side=side,
+        action=action,
+        strategy_name=strategy_name,
+        timeframe=timeframe,
+        price=price,
+        quantity=quantity,
+        margin=margin,
+        leverage=int(_parse_optional_float(payload.get("leverage") or payload.get("杠杆")) or 5),
+        pnl=float(pnl or 0),
+        status="ok",
+        detail="tv book webhook",
+        order_id=str(payload.get("order_id") or payload.get("id") or "")[:80],
+    )
+    return {
+        "ok": True,
+        "recorded": True,
+        "platform": platform,
+        "action": action,
+        "trade": row,
+        "open_positions": list_book_open_positions(platform),
+    }
+
+
+def list_book_open_positions(platform: str = "") -> List[Dict[str, Any]]:
+    """由账面成交配对还原未平仓：开仓未匹配平仓 → 当前持仓。"""
+    plats = (
+        [platform.strip().lower()]
+        if is_book_platform(platform)
+        else [BOOK_PLATFORM_CRYPTO, BOOK_PLATFORM_US]
+    )
+    session = _session()
+    try:
+        rows = (
+            session.query(PortalTrade)
+            .filter(
+                PortalTrade.user_id == BOOK_SHARED_USER_ID,
+                PortalTrade.platform.in_(tuple(plats)),
+                PortalTrade.status == "ok",
+            )
+            .order_by(PortalTrade.created_at.asc(), PortalTrade.id.asc())
+            .all()
+        )
+    finally:
+        session.close()
+
+    # key: (platform, symbol, position_side Long/Short)
+    stacks: Dict[tuple, List[Any]] = {}
+    for r in rows:
+        plat = (r.platform or "").lower()
+        sym = (r.symbol or "").upper()
+        side_u = (r.side or "").upper()
+        act = (r.action or "").lower()
+        # 开仓 BUY=Long，开仓 SELL=Short；平仓时 BUY 常平空、SELL 常平多（与列表方向展示对齐）
+        if act == "open":
+            pos_side = "Long" if side_u == "BUY" else "Short"
+            key = (plat, sym, pos_side)
+            stacks.setdefault(key, []).append(r)
+        elif act == "close":
+            # 平多多用 SELL，平空多用 BUY；若只有一侧，也尝试同 symbol 任意方向栈
+            prefer = "Long" if side_u == "SELL" else "Short"
+            key = (plat, sym, prefer)
+            if stacks.get(key):
+                stacks[key].pop(0)
+            else:
+                alt = "Short" if prefer == "Long" else "Long"
+                alt_key = (plat, sym, alt)
+                if stacks.get(alt_key):
+                    stacks[alt_key].pop(0)
+
+    out: List[Dict[str, Any]] = []
+    for (plat, sym, pos_side), opens in stacks.items():
+        for r in opens:
+            out.append(
+                {
+                    "platform": plat,
+                    "symbol": sym,
+                    "side": pos_side,
+                    "entry_price": r.price,
+                    "margin": r.margin,
+                    "quantity": r.quantity,
+                    "pnl": 0.0,
+                    "pnl_pct": None,
+                    "strategy_name": r.strategy_name or "",
+                    "book": True,
+                    "opened_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
+                }
+            )
+    return out
+
+
 def _trade_rows_for_view(
     session,
     user_id: int,
@@ -536,15 +896,10 @@ def book_account_equity(user_id: int, platform: str) -> float:
     plat = (platform or "").strip().lower()
     # user_id 保留入参以兼容调用方，实际始终读共享库
     _ = user_id
-    if plat == BOOK_PLATFORM_CRYPTO:
+    if plat in BOOK_PLATFORMS:
         return round(
-            CRYPTO_ACCOUNT_INITIAL_USD
+            get_book_initial_capital(plat)
             + sum_trade_pnl(BOOK_SHARED_USER_ID, platform=plat),
-            4,
-        )
-    if plat == BOOK_PLATFORM_US:
-        return round(
-            US_ACCOUNT_INITIAL_USD + sum_trade_pnl(BOOK_SHARED_USER_ID, platform=plat),
             4,
         )
     return 0.0
@@ -949,11 +1304,13 @@ def _apply_trade_filters(q, *, platform: str = "", symbol: str = "", strategy: s
 def _initial_capital_for_platform(platform: str = "") -> Optional[float]:
     plat = (platform or "").strip().lower()
     if plat == BOOK_PLATFORM_CRYPTO:
-        return CRYPTO_ACCOUNT_INITIAL_USD
+        return get_book_initial_capital(BOOK_PLATFORM_CRYPTO)
     if plat == BOOK_PLATFORM_US:
-        return US_ACCOUNT_INITIAL_USD
+        return get_book_initial_capital(BOOK_PLATFORM_US)
     if plat in ("", "all", "全部"):
-        return CRYPTO_ACCOUNT_INITIAL_USD + US_ACCOUNT_INITIAL_USD
+        return get_book_initial_capital(BOOK_PLATFORM_CRYPTO) + get_book_initial_capital(
+            BOOK_PLATFORM_US
+        )
     return None
 
 

@@ -1,18 +1,23 @@
 """普通用户产品站 API。"""
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from backpack_quant_trading.api.deps import require_user
+from backpack_quant_trading.api.deps import is_admin_role, require_admin, require_user
 from backpack_quant_trading.core import portal_exchange as exchange
 from backpack_quant_trading.core import portal_store as store
 from backpack_quant_trading.core import portal_watchlist as watchlist
 from backpack_quant_trading.core import portal_webhook_trade as webhook_trade
 
 router = APIRouter()
+
+
+def _include_book(user: dict) -> bool:
+    return is_admin_role((user or {}).get("role"))
 
 
 class FavoriteIn(BaseModel):
@@ -258,9 +263,9 @@ def get_exchange_bindings(user: dict = Depends(require_user)):
 
 @router.get("/exchange/balances")
 def get_exchange_balances(user: dict = Depends(require_user)):
-    """已连接交易所的真实账户权益 / 可用余额 / 持仓。"""
+    """已连接交易所的真实账户权益 / 可用余额 / 持仓。账面账户仅管理员可见。"""
     try:
-        snap = exchange.fetch_balances(user["id"])
+        snap = exchange.fetch_balances(user["id"], include_book=_include_book(user))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"余额查询失败: {e}") from e
     return {"ok": True, **snap}
@@ -282,7 +287,7 @@ def post_exchange_connect(body: ExchangeConnectIn, user: dict = Depends(require_
         )
         # 连接后立刻回填余额，方便前端刷新
         try:
-            result["balances"] = exchange.fetch_balances(user["id"])
+            result["balances"] = exchange.fetch_balances(user["id"], include_book=_include_book(user))
         except Exception:
             result["balances"] = None
     except ValueError as e:
@@ -298,7 +303,7 @@ def delete_exchange_binding(platform: str, user: dict = Depends(require_user)):
     try:
         result = exchange.disconnect_exchange(user["id"], platform)
         try:
-            result["balances"] = exchange.fetch_balances(user["id"])
+            result["balances"] = exchange.fetch_balances(user["id"], include_book=_include_book(user))
         except Exception:
             result["balances"] = None
     except ValueError as e:
@@ -333,6 +338,10 @@ async def portal_tv_webhook(request: Request):
 @router.get("/tv-webhook/hint")
 def portal_tv_webhook_hint(user: dict = Depends(require_user)):
     """前端展示用：webhook URL 与字段示例。"""
+    token = (os.getenv("PORTAL_BOOK_WEBHOOK_TOKEN") or "").strip()
+    book_path = "/api/portal/book-trade-webhook"
+    if token:
+        book_path = f"{book_path}?token={token}"
     return {
         "ok": True,
         "path": "/api/portal/tv-webhook",
@@ -343,7 +352,55 @@ def portal_tv_webhook_hint(user: dict = Depends(require_user)):
             "timeframe": "2h",
             "signal": "buy",
         },
+        "book_journal": {
+            "path": book_path,
+            "method": "POST",
+            "note": "只写入账面交易清单；开仓同步当前持仓。不下真实交易所单。",
+            "example": {
+                "market": "加密",
+                "strategy_name": "加密追踪策略",
+                "symbol": "{{ticker}}",
+                "timeframe": "2h",
+                "action": "open",
+                "signal": "buy",
+                "price": "{{close}}",
+                "margin": 2000000,
+                "pnl": 0,
+            },
+        },
     }
+
+
+def _check_book_webhook_token(request: Request) -> None:
+    expected = (os.getenv("PORTAL_BOOK_WEBHOOK_TOKEN") or "").strip()
+    if not expected:
+        return
+    got = (request.query_params.get("token") or "").strip()
+    if not got:
+        got = (request.headers.get("X-Portal-Token") or "").strip()
+    if got != expected:
+        raise HTTPException(status_code=401, detail="webhook token 无效")
+
+
+@router.post("/book-trade-webhook")
+async def portal_book_trade_webhook(request: Request):
+    """TradingView → 账面交易清单（crypto_account / us_account）。
+
+    只落库，不真实下单。开仓会出现在管理员账面「当前持仓」。
+    可选鉴权：环境变量 PORTAL_BOOK_WEBHOOK_TOKEN，URL ?token= 或头 X-Portal-Token。
+    """
+    _check_book_webhook_token(request)
+    try:
+        payload: Dict[str, Any] = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"无效 JSON: {e}") from e
+    try:
+        result = store.record_book_trade_from_webhook(payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"记账失败: {e}") from e
+    return result
 
 
 @router.get("/search")
@@ -404,15 +461,23 @@ def get_portal_trades(
     user: dict = Depends(require_user),
 ):
     """交易记录清单 + 7/30/180 天收益、盈亏比与订单统计（按筛选条件）。"""
-    try:
-        store.ensure_book_account_csv_trades(user["id"])
-    except Exception:
-        pass
+    plat = (platform or "").strip().lower()
+    if store.is_book_platform(plat) and not _include_book(user):
+        raise HTTPException(status_code=403, detail="普通用户无权查看账面账户")
+    # 普通用户：空平台不过账面共享成交，只看自己连接账户
+    view_plat = platform
+    if not _include_book(user) and (not plat or plat in ("all", "全部")):
+        view_plat = "connected"
+    if _include_book(user):
+        try:
+            store.ensure_book_account_csv_trades(user["id"])
+        except Exception:
+            pass
     items = store.list_trades(
-        user["id"], platform=platform, symbol=symbol, strategy=strategy, limit=limit
+        user["id"], platform=view_plat, symbol=symbol, strategy=strategy, limit=limit
     )
     stats = store.trade_stats(
-        user["id"], platform=platform, symbol=symbol, strategy=strategy
+        user["id"], platform=view_plat, symbol=symbol, strategy=strategy
     )
     return {"ok": True, "items": items, "stats": stats}
 
@@ -436,14 +501,17 @@ def get_equity_curve(
 ):
     """净值曲线（按已实现盈亏重建；默认不含 BTC 基准）。"""
     plat = (platform or "").strip().lower()
-    try:
-        store.ensure_book_account_csv_trades(user["id"])
-    except Exception:
-        pass
+    if store.is_book_platform(plat) and not _include_book(user):
+        raise HTTPException(status_code=403, detail="普通用户无权查看账面账户")
+    if _include_book(user):
+        try:
+            store.ensure_book_account_csv_trades(user["id"])
+        except Exception:
+            pass
     current_equity = None
     initial_capital = None
     try:
-        snap = exchange.fetch_balances(user["id"])
+        snap = exchange.fetch_balances(user["id"], include_book=_include_book(user))
         accounts = snap.get("accounts") or []
         if plat in ("connected", "self", "exchange", "自己连接", "自己连接的账户"):
             current_equity = 0.0
@@ -460,12 +528,14 @@ def get_equity_curve(
                     if a.get("book"):
                         initial_capital = a.get("initial_capital")
                     break
-            if plat == store.BOOK_PLATFORM_CRYPTO and initial_capital is None:
-                initial_capital = store.CRYPTO_ACCOUNT_INITIAL_USD
-            elif plat == store.BOOK_PLATFORM_US and initial_capital is None:
-                initial_capital = store.US_ACCOUNT_INITIAL_USD
+            if store.is_book_platform(plat) and initial_capital is None:
+                if not _include_book(user):
+                    raise HTTPException(status_code=403, detail="普通用户无权查看账面账户")
+                initial_capital = store.get_book_initial_capital(plat)
         else:
             current_equity = snap.get("total_equity")
+    except HTTPException:
+        raise
     except Exception:
         current_equity = None
     curve = store.build_equity_curve(
@@ -477,3 +547,20 @@ def get_equity_curve(
         include_btc=False,
     )
     return {"ok": True, **curve}
+
+
+class BookCapitalIn(BaseModel):
+    market: str = Field(..., description="加密 / 美股")
+    capital: str = Field(..., description="本金，如 200w 或 2000000")
+
+
+@router.post("/book-capital")
+def post_book_capital(body: BookCapitalIn, user: dict = Depends(require_admin)):
+    """管理员：按比例缩放指定市场账面本金与成交 margin/pnl。"""
+    try:
+        result = store.scale_book_account_capital(body.market, body.capital)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"调整本金失败: {e}") from e
+    return {"ok": True, **result}
