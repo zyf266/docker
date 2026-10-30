@@ -27,8 +27,11 @@ export const getPortalTrades = (params = {}) =>
   request.get('/portal/trades', { params, timeout: 30000 })
 export const getEquityCurve = (params = {}) =>
   request.get('/portal/equity-curve', { params, timeout: 45000 })
-export const scaleBookCapital = (data) =>
+/** 新增账面账户（市场+本金），不改动已有账户 */
+export const createBookAccount = (data) =>
   request.post('/portal/book-capital', data, { timeout: 60000 })
+/** @deprecated 使用 createBookAccount */
+export const scaleBookCapital = createBookAccount
 export const searchPortal = (q) => request.get('/portal/search', { params: { q } })
 export const getInbox = () => request.get('/portal/inbox')
 export const testInbox = (data) => request.post('/portal/inbox/test', data)

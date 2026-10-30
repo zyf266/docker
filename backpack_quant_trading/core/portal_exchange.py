@@ -310,16 +310,25 @@ def fetch_balances(user_id: int, *, include_book: bool = False) -> Dict[str, Any
             item["account_id"] = item.get("address_mask") or item.get("api_key_mask") or plat
         accounts.append(item)
 
-    # 账面账户仅管理员：加密 / 美股，排在交易所前面
+    # 账面账户仅管理员：legacy 加密/美股 + 动态 ba_*，排在交易所前面
     if include_book:
+        try:
+            store.maybe_restore_scaled_legacy_books()
+        except Exception as exc:
+            logger.warning("legacy 账面恢复检查失败: %s", exc)
         book_accounts: List[Dict[str, Any]] = []
-        for book_plat in (store.BOOK_PLATFORM_CRYPTO, store.BOOK_PLATFORM_US):
+        for book_plat, market in (
+            (store.BOOK_PLATFORM_CRYPTO, "crypto"),
+            (store.BOOK_PLATFORM_US, "us"),
+        ):
             init_cap = store.get_book_initial_capital(book_plat)
             eq = store.book_account_equity(user_id, book_plat)
             book_accounts.append(
                 {
                     "platform": book_plat,
                     "platform_label": store.BOOK_PLATFORM_LABELS.get(book_plat, book_plat),
+                    "title": store.BOOK_MARKET_TITLES.get(market, book_plat),
+                    "market": market,
                     "label": "账面账户",
                     "status": "ok",
                     "equity": eq,
@@ -335,6 +344,32 @@ def fetch_balances(user_id: int, *, include_book: bool = False) -> Dict[str, Any
                 }
             )
             total_equity += float(eq or 0)
+        try:
+            for dyn in store.list_portal_book_accounts():
+                book_accounts.append(
+                    {
+                        "platform": dyn["platform"],
+                        "platform_label": dyn.get("platform_label") or dyn["platform"],
+                        "title": dyn.get("title") or dyn["platform"],
+                        "market": dyn.get("market") or "crypto",
+                        "book_account_id": dyn.get("id"),
+                        "label": dyn.get("label") or "账面账户",
+                        "status": "ok",
+                        "equity": dyn.get("equity"),
+                        "balance": dyn.get("equity"),
+                        "currency": "USD",
+                        "address_mask": "",
+                        "api_key_mask": "",
+                        "account_id": dyn.get("account_no") or dyn["platform"],
+                        "demo": False,
+                        "book": True,
+                        "initial_capital": dyn.get("initial_capital"),
+                        "error": "",
+                    }
+                )
+                total_equity += float(dyn.get("equity") or 0)
+        except Exception as exc:
+            logger.warning("动态账面账户列表失败: %s", exc)
         accounts = book_accounts + accounts
         try:
             positions.extend(store.list_book_open_positions(""))

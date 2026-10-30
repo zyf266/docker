@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { scaleBookCapital } from '../api/portal'
+import { createBookAccount } from '../api/portal'
 import { isAdminRole, readStoredUser } from '../utils/authRole'
 import './PortalLayout.css'
 
@@ -37,17 +37,18 @@ const PortalLayout = () => {
     setBookBusy(true)
     setBookMsg('')
     try {
-      const res = await scaleBookCapital({ market: bookMarket, capital: bookCapital.trim() })
-      const nw = res?.new_capital
+      const res = await createBookAccount({ market: bookMarket, capital: bookCapital.trim() })
+      const nw = res?.initial_capital
       const n = Number(nw)
       const shown = Number.isFinite(n)
         ? (n >= 10000 ? `${(n / 10000).toFixed(n % 10000 === 0 ? 0 : 1)}w` : String(n))
         : bookCapital
-      setBookMsg(`已将「${bookMarket}」本金调整为 ${shown}`)
+      setBookMsg(`已新增「${bookMarket}」账户（本金 ${shown}）`)
       window.dispatchEvent(new CustomEvent('portal-book-capital-updated', { detail: res }))
+      setBookCapital('')
       setTimeout(() => closeCap(), 600)
     } catch (e) {
-      setBookMsg(e?.response?.data?.detail || e?.message || '调整失败')
+      setBookMsg(e?.response?.data?.detail || e?.message || '新增失败')
     } finally {
       setBookBusy(false)
     }
@@ -106,11 +107,11 @@ const PortalLayout = () => {
         <div className="qt-modal-mask" role="dialog" aria-modal="true">
           <div className="qt-modal" style={{ maxWidth: 420 }}>
             <div className="qt-modal-head">
-              <strong>账面本金</strong>
+              <strong>新增账面账户</strong>
               <button type="button" className="portal-btn portal-btn-ghost" onClick={closeCap}>关闭</button>
             </div>
             <p className="qt-sub" style={{ marginTop: 0 }}>
-              选择市场并填写本金后应用：按比例缩放该市场账面仓位与盈亏。
+              选择市场与本金后新增一张账户卡；已有账户不会被改动。
             </p>
             <label className="qt-field">
               市场
@@ -143,7 +144,7 @@ const PortalLayout = () => {
                 disabled={bookBusy}
                 onClick={onApplyBookCapital}
               >
-                {bookBusy ? '调整中…' : '应用本金'}
+                {bookBusy ? '新增中…' : '新增账户'}
               </button>
             </div>
           </div>

@@ -58,10 +58,12 @@ const platShort = (p) => {
   if (p === 'binance') return 'Binance'
   if (p === 'crypto_account') return '加密账户'
   if (p === 'us_account') return '美股账户'
+  if (typeof p === 'string' && p.startsWith('ba_')) return '账面'
   return (p || '').toUpperCase() || '—'
 }
 
-const isBookPlatform = (p) => p === 'crypto_account' || p === 'us_account'
+const isBookPlatform = (p) =>
+  p === 'crypto_account' || p === 'us_account' || (typeof p === 'string' && p.startsWith('ba_'))
 const isExchangePlatform = (p) => ['okx', 'hyperliquid', 'binance'].includes(p)
 
 const PortalAccount = () => {
@@ -315,19 +317,27 @@ const PortalAccount = () => {
     const cards = []
     for (const a of allOkAccounts) {
       if (isBookPlatform(a.platform)) {
+        const market = a.market || (a.platform === 'us_account' ? 'us' : 'crypto')
+        const title =
+          a.title
+          || (market === 'us' || a.platform === 'us_account' ? 'Binance 美股' : 'Binance Crypto')
         cards.push({
           platform: a.platform,
-          title: a.platform === 'crypto_account' ? 'Binance Crypto' : 'Binance 美股',
+          title,
           accountId: a.account_id || a.address_mask || a.platform,
           balance: a.equity,
           currency: a.currency || 'USD',
+          market,
+          sortKey:
+            a.platform === 'crypto_account'
+              ? 0
+              : a.platform === 'us_account'
+                ? 1
+                : 10 + (Number(a.book_account_id) || 0),
         })
       }
     }
-    cards.sort((x, y) => {
-      const order = { crypto_account: 0, us_account: 1 }
-      return (order[x.platform] ?? 9) - (order[y.platform] ?? 9)
-    })
+    cards.sort((x, y) => (x.sortKey ?? 9) - (y.sortKey ?? 9))
     for (const a of exchangeAccounts) {
       cards.push({
         platform: a.platform,
@@ -574,36 +584,48 @@ const PortalAccount = () => {
                   : '添加账户后显示持仓')}
             </p>
           ) : (
-            positions.map((row) => (
-              <div className="qt-pos-row" key={`${row.platform}-${row.symbol}-${row.side}-${row.opened_at || ''}`}>
-                <div>
-                  <strong>{row.symbol}</strong>
-                  {' '}
-                  <span className={`qt-pill ${row.side === 'Long' || row.side === 'BUY' ? 'qt-pill-long' : 'qt-pill-short'}`}>
-                    {row.side === 'BUY' ? 'Long' : row.side === 'SELL' ? 'Short' : row.side}
-                  </span>
-                  {row.platform ? (
-                    <span style={{ color: 'var(--qt-muted)', fontSize: 11, marginLeft: 6 }}>
-                      {isBookPlatform(row.platform) ? '账面' : platShort(row.platform)}
+            positions.map((row) => {
+              const sideLabel = row.side === 'BUY' || row.side === 'Long'
+                ? 'Long'
+                : row.side === 'SELL' || row.side === 'Short'
+                  ? 'Short'
+                  : (row.side || '—')
+              const actionLabel = row.action === 'close' || row.action === '平仓'
+                ? '平仓'
+                : '开仓'
+              return (
+                <div className="qt-pos-row" key={`${row.platform}-${row.symbol}-${row.side}-${row.opened_at || ''}`}>
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: '6px 12px',
+                    minWidth: 0,
+                    width: '100%',
+                  }}
+                  >
+                    <strong>{row.symbol || '—'}</strong>
+                    <span className={`qt-pill ${sideLabel === 'Long' ? 'qt-pill-long' : 'qt-pill-short'}`}>
+                      {sideLabel}
                     </span>
-                  ) : null}
-                  {row.entry_price != null ? (
-                    <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
-                      开仓价 {fmtMoney(row.entry_price)}
-                      {row.margin != null ? ` · 仓位 $ ${fmtMoney(row.margin)}` : ''}
-                    </div>
-                  ) : null}
-                  {row.strategy_name ? (
-                    <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 2 }}>
-                      策略 · {row.strategy_name}
-                    </div>
-                  ) : null}
+                    <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>{actionLabel}</span>
+                    <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
+                      仓位 {row.margin != null && Number.isFinite(Number(row.margin))
+                        ? `$ ${fmtMoney(row.margin)}`
+                        : '—'}
+                    </span>
+                    <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
+                      开仓价 {row.entry_price != null && Number.isFinite(Number(row.entry_price))
+                        ? fmtMoney(row.entry_price)
+                        : '—'}
+                    </span>
+                    <span style={{ color: 'var(--qt-muted)', fontSize: 12, marginLeft: 'auto' }}>
+                      {row.opened_at || '—'}
+                    </span>
+                  </div>
                 </div>
-                <span className={String(fmtPnl(row)).startsWith('-') ? 'qt-down' : 'qt-up'}>
-                  {fmtPnl(row)}
-                </span>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </section>

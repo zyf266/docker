@@ -579,11 +579,11 @@ class BookCapitalIn(BaseModel):
 
 @router.post("/book-capital")
 def post_book_capital(body: BookCapitalIn, user: dict = Depends(require_admin)):
-    """管理员：按比例缩放指定市场账面本金与成交 margin/pnl。"""
+    """管理员：新增一张账面账户卡（不改动已有账户）。"""
     try:
-        result = store.scale_book_account_capital(body.market, body.capital)
+        result = store.create_book_account(body.market, body.capital)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"调整本金失败: {e}") from e
+        raise HTTPException(status_code=500, detail=f"新增账面账户失败: {e}") from e
     return {"ok": True, **result}
