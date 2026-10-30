@@ -15,6 +15,7 @@ const PortalLayout = () => {
   const [capOpen, setCapOpen] = useState(false)
   const [bookMarket, setBookMarket] = useState('加密')
   const [bookCapital, setBookCapital] = useState('')
+  const [bookPhone, setBookPhone] = useState('')
   const [bookBusy, setBookBusy] = useState(false)
   const [bookMsg, setBookMsg] = useState('')
 
@@ -34,19 +35,32 @@ const PortalLayout = () => {
       setBookMsg('请填写本金，如 200w')
       return
     }
+    if (!bookPhone.trim()) {
+      setBookMsg('请填写手机号')
+      return
+    }
     setBookBusy(true)
     setBookMsg('')
     try {
-      const res = await createBookAccount({ market: bookMarket, capital: bookCapital.trim() })
+      const res = await createBookAccount({
+        market: bookMarket,
+        capital: bookCapital.trim(),
+        phone: bookPhone.trim(),
+      })
       const nw = res?.initial_capital
       const n = Number(nw)
       const shown = Number.isFinite(n)
         ? (n >= 10000 ? `${(n / 10000).toFixed(n % 10000 === 0 ? 0 : 1)}w` : String(n))
         : bookCapital
-      setBookMsg(`已新增「${bookMarket}」账户（本金 ${shown}）`)
+      const uname = res?.login_username || bookPhone.trim()
+      const pwdHint = res?.user_created
+        ? `；已建用户 ${uname} / 密码 123456`
+        : `；已绑定已有用户 ${uname}`
+      setBookMsg(`已新增「${bookMarket}」账户（本金 ${shown}）${pwdHint}`)
       window.dispatchEvent(new CustomEvent('portal-book-capital-updated', { detail: res }))
       setBookCapital('')
-      setTimeout(() => closeCap(), 600)
+      setBookPhone('')
+      setTimeout(() => closeCap(), 1200)
     } catch (e) {
       setBookMsg(e?.response?.data?.detail || e?.message || '新增失败')
     } finally {
@@ -111,7 +125,7 @@ const PortalLayout = () => {
               <button type="button" className="portal-btn portal-btn-ghost" onClick={closeCap}>关闭</button>
             </div>
             <p className="qt-sub" style={{ marginTop: 0 }}>
-              选择市场与本金后新增账户；会按比例复制该市场历史成交，原账户不变。
+              填写市场、本金与手机号：会新增账面账户、复制历史成交，并同步创建普通用户（默认密码 123456）。
             </p>
             <label className="qt-field">
               市场
@@ -131,11 +145,24 @@ const PortalLayout = () => {
                 value={bookCapital}
                 onChange={(e) => setBookCapital(e.target.value)}
                 placeholder="如 200w 或 2000000"
+              />
+            </label>
+            <label className="qt-field">
+              手机号
+              <input
+                className="qt-select"
+                value={bookPhone}
+                onChange={(e) => setBookPhone(e.target.value)}
+                placeholder="普通用户登录账号"
+                inputMode="numeric"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') onApplyBookCapital()
                 }}
               />
             </label>
+            <p className="qt-sub" style={{ marginTop: 0 }}>
+              默认密码：123456（新用户）；该用户登录门户后可看本账户成交与持仓。
+            </p>
             {bookMsg ? <p className="qt-sub">{bookMsg}</p> : null}
             <div className="qt-modal-actions">
               <button

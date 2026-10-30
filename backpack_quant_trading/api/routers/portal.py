@@ -16,8 +16,42 @@ from backpack_quant_trading.core import portal_webhook_trade as webhook_trade
 router = APIRouter()
 
 
-def _include_book(user: dict) -> bool:
+def _is_admin(user: dict) -> bool:
     return is_admin_role((user or {}).get("role"))
+
+
+def _include_book(user: dict) -> bool:
+    """管理员看全量账面；普通用户若有绑定 ba_* 也可看自己的。"""
+    if _is_admin(user):
+        return True
+    try:
+        return bool(store.list_owned_book_platform_keys(int(user["id"])))
+    except Exception:
+        return False
+
+
+def _book_owner_filter(user: dict) -> Optional[int]:
+    """传给 fetch_balances：管理员 None=全量；普通用户=自己的 user_id。"""
+    if _is_admin(user):
+        return None
+    return int(user["id"])
+
+
+def _can_view_book_platform(user: dict, platform: str) -> bool:
+    plat = (platform or "").strip().lower()
+    if not store.is_book_platform(plat):
+        return False
+    if _is_admin(user):
+        return True
+    return store.user_owns_book_platform(int(user["id"]), plat)
+
+
+def _fetch_balances_for_user(user: dict):
+    return exchange.fetch_balances(
+        user["id"],
+        include_book=_include_book(user),
+        book_owner_user_id=_book_owner_filter(user) if _include_book(user) else None,
+    )
 
 
 class FavoriteIn(BaseModel):
@@ -265,7 +299,7 @@ def get_exchange_bindings(user: dict = Depends(require_user)):
 def get_exchange_balances(user: dict = Depends(require_user)):
     """已连接交易所的真实账户权益 / 可用余额 / 持仓。账面账户仅管理员可见。"""
     try:
-        snap = exchange.fetch_balances(user["id"], include_book=_include_book(user))
+        snap = _fetch_balances_for_user(user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"余额查询失败: {e}") from e
     return {"ok": True, **snap}
@@ -287,7 +321,7 @@ def post_exchange_connect(body: ExchangeConnectIn, user: dict = Depends(require_
         )
         # 连接后立刻回填余额，方便前端刷新
         try:
-            result["balances"] = exchange.fetch_balances(user["id"], include_book=_include_book(user))
+            result["balances"] = _fetch_balances_for_user(user)
         except Exception:
             result["balances"] = None
     except ValueError as e:
@@ -303,7 +337,7 @@ def delete_exchange_binding(platform: str, user: dict = Depends(require_user)):
     try:
         result = exchange.disconnect_exchange(user["id"], platform)
         try:
-            result["balances"] = exchange.fetch_balances(user["id"], include_book=_include_book(user))
+            result["balances"] = _fetch_balances_for_user(user)
         except Exception:
             result["balances"] = None
     except ValueError as e:
@@ -485,13 +519,13 @@ def get_portal_trades(
 ):
     """交易记录清单 + 7/30/180 天收益、盈亏比与订单统计（按筛选条件）。"""
     plat = (platform or "").strip().lower()
-    if store.is_book_platform(plat) and not _include_book(user):
-        raise HTTPException(status_code=403, detail="普通用户无权查看账面账户")
-    # 普通用户：空平台不过账面共享成交，只看自己连接账户
+    if store.is_book_platform(plat) and not _can_view_book_platform(user, plat):
+        raise HTTPException(status_code=403, detail="无权查看该账面账户")
+    # 普通用户：空平台不过全站账面，只看自己连接账户；指定 ba_* 时可看绑定账户
     view_plat = platform
-    if not _include_book(user) and (not plat or plat in ("all", "全部")):
+    if not _is_admin(user) and (not plat or plat in ("all", "全部")):
         view_plat = "connected"
-    if _include_book(user):
+    if _is_admin(user):
         try:
             store.ensure_book_account_csv_trades(user["id"])
         except Exception:
@@ -524,17 +558,18 @@ def get_equity_curve(
 ):
     """净值曲线（按已实现盈亏重建；默认不含 BTC 基准）。"""
     plat = (platform or "").strip().lower()
-    if store.is_book_platform(plat) and not _include_book(user):
-        raise HTTPException(status_code=403, detail="普通用户无权查看账面账户")
+    if store.is_book_platform(plat) and not _can_view_book_platform(user, plat):
+        raise HTTPException(status_code=403, detail="无权查看该账面账户")
     current_equity = None
     initial_capital = None
     # 账面账户：只读本地成交/本金，绝不拉交易所（避免 45s 超时）
     if store.is_book_platform(plat):
-        try:
-            store.ensure_book_account_csv_trades(user["id"])
-            store.ensure_empty_dynamic_book_trades_cloned()
-        except Exception:
-            pass
+        if _is_admin(user):
+            try:
+                store.ensure_book_account_csv_trades(user["id"])
+                store.ensure_empty_dynamic_book_trades_cloned()
+            except Exception:
+                pass
         initial_capital = store.get_book_initial_capital(plat)
         current_equity = store.book_account_equity(user["id"], plat)
     else:
@@ -555,7 +590,7 @@ def get_equity_curve(
             else:
                 # 全部：交易所权益 +（管理员）账面
                 current_equity = float(snap.get("total_equity") or 0)
-                if _include_book(user):
+                if _is_admin(user):
                     for bp in (store.BOOK_PLATFORM_CRYPTO, store.BOOK_PLATFORM_US):
                         current_equity += float(store.book_account_equity(user["id"], bp) or 0)
                     for dyn in store.list_portal_book_accounts():
@@ -579,13 +614,14 @@ def get_equity_curve(
 class BookCapitalIn(BaseModel):
     market: str = Field(..., description="加密 / 美股")
     capital: str = Field(..., description="本金，如 200w 或 2000000")
+    phone: str = Field(..., description="手机号，同步创建普通用户（默认密码 123456）")
 
 
 @router.post("/book-capital")
 def post_book_capital(body: BookCapitalIn, user: dict = Depends(require_admin)):
-    """管理员：新增一张账面账户卡（不改动已有账户）。"""
+    """管理员：新增账面账户，并按手机号创建/绑定普通用户。"""
     try:
-        result = store.create_book_account(body.market, body.capital)
+        result = store.create_book_account(body.market, body.capital, phone=body.phone)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:

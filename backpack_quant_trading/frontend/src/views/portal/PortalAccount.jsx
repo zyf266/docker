@@ -322,7 +322,10 @@ const PortalAccount = () => {
         const title =
           a.title
           || (market === 'us' || a.platform === 'us_account' ? 'Binance 美股' : 'Binance Crypto')
-        const isDyn = typeof a.platform === 'string' && a.platform.startsWith('ba_')
+        const isDyn = (
+          (typeof a.platform === 'string' && a.platform.startsWith('ba_'))
+          || a.book_account_id != null
+        )
         cards.push({
           platform: a.platform,
           title,
@@ -331,7 +334,8 @@ const PortalAccount = () => {
           currency: a.currency || 'USD',
           market,
           bookAccountId: a.book_account_id,
-          canDelete: isDyn,
+          // 后来「连接」新增的账面卡可删；默认 crypto/us 保留
+          canDelete: !!isDyn,
           sortKey:
             a.platform === 'crypto_account'
               ? 0
@@ -426,12 +430,17 @@ const PortalAccount = () => {
             {accountCards.map((card) => {
               const active = viewPlatform === card.platform
               return (
-                <button
+                <div
                   key={card.platform}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setViewPlatform(card.platform)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') setViewPlatform(card.platform)
+                  }}
                   className="qt-card"
                   style={{
+                    position: 'relative',
                     minWidth: 168,
                     maxWidth: 220,
                     textAlign: 'left',
@@ -442,7 +451,32 @@ const PortalAccount = () => {
                     background: active ? 'rgba(74,222,128,0.08)' : undefined,
                   }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{card.title}</div>
+                  {(card.canDelete || card.canDisconnect) ? (
+                    <button
+                      type="button"
+                      className="portal-btn portal-btn-ghost"
+                      style={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 8,
+                        padding: '1px 8px',
+                        fontSize: 12,
+                        lineHeight: 1.4,
+                        zIndex: 2,
+                      }}
+                      disabled={disconnectBusy === card.platform}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (card.canDelete) onDeleteBook(card)
+                        else onDisconnect(card.platform)
+                      }}
+                    >
+                      {disconnectBusy === card.platform
+                        ? (card.canDelete ? '删除中…' : '断开中…')
+                        : (card.canDelete ? '删除' : '断开')}
+                    </button>
+                  ) : null}
+                  <div style={{ fontWeight: 700, fontSize: 14, paddingRight: 40 }}>{card.title}</div>
                   <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 6 }}>
                     号码: {card.accountId}
                   </div>
@@ -450,49 +484,7 @@ const PortalAccount = () => {
                     {card.balance != null ? `$ ${fmtMoney(card.balance)}` : '—'}
                     {card.currency ? ` ${card.currency}` : ''}
                   </div>
-                  {card.canDelete ? (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="portal-btn portal-btn-ghost"
-                      style={{ marginTop: 8, padding: '2px 8px', fontSize: 12, display: 'inline-block' }}
-                      disabled={disconnectBusy === card.platform}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDeleteBook(card)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.stopPropagation()
-                          onDeleteBook(card)
-                        }
-                      }}
-                    >
-                      {disconnectBusy === card.platform ? '删除中…' : '删除'}
-                    </span>
-                  ) : null}
-                  {card.canDisconnect ? (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="portal-btn portal-btn-ghost"
-                      style={{ marginTop: 8, padding: '2px 8px', fontSize: 12, display: 'inline-block' }}
-                      disabled={disconnectBusy === card.platform}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDisconnect(card.platform)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.stopPropagation()
-                          onDisconnect(card.platform)
-                        }
-                      }}
-                    >
-                      {disconnectBusy === card.platform ? '断开中…' : '断开'}
-                    </span>
-                  ) : null}
-                </button>
+                </div>
               )
             })}
             <button

@@ -196,7 +196,7 @@ class PortalTrade(StoreBase):
 
 
 class PortalBookAccount(StoreBase):
-    """管理员新增的账面账户卡（市场 + 本金）；与 legacy crypto_account/us_account 并存。"""
+    """管理员新增的账面账户卡（市场 + 本金）；可绑定普通用户 owner_user_id。"""
 
     __tablename__ = "portal_book_accounts"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -204,7 +204,11 @@ class PortalBookAccount(StoreBase):
     account_no = Column(String(64), nullable=False, default="")
     initial_capital = Column(Float, nullable=False, default=0.0)
     label = Column(String(64), nullable=False, default="")
+    owner_user_id = Column(Integer, nullable=True, index=True)  # 绑定的普通用户
     created_at = Column(DateTime, nullable=False, default=datetime.now)
+
+
+BOOK_USER_DEFAULT_PASSWORD = "123456"
 
 
 # 搜索占位目录（后期换真数据）
@@ -259,11 +263,34 @@ def _ensure_watch_config_columns(engine) -> None:
             conn.execute(text(sql))
 
 
+def _ensure_book_account_columns(engine) -> None:
+    """已有 portal_book_accounts 时补 owner_user_id。"""
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        try:
+            rows = conn.execute(text("SHOW COLUMNS FROM portal_book_accounts")).fetchall()
+        except Exception:
+            return
+        existing = {str(r[0]) for r in rows}
+        if "owner_user_id" not in existing:
+            conn.execute(
+                text(
+                    "ALTER TABLE portal_book_accounts "
+                    "ADD COLUMN owner_user_id INT NULL"
+                )
+            )
+
+
 def _session():
     manager = DatabaseManager()
     StoreBase.metadata.create_all(manager.engine, checkfirst=True)
     try:
         _ensure_watch_config_columns(manager.engine)
+    except Exception:
+        pass
+    try:
+        _ensure_book_account_columns(manager.engine)
     except Exception:
         pass
     return manager.get_session()
@@ -442,15 +469,14 @@ def list_dynamic_book_platform_keys() -> List[str]:
         session.close()
 
 
-def list_portal_book_accounts() -> List[Dict[str, Any]]:
-    """动态账面账户列表（含权益）。"""
+def list_portal_book_accounts(*, owner_user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """动态账面账户列表（含权益）。owner_user_id 非空时只返回该用户绑定账户。"""
     session = _session()
     try:
-        rows = (
-            session.query(PortalBookAccount)
-            .order_by(PortalBookAccount.id.asc())
-            .all()
-        )
+        q = session.query(PortalBookAccount).order_by(PortalBookAccount.id.asc())
+        if owner_user_id is not None:
+            q = q.filter(PortalBookAccount.owner_user_id == int(owner_user_id))
+        rows = q.all()
         out: List[Dict[str, Any]] = []
         for r in rows:
             plat = book_platform_key(r.id)
@@ -481,12 +507,76 @@ def list_portal_book_accounts() -> List[Dict[str, Any]]:
                     "initial_capital": init_cap,
                     "equity": round(init_cap + pnl, 4),
                     "label": r.label or "",
+                    "owner_user_id": int(r.owner_user_id) if r.owner_user_id is not None else None,
                     "book": True,
                 }
             )
         return out
     finally:
         session.close()
+
+
+def list_owned_book_platform_keys(user_id: int) -> List[str]:
+    return [a["platform"] for a in list_portal_book_accounts(owner_user_id=int(user_id))]
+
+
+def user_owns_book_platform(user_id: int, platform: str) -> bool:
+    plat = (platform or "").strip().lower()
+    ba_id = parse_book_account_id(plat)
+    if ba_id is None:
+        return False
+    session = _session()
+    try:
+        row = (
+            session.query(PortalBookAccount)
+            .filter(
+                PortalBookAccount.id == ba_id,
+                PortalBookAccount.owner_user_id == int(user_id),
+            )
+            .first()
+        )
+        return row is not None
+    finally:
+        session.close()
+
+
+def normalize_phone_username(phone: Any) -> str:
+    s = str(phone or "").strip().replace(" ", "").replace("-", "")
+    if not s:
+        raise ValueError("手机号不能为空")
+    if not s.isdigit() or len(s) < 6 or len(s) > 20:
+        raise ValueError("手机号格式无效")
+    return s
+
+
+def ensure_portal_user_by_phone(phone: Any) -> Dict[str, Any]:
+    """按手机号确保普通用户存在；新建时密码为 123456。"""
+    from backpack_quant_trading.api.deps import get_password_hash
+
+    username = normalize_phone_username(phone)
+    db = DatabaseManager()
+    existing = db.get_user_by_username(username)
+    if existing:
+        return {
+            "ok": True,
+            "created": False,
+            "user_id": int(existing.id),
+            "username": existing.username,
+            "role": existing.role or "user",
+        }
+    user = db.create_user(
+        username,
+        get_password_hash(BOOK_USER_DEFAULT_PASSWORD),
+        role="user",
+    )
+    return {
+        "ok": True,
+        "created": True,
+        "user_id": int(user.id),
+        "username": user.username,
+        "role": "user",
+        "default_password": BOOK_USER_DEFAULT_PASSWORD,
+    }
 
 
 def legacy_platform_for_market(market: str) -> str:
@@ -650,10 +740,18 @@ def delete_book_account(account_ref: Any) -> Dict[str, Any]:
         session.close()
 
 
-def create_book_account(market: str, capital_raw: Any, *, label: str = "") -> Dict[str, Any]:
-    """新增一张账面账户；并把对应市场 legacy 成交按本金比例复制过来（源账户不变）。"""
+def create_book_account(
+    market: str,
+    capital_raw: Any,
+    *,
+    phone: Any = "",
+    label: str = "",
+) -> Dict[str, Any]:
+    """新增账面账户，并按手机号创建/绑定普通用户（默认密码 123456）；复制 legacy 成交。"""
     mkt = normalize_book_market(market)
     capital = parse_capital_amount(capital_raw)
+    user_info = ensure_portal_user_by_phone(phone)
+    owner_id = int(user_info["user_id"])
     session = _session()
     try:
         row = PortalBookAccount(
@@ -661,11 +759,12 @@ def create_book_account(market: str, capital_raw: Any, *, label: str = "") -> Di
             account_no="",
             initial_capital=float(capital),
             label=(label or "").strip()[:64],
+            owner_user_id=owner_id,
         )
         session.add(row)
         session.flush()
         dig = hashlib.sha256(
-            f"portal-book-ba:{row.id}:{mkt}:{capital}".encode("utf-8")
+            f"portal-book-ba:{row.id}:{mkt}:{capital}:{owner_id}".encode("utf-8")
         ).hexdigest()
         row.account_no = f"0x{dig[:4]}…{dig[-4:]}"
         session.commit()
@@ -697,6 +796,10 @@ def create_book_account(market: str, capital_raw: Any, *, label: str = "") -> Di
         "equity": equity,
         "label": label or "",
         "clone": clone_info,
+        "owner_user_id": owner_id,
+        "login_username": user_info.get("username"),
+        "user_created": bool(user_info.get("created")),
+        "default_password": BOOK_USER_DEFAULT_PASSWORD if user_info.get("created") else None,
     }
 
 

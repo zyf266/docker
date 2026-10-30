@@ -297,48 +297,65 @@ def _fetch_one_exchange_binding(r: Dict[str, Any]) -> tuple:
     return item, pos_out, equity_ok
 
 
-def _build_book_accounts(user_id: int) -> tuple:
-    """本地账面账户（快路径，不访问交易所）。"""
+def _build_book_accounts(
+    user_id: int,
+    *,
+    include_legacy: bool = True,
+    owner_user_id: Optional[int] = None,
+) -> tuple:
+    """本地账面账户（快路径，不访问交易所）。
+
+    - include_legacy：是否含默认 crypto/us
+    - owner_user_id：非空时只返回该用户绑定的 ba_*（普通用户端）
+    """
     book_accounts: List[Dict[str, Any]] = []
     positions: List[Dict[str, Any]] = []
     total = 0.0
+    if include_legacy and owner_user_id is None:
+        try:
+            store.maybe_restore_scaled_legacy_books()
+        except Exception as exc:
+            logger.warning("legacy 账面恢复检查失败: %s", exc)
+        try:
+            store.ensure_empty_dynamic_book_trades_cloned()
+        except Exception as exc:
+            logger.warning("动态账面成交补齐失败: %s", exc)
+        for book_plat, market in (
+            (store.BOOK_PLATFORM_CRYPTO, "crypto"),
+            (store.BOOK_PLATFORM_US, "us"),
+        ):
+            init_cap = store.get_book_initial_capital(book_plat)
+            eq = store.book_account_equity(user_id, book_plat)
+            book_accounts.append(
+                {
+                    "platform": book_plat,
+                    "platform_label": store.BOOK_PLATFORM_LABELS.get(book_plat, book_plat),
+                    "title": store.BOOK_MARKET_TITLES.get(market, book_plat),
+                    "market": market,
+                    "label": "账面账户",
+                    "status": "ok",
+                    "equity": eq,
+                    "balance": eq,
+                    "currency": "USD",
+                    "address_mask": "",
+                    "api_key_mask": "",
+                    "account_id": _book_display_id(book_plat),
+                    "demo": False,
+                    "book": True,
+                    "initial_capital": init_cap,
+                    "error": "",
+                }
+            )
+            total += float(eq or 0)
     try:
-        store.maybe_restore_scaled_legacy_books()
-    except Exception as exc:
-        logger.warning("legacy 账面恢复检查失败: %s", exc)
-    try:
-        store.ensure_empty_dynamic_book_trades_cloned()
-    except Exception as exc:
-        logger.warning("动态账面成交补齐失败: %s", exc)
-    for book_plat, market in (
-        (store.BOOK_PLATFORM_CRYPTO, "crypto"),
-        (store.BOOK_PLATFORM_US, "us"),
-    ):
-        init_cap = store.get_book_initial_capital(book_plat)
-        eq = store.book_account_equity(user_id, book_plat)
-        book_accounts.append(
-            {
-                "platform": book_plat,
-                "platform_label": store.BOOK_PLATFORM_LABELS.get(book_plat, book_plat),
-                "title": store.BOOK_MARKET_TITLES.get(market, book_plat),
-                "market": market,
-                "label": "账面账户",
-                "status": "ok",
-                "equity": eq,
-                "balance": eq,
-                "currency": "USD",
-                "address_mask": "",
-                "api_key_mask": "",
-                "account_id": _book_display_id(book_plat),
-                "demo": False,
-                "book": True,
-                "initial_capital": init_cap,
-                "error": "",
-            }
+        dyn_rows = (
+            store.list_portal_book_accounts(owner_user_id=owner_user_id)
+            if owner_user_id is not None
+            else store.list_portal_book_accounts()
         )
-        total += float(eq or 0)
-    try:
-        for dyn in store.list_portal_book_accounts():
+        owned_plats: List[str] = []
+        for dyn in dyn_rows:
+            owned_plats.append(dyn["platform"])
             book_accounts.append(
                 {
                     "platform": dyn["platform"],
@@ -346,6 +363,7 @@ def _build_book_accounts(user_id: int) -> tuple:
                     "title": dyn.get("title") or dyn["platform"],
                     "market": dyn.get("market") or "crypto",
                     "book_account_id": dyn.get("id"),
+                    "owner_user_id": dyn.get("owner_user_id"),
                     "label": dyn.get("label") or "账面账户",
                     "status": "ok",
                     "equity": dyn.get("equity"),
@@ -361,21 +379,34 @@ def _build_book_accounts(user_id: int) -> tuple:
                 }
             )
             total += float(dyn.get("equity") or 0)
+        if owner_user_id is not None:
+            for plat in owned_plats:
+                try:
+                    positions.extend(store.list_book_open_positions(plat))
+                except Exception as exc:
+                    logger.warning("账面持仓还原失败 platform=%s: %s", plat, exc)
+        else:
+            try:
+                positions.extend(store.list_book_open_positions(""))
+            except Exception as exc:
+                logger.warning("账面持仓还原失败: %s", exc)
     except Exception as exc:
         logger.warning("动态账面账户列表失败: %s", exc)
-    try:
-        positions.extend(store.list_book_open_positions(""))
-    except Exception as exc:
-        logger.warning("账面持仓还原失败: %s", exc)
     return book_accounts, positions, total
 
 
-def fetch_balances(user_id: int, *, include_book: bool = False) -> Dict[str, Any]:
-    """登录后拉已绑定交易所余额/持仓；账面加密/美股仅管理员可见。
+def fetch_balances(
+    user_id: int,
+    *,
+    include_book: bool = False,
+    book_owner_user_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """登录后拉已绑定交易所余额/持仓。
 
-    账面先算（本地秒回）；交易所并行拉取且单平台限时，避免拖垮整页。
+    - include_book + book_owner_user_id=None：管理员全量账面（含 legacy）
+    - include_book + book_owner_user_id=uid：仅该用户绑定的 ba_*
     """
-    if include_book:
+    if include_book and book_owner_user_id is None:
         try:
             store.ensure_book_account_csv_trades(user_id)
         except Exception as exc:
@@ -388,7 +419,11 @@ def fetch_balances(user_id: int, *, include_book: bool = False) -> Dict[str, Any
 
     # 1) 账面优先：本地库，不依赖外网
     if include_book:
-        book_accounts, book_pos, book_eq = _build_book_accounts(user_id)
+        book_accounts, book_pos, book_eq = _build_book_accounts(
+            user_id,
+            include_legacy=book_owner_user_id is None,
+            owner_user_id=book_owner_user_id,
+        )
         accounts.extend(book_accounts)
         positions.extend(book_pos)
         total_equity += book_eq
