@@ -8,6 +8,7 @@ import {
   saveWatchConfig,
   searchBinanceSymbols,
 } from '../../api/portal'
+import { isAdminRole, readStoredUser } from '../../utils/authRole'
 import PortalConnectModal from './PortalConnectModal'
 
 const STRATEGY_OPTIONS = [
@@ -125,6 +126,15 @@ const StatusCell = ({ row, onConnect }) => {
     )
   }
   if (st === 'connected') {
+    if (!onConnect) {
+      return (
+        <span className="qt-pill qt-pill-live">
+          <span className="qt-status-dot" />
+          connected
+          {exTip ? ` · ${exTip}` : ''}
+        </span>
+      )
+    }
     return (
       <button type="button" className="qt-status-btn" onClick={() => onConnect?.(row)} title="已连接，可重新绑定">
         <span className="qt-pill qt-pill-live">
@@ -136,6 +146,14 @@ const StatusCell = ({ row, onConnect }) => {
     )
   }
   if (st === 'living' || st === 'watching') {
+    if (!onConnect) {
+      return (
+        <span className="qt-pill qt-pill-live">
+          <span className="qt-status-dot" />
+          {st === 'watching' ? 'watching' : 'living'}
+        </span>
+      )
+    }
     return (
       <button type="button" className="qt-status-btn" onClick={() => onConnect?.(row)} title="点击立即连接交易所">
         <span className="qt-pill qt-pill-live">
@@ -221,6 +239,7 @@ const PortalWatchlist = ({ embedded = false }) => {
 
   const [connectOpen, setConnectOpen] = useState(false)
   const [connectSymbols, setConnectSymbols] = useState([])
+  const isAdmin = useMemo(() => isAdminRole(readStoredUser()?.role), [])
 
   const applyList = (res) => {
     const next = {
@@ -613,9 +632,11 @@ const PortalWatchlist = ({ embedded = false }) => {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="portal-btn portal-btn-primary" onClick={() => setAddOpen(true)}>
-              + 添加标的
-            </button>
+            {isAdmin ? (
+              <button type="button" className="portal-btn portal-btn-primary" onClick={() => setAddOpen(true)}>
+                + 添加标的
+              </button>
+            ) : null}
             <Link className="portal-btn portal-btn-cyan" to="/portal/ma-cards">多卡片均线</Link>
           </div>
         </div>
@@ -630,9 +651,11 @@ const PortalWatchlist = ({ embedded = false }) => {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className="portal-btn portal-btn-primary" onClick={() => setAddOpen(true)}>
-              + 添加标的
-            </button>
+            {isAdmin ? (
+              <button type="button" className="portal-btn portal-btn-primary" onClick={() => setAddOpen(true)}>
+                + 添加标的
+              </button>
+            ) : null}
             <Link className="portal-btn portal-btn-cyan" to="/portal/ma-cards">多卡片均线视图</Link>
           </div>
         </div>
@@ -664,20 +687,24 @@ const PortalWatchlist = ({ embedded = false }) => {
           >
             {metricsLoading ? '指标刷新中…' : '刷新指标'}
           </button>
-          <button
-            type="button"
-            className="portal-btn portal-btn-primary"
-            onClick={openStatusBatch}
-          >
-            状态配置
-          </button>
-          <button
-            type="button"
-            className="portal-btn portal-btn-primary"
-            onClick={openTradeBatch}
-          >
-            交易配置
-          </button>
+          {isAdmin ? (
+            <>
+              <button
+                type="button"
+                className="portal-btn portal-btn-primary"
+                onClick={openStatusBatch}
+              >
+                状态配置
+              </button>
+              <button
+                type="button"
+                className="portal-btn portal-btn-primary"
+                onClick={openTradeBatch}
+              >
+                交易配置
+              </button>
+            </>
+          ) : null}
           <span style={{ marginLeft: 'auto', color: 'var(--qt-muted)', fontSize: 12 }}>
             <span className="qt-pill qt-pill-live">●</span>
             {metricsLoading
@@ -713,7 +740,11 @@ const PortalWatchlist = ({ embedded = false }) => {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="qt-empty">
-                    {loading ? '加载中…' : '暂无标的，点击「添加标的」选择美股或币安交易对'}
+                    {loading
+                      ? '加载中…'
+                      : (isAdmin
+                        ? '暂无标的，点击「添加标的」选择美股或币安交易对'
+                        : '暂无标的')}
                   </td>
                 </tr>
               ) : (
@@ -739,24 +770,30 @@ const PortalWatchlist = ({ embedded = false }) => {
                     <td><SignalCell value={row.signal_4h} /></td>
                     <td><Strength on={row.mid_on} label="中强" /></td>
                     <td><Strength on={row.long_on} label="长强" /></td>
-                    <td><StatusCell row={row} onConnect={openConnect} /></td>
+                    <td><StatusCell row={row} onConnect={isAdmin ? openConnect : undefined} /></td>
                     <td>
-                      <button
-                        type="button"
-                        className="portal-btn portal-btn-ghost"
-                        style={{ padding: '4px 10px' }}
-                        onClick={() => openTradeSingle(row)}
-                      >
-                        交易配置
-                      </button>
-                      <button
-                        type="button"
-                        className="portal-btn portal-btn-ghost"
-                        style={{ padding: '4px 10px', marginLeft: 6 }}
-                        onClick={() => onRemove(row.symbol)}
-                      >
-                        移除
-                      </button>
+                      {isAdmin ? (
+                        <>
+                          <button
+                            type="button"
+                            className="portal-btn portal-btn-ghost"
+                            style={{ padding: '4px 10px' }}
+                            onClick={() => openTradeSingle(row)}
+                          >
+                            交易配置
+                          </button>
+                          <button
+                            type="button"
+                            className="portal-btn portal-btn-ghost"
+                            style={{ padding: '4px 10px', marginLeft: 6 }}
+                            onClick={() => onRemove(row.symbol)}
+                          >
+                            移除
+                          </button>
+                        </>
+                      ) : (
+                        <span style={{ color: 'var(--qt-muted)' }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))

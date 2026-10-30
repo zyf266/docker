@@ -335,7 +335,7 @@ const PortalAccount = () => {
           market,
           bookAccountId: a.book_account_id,
           // 后来「连接」新增的账面卡可删；默认 crypto/us 保留
-          canDelete: !!isDyn,
+          canDelete: isAdmin && !!isDyn,
           sortKey:
             a.platform === 'crypto_account'
               ? 0
@@ -357,7 +357,7 @@ const PortalAccount = () => {
       })
     }
     return cards
-  }, [allOkAccounts, exchangeAccounts])
+  }, [allOkAccounts, exchangeAccounts, isAdmin])
 
   const okAccounts = useMemo(
     () => allOkAccounts.filter((a) => a.platform === viewPlatform),
@@ -487,14 +487,16 @@ const PortalAccount = () => {
                 </div>
               )
             })}
-            <button
-              type="button"
-              className="portal-btn portal-btn-primary"
-              style={{ alignSelf: 'center', padding: '10px 14px' }}
-              onClick={() => setConnectOpen(true)}
-            >
-              添加账户
-            </button>
+            {isAdmin ? (
+              <button
+                type="button"
+                className="portal-btn portal-btn-primary"
+                style={{ alignSelf: 'center', padding: '10px 14px' }}
+                onClick={() => setConnectOpen(true)}
+              >
+                添加账户
+              </button>
+            ) : null}
           </div>
           <p className="qt-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 10 }}>
             {hasLiveOrBook ? (

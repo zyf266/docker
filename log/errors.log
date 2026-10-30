@@ -13882,3 +13882,16 @@ RuntimeError: Cannot run the event loop while another loop is running
 2026-10-30 16:53:45 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
 2026-10-30 16:55:00 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
 2026-10-30 16:56:11 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:57:21 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:58:28 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:59:38 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:00:47 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:01:56 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:03:04 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:04:10 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:05:22 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:06:47 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:08:04 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:09:12 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:10:20 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 17:11:27 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}

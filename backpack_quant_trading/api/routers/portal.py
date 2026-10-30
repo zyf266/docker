@@ -30,6 +30,36 @@ def _include_book(user: dict) -> bool:
         return False
 
 
+# 普通用户观察库只读展示此管理员账号的配置（可用环境变量覆盖）
+PORTAL_WATCHLIST_TEMPLATE_USER = (os.environ.get("PORTAL_WATCHLIST_TEMPLATE_USER") or "john666").strip()
+
+
+def _watchlist_owner_id(user: dict) -> int:
+    """管理员读自己的观察库；普通用户读模板管理员（默认 john666）的配置。"""
+    if _is_admin(user):
+        return int(user["id"])
+    from backpack_quant_trading.database.models import DatabaseManager
+
+    db = DatabaseManager()
+    tpl = db.get_user_by_username(PORTAL_WATCHLIST_TEMPLATE_USER)
+    if tpl:
+        return int(tpl.id)
+    # 兜底：任一管理员
+    for name in (PORTAL_WATCHLIST_TEMPLATE_USER, "john666", "zyf"):
+        u = db.get_user_by_username(name)
+        if u and is_admin_role(getattr(u, "role", None)):
+            return int(u.id)
+    raise HTTPException(
+        status_code=500,
+        detail=f"未找到观察库模板用户「{PORTAL_WATCHLIST_TEMPLATE_USER}」，请先创建该管理员账号",
+    )
+
+
+def _require_watchlist_write(user: dict) -> None:
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="普通用户仅可查看观察库，不可修改")
+
+
 def _book_owner_filter(user: dict) -> Optional[int]:
     """传给 fetch_balances：管理员 None=全量；普通用户=自己的 user_id。"""
     if _is_admin(user):
@@ -152,14 +182,19 @@ def get_watchlist(
     user: dict = Depends(require_user),
 ):
     try:
+        owner_id = _watchlist_owner_id(user)
         return {
             "ok": True,
+            "readonly": not _is_admin(user),
+            "template_user": None if _is_admin(user) else PORTAL_WATCHLIST_TEMPLATE_USER,
             **watchlist.list_watchlist_board(
-                user["id"],
+                owner_id,
                 with_metrics=bool(metrics),
                 force=bool(force) and bool(metrics),
             ),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"观察库加载失败: {e}") from e
 
@@ -175,6 +210,7 @@ def watchlist_binance_symbols(
 
 @router.post("/watchlist")
 def post_watchlist(body: WatchAddIn, user: dict = Depends(require_user)):
+    _require_watchlist_write(user)
     try:
         item = watchlist.add_watch_symbol(user["id"], body.symbol, body.name, body.market)
     except ValueError as e:
@@ -184,6 +220,7 @@ def post_watchlist(body: WatchAddIn, user: dict = Depends(require_user)):
 
 @router.delete("/watchlist/{symbol}")
 def delete_watchlist(symbol: str, user: dict = Depends(require_user)):
+    _require_watchlist_write(user)
     # 兼容加密 BTCUSDT 与美股 NVDA
     ok = store.remove_favorite(user["id"], symbol)
     if not ok:
@@ -193,6 +230,7 @@ def delete_watchlist(symbol: str, user: dict = Depends(require_user)):
 
 @router.post("/watchlist/config")
 def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user)):
+    _require_watchlist_write(user)
     try:
         kind = (body.config_kind or "").strip().lower()
         gates_only = bool(body.gates_only) or kind == "status"
