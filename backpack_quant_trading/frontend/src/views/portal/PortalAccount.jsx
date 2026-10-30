@@ -260,7 +260,7 @@ const PortalAccount = () => {
         cards.push({
           platform: a.platform,
           title: a.platform === 'crypto_account' ? 'Binance Crypto' : 'Binance 美股',
-          accountId: a.account_id || (a.platform === 'crypto_account' ? 'crypto' : 'us'),
+          accountId: a.account_id || a.address_mask || a.platform,
           balance: a.equity,
           currency: a.currency || 'USD',
         })
@@ -340,9 +340,7 @@ const PortalAccount = () => {
     <div>
       <div className="qt-hero">
         <div>
-          <p className="qt-kicker">LIVE ACCOUNT</p>
-          <h1 className="qt-title">AI 实盘主账户</h1>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'stretch', marginTop: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'stretch' }}>
             {accountCards.map((card) => {
               const active = viewPlatform === card.platform
               return (

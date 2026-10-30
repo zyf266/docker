@@ -1,138 +1,124 @@
 {
-  "updated_at": "2026-10-29 05:00:00",
+  "updated_at": "2026-10-30 05:00:00",
   "prices": {
     "NVDA": {
       "quote_symbol": "NVDA",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 216.0,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 213.66
     },
     "INTC": {
       "quote_symbol": "INTC",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 90.47,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 92.07
     },
     "GOOGL": {
       "quote_symbol": "GOOGL",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 316.8,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 283.82
     },
     "MSFT": {
       "quote_symbol": "MSFT",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 532.6,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 530.14
     },
     "MU": {
       "quote_symbol": "MU",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 903.7,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 934.27
     },
     "MRVL": {
       "quote_symbol": "MRVL",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 233.78,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 218.34
     },
     "CRDO": {
       "quote_symbol": "CRDO",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 151.15,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 165.29
     },
     "SNDK": {
       "quote_symbol": "SNDK",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 1255.58,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 1330.05
     },
     "IBM": {
       "quote_symbol": "IBM",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 253.44,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 258.28
     },
     "NOK": {
       "quote_symbol": "NOK",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 8.64,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 9.31
     },
     "RKLB": {
       "quote_symbol": "RKLB",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 53.82,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 59.1
     },
     "CRCL": {
       "quote_symbol": "CRCL",
       "currency": "USD",
       "source": "yahoo",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 79.84,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 79.99
     },
     "ETH": {
       "quote_symbol": "ETH-USD",
       "currency": "USD",
       "source": "hyperliquid",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 2305.05,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 2257.45
     },
     "HYPE": {
       "quote_symbol": "HYPE-USD",
       "currency": "USD",
       "source": "hyperliquid",
-      "fetched_at": "2026-10-27 05:00:00",
-      "price": 77.5855,
-      "stale": true
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 92.7225
     },
     "603986": {
       "quote_symbol": "603986.SH",
       "currency": "CNY",
-      "source": "sina",
-      "fetched_at": "2026-10-29 05:00:00",
-      "price": 289.88
+      "source": "eastmoney",
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 275.99
     },
     "688146": {
       "quote_symbol": "688146.SH",
       "currency": "CNY",
-      "source": "sina",
-      "fetched_at": "2026-10-29 05:00:00",
-      "price": 142.6
+      "source": "eastmoney",
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 135.0
     },
     "300308": {
       "quote_symbol": "300308.SZ",
       "currency": "CNY",
-      "source": "sina",
-      "fetched_at": "2026-10-29 05:00:00",
-      "price": 636.3
+      "source": "yahoo",
+      "fetched_at": "2026-10-30 05:00:00",
+      "price": 582.05
     }
   }
 }

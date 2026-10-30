@@ -327,7 +327,7 @@ def fetch_balances(user_id: int) -> Dict[str, Any]:
                 "currency": "USD",
                 "address_mask": "",
                 "api_key_mask": "",
-                "account_id": "crypto" if book_plat == store.BOOK_PLATFORM_CRYPTO else "us",
+                "account_id": _book_display_id(book_plat),
                 "demo": False,
                 "book": True,
                 "initial_capital": init_cap,
@@ -464,6 +464,12 @@ def list_bindings(user_id: int) -> List[Dict[str, Any]]:
             ),
         })
     return out
+
+
+def _book_display_id(book_plat: str) -> str:
+    """账面账户展示用 id：与 Hype 地址掩码同风格，按平台稳定生成。"""
+    dig = hashlib.sha256(f"portal-book-id:{book_plat}".encode("utf-8")).hexdigest()
+    return f"0x{dig[:4]}…{dig[-4:]}"
 
 
 def _mask_addr(addr: str) -> str:
