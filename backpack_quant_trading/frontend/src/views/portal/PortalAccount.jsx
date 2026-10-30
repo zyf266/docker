@@ -173,15 +173,15 @@ const PortalAccount = () => {
     return undefined
   }, [])
 
-  // 等账户就绪后再拉成交/净值，避免与余额/观察库抢首屏带宽
+  // 成交/净值不绑死余额 loading：账面接口本地秒回，避免被交易所卡住
   useEffect(() => {
-    if (!viewPlatform || loading) return undefined
-    const t = window.setTimeout(() => { loadTrades() }, 200)
+    if (!viewPlatform) return undefined
+    const t = window.setTimeout(() => { loadTrades() }, 80)
     return () => window.clearTimeout(t)
-  }, [viewPlatform, loading, loadTrades])
+  }, [viewPlatform, loadTrades])
 
   useEffect(() => {
-    if (!viewPlatform || loading) return undefined
+    if (!viewPlatform) return undefined
     const t = window.setTimeout(() => {
       getPortalTrades({ platform: viewPlatform })
         .then((res) => {
@@ -192,9 +192,9 @@ const PortalAccount = () => {
           })
         })
         .catch(() => {})
-    }, 400)
+    }, 120)
     return () => window.clearTimeout(t)
-  }, [viewPlatform, loading])
+  }, [viewPlatform])
 
   const loadCurve = useCallback(async () => {
     if (!viewPlatform) {
@@ -218,10 +218,10 @@ const PortalAccount = () => {
   }, [viewPlatform, curveDays])
 
   useEffect(() => {
-    if (!viewPlatform || loading) return undefined
-    const t = window.setTimeout(() => { loadCurve() }, 350)
+    if (!viewPlatform) return undefined
+    const t = window.setTimeout(() => { loadCurve() }, 100)
     return () => window.clearTimeout(t)
-  }, [viewPlatform, loading, loadCurve])
+  }, [viewPlatform, loadCurve])
 
   useEffect(() => {
     const onCap = () => {
@@ -569,71 +569,69 @@ const PortalAccount = () => {
       </div>
 
       <section className="qt-card" style={{ marginTop: 16 }}>
-        <PortalWatchlist embedded />
-      </section>
-
-      <section className="qt-card" style={{ marginTop: 16 }}>
         <strong>当前持仓 ({positions.length})</strong>
-        <div className="qt-pos-list">
-          {positions.length === 0 ? (
-            <p className="qt-empty" style={{ margin: '12px 0' }}>
-              {isBookPlatform(viewPlatform)
-                ? '暂无持仓（TV 开仓信号写入后显示）'
-                : (snap.connected || isExchangePlatform(viewPlatform)
-                  ? '暂无持仓'
-                  : '添加账户后显示持仓')}
-            </p>
-          ) : (
-            positions.map((row) => {
-              const sideLabel = row.side === 'BUY' || row.side === 'Long'
-                ? 'Long'
-                : row.side === 'SELL' || row.side === 'Short'
-                  ? 'Short'
-                  : (row.side || '—')
-              const actionLabel = row.action === 'close' || row.action === '平仓'
-                ? '平仓'
-                : '开仓'
-              return (
-                <div className="qt-pos-row" key={`${row.platform}-${row.symbol}-${row.side}-${row.opened_at || ''}`}>
-                  <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: '6px 12px',
-                    minWidth: 0,
-                    width: '100%',
-                  }}
-                  >
-                    <strong>{row.symbol || '—'}</strong>
-                    <span className={`qt-pill ${sideLabel === 'Long' ? 'qt-pill-long' : 'qt-pill-short'}`}>
-                      {sideLabel}
-                    </span>
-                    <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>{actionLabel}</span>
-                    <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
-                      仓位 {row.margin != null && Number.isFinite(Number(row.margin))
-                        ? `$ ${fmtMoney(row.margin)}`
-                        : '—'}
-                    </span>
-                    <span style={{ color: 'var(--qt-muted)', fontSize: 12 }}>
-                      开仓价 {row.entry_price != null && Number.isFinite(Number(row.entry_price))
-                        ? fmtMoney(row.entry_price)
-                        : '—'}
-                    </span>
-                    <span style={{ color: 'var(--qt-muted)', fontSize: 12, marginLeft: 'auto' }}>
-                      {row.opened_at || '—'}
-                    </span>
-                  </div>
-                </div>
-              )
-            })
-          )}
+        <div className="qt-table-wrap" style={{ marginTop: 12 }}>
+          <table className="qt-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>币种</th>
+                <th>方向</th>
+                <th>动作</th>
+                <th>仓位</th>
+                <th>开仓价</th>
+              </tr>
+            </thead>
+            <tbody>
+              {positions.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    {isBookPlatform(viewPlatform)
+                      ? '暂无持仓（TV 开仓信号写入后显示）'
+                      : (snap.connected || isExchangePlatform(viewPlatform)
+                        ? '暂无持仓'
+                        : '添加账户后显示持仓')}
+                  </td>
+                </tr>
+              ) : (
+                positions.map((row) => {
+                  const sideLabel = row.side === 'BUY' || row.side === 'Long'
+                    ? '多'
+                    : row.side === 'SELL' || row.side === 'Short'
+                      ? '空'
+                      : (row.side || '—')
+                  const actionLabel = row.action === 'close' || row.action === '平仓'
+                    ? '平仓'
+                    : '开仓'
+                  return (
+                    <tr key={`${row.platform}-${row.symbol}-${row.side}-${row.opened_at || ''}`}>
+                      <td>{row.opened_at || '—'}</td>
+                      <td>{row.symbol || '—'}</td>
+                      <td>{sideLabel}</td>
+                      <td>{actionLabel}</td>
+                      <td>
+                        {row.margin != null && Number.isFinite(Number(row.margin))
+                          ? `$ ${fmtMoney(row.margin)}`
+                          : '—'}
+                      </td>
+                      <td>
+                        {row.entry_price != null && Number.isFinite(Number(row.entry_price))
+                          ? fmtMoney(row.entry_price)
+                          : '—'}
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 
       <section className="qt-card" style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <strong>交易记录清单</strong>
-          <button type="button" className="portal-btn portal-btn-ghost" onClick={() => { loadTrades(); loadBalances() }}>
+          <button type="button" className="portal-btn portal-btn-ghost" onClick={() => { loadTrades() }}>
             刷新
           </button>
         </div>
@@ -738,6 +736,10 @@ const PortalAccount = () => {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="qt-card" style={{ marginTop: 16 }}>
+        <PortalWatchlist embedded />
       </section>
 
       <PortalConnectModal

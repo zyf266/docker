@@ -17,19 +17,19 @@ export const removeWatchSymbol = (symbol) =>
 export const saveWatchConfig = (data) => request.post('/portal/watchlist/config', data)
 export const getExchangeBindings = () => request.get('/portal/exchange/bindings')
 export const getExchangeBalances = () =>
-  request.get('/portal/exchange/balances', { timeout: 45000 })
+  request.get('/portal/exchange/balances', { timeout: 25000 })
 export const connectExchange = (data) =>
   request.post('/portal/exchange/connect', data, { timeout: 45000 })
 export const disconnectExchange = (platform) =>
   request.delete(`/portal/exchange/bindings/${encodeURIComponent(platform)}`, { timeout: 30000 })
 export const getTvWebhookHint = () => request.get('/portal/tv-webhook/hint')
 export const getPortalTrades = (params = {}) =>
-  request.get('/portal/trades', { params, timeout: 30000 })
+  request.get('/portal/trades', { params, timeout: 20000 })
 export const getEquityCurve = (params = {}) =>
-  request.get('/portal/equity-curve', { params, timeout: 45000 })
-/** 新增账面账户（市场+本金），不改动已有账户 */
+  request.get('/portal/equity-curve', { params, timeout: 25000 })
+/** 新增账面账户（市场+本金），并复制对应市场历史成交 */
 export const createBookAccount = (data) =>
-  request.post('/portal/book-capital', data, { timeout: 60000 })
+  request.post('/portal/book-capital', data, { timeout: 90000 })
 /** @deprecated 使用 createBookAccount */
 export const scaleBookCapital = createBookAccount
 export const searchPortal = (q) => request.get('/portal/search', { params: { q } })

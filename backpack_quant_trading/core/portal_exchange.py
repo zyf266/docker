@@ -126,7 +126,7 @@ def _verify_okx(api_key: str, api_secret: str, passphrase: str, *, demo: bool = 
     }
     if demo:
         headers["x-simulated-trading"] = "1"
-    resp = requests.get(f"{host}{path}", headers=headers, timeout=20)
+    resp = requests.get(f"{host}{path}", headers=headers, timeout=8)
     data = {}
     try:
         data = resp.json()
@@ -177,7 +177,7 @@ def _okx_positions(api_key: str, api_secret: str, passphrase: str, *, demo: bool
     if demo:
         headers["x-simulated-trading"] = "1"
     try:
-        resp = requests.get(f"{host}{path}", headers=headers, timeout=20)
+        resp = requests.get(f"{host}{path}", headers=headers, timeout=8)
         data = resp.json()
     except Exception as exc:
         logger.warning("OKX positions 失败: %s", exc)
@@ -227,154 +227,229 @@ def _secrets_from_binding(cfg: Dict[str, Any]) -> Dict[str, str]:
     return secrets
 
 
+def _fetch_one_exchange_binding(r: Dict[str, Any]) -> tuple:
+    """单交易所余额；返回 (account_item, positions_list, equity_ok)。"""
+    plat = (r.get("platform") or "").lower()
+    cfg = r.get("config") or {}
+    item: Dict[str, Any] = {
+        "platform": plat,
+        "platform_label": PLATFORM_LABEL.get(plat, plat),
+        "label": (cfg.get("label") or "").strip(),
+        "status": "error",
+        "equity": None,
+        "balance": None,
+        "currency": "USD",
+        "address_mask": cfg.get("address_mask") or "",
+        "api_key_mask": cfg.get("api_key_mask") or "",
+        "account_id": cfg.get("address_mask") or cfg.get("api_key_mask") or plat,
+        "demo": bool(cfg.get("demo")),
+        "error": "",
+    }
+    pos_out: List[Dict[str, Any]] = []
+    equity_ok = 0.0
+    try:
+        secrets = _secrets_from_binding(cfg)
+        if plat == "hyperliquid":
+            pk = secrets.get("private_key") or ""
+            if not pk:
+                raise ValueError("缺少 Hyperliquid 私钥")
+            meta = _verify_hyperliquid(pk)
+            equity = float(meta.get("equity") or meta.get("balance") or 0)
+            mask = _mask_addr(meta.get("address") or cfg.get("address") or "")
+            item.update({
+                "status": "ok",
+                "equity": equity,
+                "balance": float(meta.get("balance") or 0),
+                "currency": meta.get("currency") or "USDC",
+                "address_mask": mask,
+                "account_id": mask or plat,
+            })
+            equity_ok = equity
+            for p in meta.get("positions") or []:
+                pos_out.append({**p, "platform": plat})
+        elif plat == "okx":
+            key = secrets.get("api_key") or ""
+            sec = secrets.get("api_secret") or ""
+            pwd = secrets.get("api_passphrase") or ""
+            if not key or not sec or not pwd:
+                raise ValueError("缺少 OKX 凭证")
+            meta = _verify_okx(key, sec, pwd, demo=bool(cfg.get("demo")))
+            equity = float(meta.get("equity") or 0)
+            key_mask = cfg.get("api_key_mask") or _mask_key(key)
+            item.update({
+                "status": "ok",
+                "equity": equity,
+                "balance": float(meta.get("balance") or equity),
+                "currency": meta.get("currency") or "USDT",
+                "api_key_mask": key_mask,
+                "account_id": key_mask or plat,
+            })
+            equity_ok = equity
+            for p in meta.get("positions") or []:
+                pos_out.append({**p, "platform": plat})
+        else:
+            item["error"] = "暂不支持查询该平台余额"
+    except Exception as exc:
+        logger.warning("拉取余额失败 platform=%s: %s", plat, exc)
+        item["error"] = str(exc)[:200]
+    if not item.get("account_id"):
+        item["account_id"] = item.get("address_mask") or item.get("api_key_mask") or plat
+    return item, pos_out, equity_ok
+
+
+def _build_book_accounts(user_id: int) -> tuple:
+    """本地账面账户（快路径，不访问交易所）。"""
+    book_accounts: List[Dict[str, Any]] = []
+    positions: List[Dict[str, Any]] = []
+    total = 0.0
+    try:
+        store.maybe_restore_scaled_legacy_books()
+    except Exception as exc:
+        logger.warning("legacy 账面恢复检查失败: %s", exc)
+    try:
+        store.ensure_empty_dynamic_book_trades_cloned()
+    except Exception as exc:
+        logger.warning("动态账面成交补齐失败: %s", exc)
+    for book_plat, market in (
+        (store.BOOK_PLATFORM_CRYPTO, "crypto"),
+        (store.BOOK_PLATFORM_US, "us"),
+    ):
+        init_cap = store.get_book_initial_capital(book_plat)
+        eq = store.book_account_equity(user_id, book_plat)
+        book_accounts.append(
+            {
+                "platform": book_plat,
+                "platform_label": store.BOOK_PLATFORM_LABELS.get(book_plat, book_plat),
+                "title": store.BOOK_MARKET_TITLES.get(market, book_plat),
+                "market": market,
+                "label": "账面账户",
+                "status": "ok",
+                "equity": eq,
+                "balance": eq,
+                "currency": "USD",
+                "address_mask": "",
+                "api_key_mask": "",
+                "account_id": _book_display_id(book_plat),
+                "demo": False,
+                "book": True,
+                "initial_capital": init_cap,
+                "error": "",
+            }
+        )
+        total += float(eq or 0)
+    try:
+        for dyn in store.list_portal_book_accounts():
+            book_accounts.append(
+                {
+                    "platform": dyn["platform"],
+                    "platform_label": dyn.get("platform_label") or dyn["platform"],
+                    "title": dyn.get("title") or dyn["platform"],
+                    "market": dyn.get("market") or "crypto",
+                    "book_account_id": dyn.get("id"),
+                    "label": dyn.get("label") or "账面账户",
+                    "status": "ok",
+                    "equity": dyn.get("equity"),
+                    "balance": dyn.get("equity"),
+                    "currency": "USD",
+                    "address_mask": "",
+                    "api_key_mask": "",
+                    "account_id": dyn.get("account_no") or dyn["platform"],
+                    "demo": False,
+                    "book": True,
+                    "initial_capital": dyn.get("initial_capital"),
+                    "error": "",
+                }
+            )
+            total += float(dyn.get("equity") or 0)
+    except Exception as exc:
+        logger.warning("动态账面账户列表失败: %s", exc)
+    try:
+        positions.extend(store.list_book_open_positions(""))
+    except Exception as exc:
+        logger.warning("账面持仓还原失败: %s", exc)
+    return book_accounts, positions, total
+
+
 def fetch_balances(user_id: int, *, include_book: bool = False) -> Dict[str, Any]:
-    """登录后拉已绑定交易所余额/持仓；账面加密/美股仅管理员可见。"""
+    """登录后拉已绑定交易所余额/持仓；账面加密/美股仅管理员可见。
+
+    账面先算（本地秒回）；交易所并行拉取且单平台限时，避免拖垮整页。
+    """
     if include_book:
         try:
             store.ensure_book_account_csv_trades(user_id)
         except Exception as exc:
             logger.warning("ensure book csv trades failed: %s", exc)
 
-    rows = store.list_exchange_bindings(user_id)
     accounts: List[Dict[str, Any]] = []
     positions: List[Dict[str, Any]] = []
     total_equity = 0.0
     exchange_equity = 0.0
 
-    for r in rows:
-        plat = (r.get("platform") or "").lower()
-        cfg = r.get("config") or {}
-        item: Dict[str, Any] = {
-            "platform": plat,
-            "platform_label": PLATFORM_LABEL.get(plat, plat),
-            "label": (cfg.get("label") or "").strip(),
-            "status": "error",
-            "equity": None,
-            "balance": None,
-            "currency": "USD",
-            "address_mask": cfg.get("address_mask") or "",
-            "api_key_mask": cfg.get("api_key_mask") or "",
-            "account_id": cfg.get("address_mask") or cfg.get("api_key_mask") or plat,
-            "demo": bool(cfg.get("demo")),
-            "error": "",
-        }
-        try:
-            secrets = _secrets_from_binding(cfg)
-            if plat == "hyperliquid":
-                pk = secrets.get("private_key") or ""
-                if not pk:
-                    raise ValueError("缺少 Hyperliquid 私钥")
-                meta = _verify_hyperliquid(pk)
-                equity = float(meta.get("equity") or meta.get("balance") or 0)
-                mask = _mask_addr(meta.get("address") or cfg.get("address") or "")
-                item.update({
-                    "status": "ok",
-                    "equity": equity,
-                    "balance": float(meta.get("balance") or 0),
-                    "currency": meta.get("currency") or "USDC",
-                    "address_mask": mask,
-                    "account_id": mask or plat,
-                })
-                total_equity += equity
-                exchange_equity += equity
-                for p in meta.get("positions") or []:
-                    positions.append({**p, "platform": plat})
-            elif plat == "okx":
-                key = secrets.get("api_key") or ""
-                sec = secrets.get("api_secret") or ""
-                pwd = secrets.get("api_passphrase") or ""
-                if not key or not sec or not pwd:
-                    raise ValueError("缺少 OKX 凭证")
-                meta = _verify_okx(key, sec, pwd, demo=bool(cfg.get("demo")))
-                equity = float(meta.get("equity") or 0)
-                key_mask = cfg.get("api_key_mask") or _mask_key(key)
-                item.update({
-                    "status": "ok",
-                    "equity": equity,
-                    "balance": float(meta.get("balance") or equity),
-                    "currency": meta.get("currency") or "USDT",
-                    "api_key_mask": key_mask,
-                    "account_id": key_mask or plat,
-                })
-                total_equity += equity
-                exchange_equity += equity
-                for p in meta.get("positions") or []:
-                    positions.append({**p, "platform": plat})
-            else:
-                item["error"] = "暂不支持查询该平台余额"
-        except Exception as exc:
-            logger.warning("拉取余额失败 platform=%s: %s", plat, exc)
-            item["error"] = str(exc)[:200]
-
-        if not item.get("account_id"):
-            item["account_id"] = item.get("address_mask") or item.get("api_key_mask") or plat
-        accounts.append(item)
-
-    # 账面账户仅管理员：legacy 加密/美股 + 动态 ba_*，排在交易所前面
+    # 1) 账面优先：本地库，不依赖外网
     if include_book:
-        try:
-            store.maybe_restore_scaled_legacy_books()
-        except Exception as exc:
-            logger.warning("legacy 账面恢复检查失败: %s", exc)
-        book_accounts: List[Dict[str, Any]] = []
-        for book_plat, market in (
-            (store.BOOK_PLATFORM_CRYPTO, "crypto"),
-            (store.BOOK_PLATFORM_US, "us"),
-        ):
-            init_cap = store.get_book_initial_capital(book_plat)
-            eq = store.book_account_equity(user_id, book_plat)
-            book_accounts.append(
-                {
-                    "platform": book_plat,
-                    "platform_label": store.BOOK_PLATFORM_LABELS.get(book_plat, book_plat),
-                    "title": store.BOOK_MARKET_TITLES.get(market, book_plat),
-                    "market": market,
-                    "label": "账面账户",
-                    "status": "ok",
-                    "equity": eq,
-                    "balance": eq,
+        book_accounts, book_pos, book_eq = _build_book_accounts(user_id)
+        accounts.extend(book_accounts)
+        positions.extend(book_pos)
+        total_equity += book_eq
+
+    # 2) 交易所并行（单平台最多 ~12s，整体不串行叠加）
+    rows = store.list_exchange_bindings(user_id)
+    if rows:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        from concurrent.futures import TimeoutError as FuturesTimeout
+
+        with ThreadPoolExecutor(max_workers=min(4, len(rows))) as pool:
+            futs = {pool.submit(_fetch_one_exchange_binding, r): r for r in rows}
+            pending = set(futs.keys())
+            try:
+                for fut in as_completed(futs, timeout=16):
+                    pending.discard(fut)
+                    r = futs[fut]
+                    plat = (r.get("platform") or "").lower()
+                    try:
+                        item, pos_out, eq = fut.result(timeout=1)
+                    except Exception as exc:
+                        logger.warning("交易所余额失败 platform=%s: %s", plat, exc)
+                        item = {
+                            "platform": plat,
+                            "platform_label": PLATFORM_LABEL.get(plat, plat),
+                            "label": "",
+                            "status": "error",
+                            "equity": None,
+                            "balance": None,
+                            "currency": "USD",
+                            "address_mask": "",
+                            "api_key_mask": "",
+                            "account_id": plat,
+                            "demo": False,
+                            "error": str(exc)[:200] or "拉取失败",
+                        }
+                        pos_out, eq = [], 0.0
+                    accounts.append(item)
+                    positions.extend(pos_out)
+                    total_equity += float(eq or 0)
+                    exchange_equity += float(eq or 0)
+            except FuturesTimeout:
+                logger.warning("交易所余额整体超时，剩余 %s 个平台跳过", len(pending))
+            for fut in pending:
+                r = futs[fut]
+                plat = (r.get("platform") or "").lower()
+                accounts.append({
+                    "platform": plat,
+                    "platform_label": PLATFORM_LABEL.get(plat, plat),
+                    "label": "",
+                    "status": "error",
+                    "equity": None,
+                    "balance": None,
                     "currency": "USD",
                     "address_mask": "",
                     "api_key_mask": "",
-                    "account_id": _book_display_id(book_plat),
+                    "account_id": plat,
                     "demo": False,
-                    "book": True,
-                    "initial_capital": init_cap,
-                    "error": "",
-                }
-            )
-            total_equity += float(eq or 0)
-        try:
-            for dyn in store.list_portal_book_accounts():
-                book_accounts.append(
-                    {
-                        "platform": dyn["platform"],
-                        "platform_label": dyn.get("platform_label") or dyn["platform"],
-                        "title": dyn.get("title") or dyn["platform"],
-                        "market": dyn.get("market") or "crypto",
-                        "book_account_id": dyn.get("id"),
-                        "label": dyn.get("label") or "账面账户",
-                        "status": "ok",
-                        "equity": dyn.get("equity"),
-                        "balance": dyn.get("equity"),
-                        "currency": "USD",
-                        "address_mask": "",
-                        "api_key_mask": "",
-                        "account_id": dyn.get("account_no") or dyn["platform"],
-                        "demo": False,
-                        "book": True,
-                        "initial_capital": dyn.get("initial_capital"),
-                        "error": "",
-                    }
-                )
-                total_equity += float(dyn.get("equity") or 0)
-        except Exception as exc:
-            logger.warning("动态账面账户列表失败: %s", exc)
-        accounts = book_accounts + accounts
-        try:
-            positions.extend(store.list_book_open_positions(""))
-        except Exception as exc:
-            logger.warning("账面持仓还原失败: %s", exc)
+                    "error": "拉取超时",
+                })
 
     # 持仓挂上观察库策略名（connected 配置）；账面仓已自带 strategy_name
     try:

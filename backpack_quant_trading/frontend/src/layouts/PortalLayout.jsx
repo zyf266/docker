@@ -111,7 +111,7 @@ const PortalLayout = () => {
               <button type="button" className="portal-btn portal-btn-ghost" onClick={closeCap}>关闭</button>
             </div>
             <p className="qt-sub" style={{ marginTop: 0 }}>
-              选择市场与本金后新增一张账户卡；已有账户不会被改动。
+              选择市场与本金后新增账户；会按比例复制该市场历史成交，原账户不变。
             </p>
             <label className="qt-field">
               市场

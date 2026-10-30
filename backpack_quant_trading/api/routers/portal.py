@@ -526,41 +526,45 @@ def get_equity_curve(
     plat = (platform or "").strip().lower()
     if store.is_book_platform(plat) and not _include_book(user):
         raise HTTPException(status_code=403, detail="普通用户无权查看账面账户")
-    if _include_book(user):
-        try:
-            store.ensure_book_account_csv_trades(user["id"])
-        except Exception:
-            pass
     current_equity = None
     initial_capital = None
-    try:
-        snap = exchange.fetch_balances(user["id"], include_book=_include_book(user))
-        accounts = snap.get("accounts") or []
-        if plat in ("connected", "self", "exchange", "自己连接", "自己连接的账户"):
-            current_equity = 0.0
-            for a in accounts:
-                if a.get("status") != "ok" or a.get("book"):
-                    continue
-                if store.is_book_platform(a.get("platform") or ""):
-                    continue
-                current_equity += float(a.get("equity") or 0)
-        elif plat and plat not in ("all", "全部"):
-            for a in accounts:
-                if (a.get("platform") or "").lower() == plat and a.get("status") == "ok":
-                    current_equity = a.get("equity")
-                    if a.get("book"):
-                        initial_capital = a.get("initial_capital")
-                    break
-            if store.is_book_platform(plat) and initial_capital is None:
-                if not _include_book(user):
-                    raise HTTPException(status_code=403, detail="普通用户无权查看账面账户")
-                initial_capital = store.get_book_initial_capital(plat)
-        else:
-            current_equity = snap.get("total_equity")
-    except HTTPException:
-        raise
-    except Exception:
-        current_equity = None
+    # 账面账户：只读本地成交/本金，绝不拉交易所（避免 45s 超时）
+    if store.is_book_platform(plat):
+        try:
+            store.ensure_book_account_csv_trades(user["id"])
+            store.ensure_empty_dynamic_book_trades_cloned()
+        except Exception:
+            pass
+        initial_capital = store.get_book_initial_capital(plat)
+        current_equity = store.book_account_equity(user["id"], plat)
+    else:
+        try:
+            snap = exchange.fetch_balances(user["id"], include_book=False)
+            accounts = snap.get("accounts") or []
+            if plat in ("connected", "self", "exchange", "自己连接", "自己连接的账户"):
+                current_equity = 0.0
+                for a in accounts:
+                    if a.get("status") != "ok" or a.get("book"):
+                        continue
+                    current_equity += float(a.get("equity") or 0)
+            elif plat and plat not in ("all", "全部"):
+                for a in accounts:
+                    if (a.get("platform") or "").lower() == plat and a.get("status") == "ok":
+                        current_equity = a.get("equity")
+                        break
+            else:
+                # 全部：交易所权益 +（管理员）账面
+                current_equity = float(snap.get("total_equity") or 0)
+                if _include_book(user):
+                    for bp in (store.BOOK_PLATFORM_CRYPTO, store.BOOK_PLATFORM_US):
+                        current_equity += float(store.book_account_equity(user["id"], bp) or 0)
+                    for dyn in store.list_portal_book_accounts():
+                        current_equity += float(dyn.get("equity") or 0)
+                    initial_capital = store._initial_capital_for_platform("")
+        except HTTPException:
+            raise
+        except Exception:
+            current_equity = None
     curve = store.build_equity_curve(
         user["id"],
         platform=plat,

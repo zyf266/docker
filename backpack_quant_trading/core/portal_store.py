@@ -489,8 +489,131 @@ def list_portal_book_accounts() -> List[Dict[str, Any]]:
         session.close()
 
 
+def legacy_platform_for_market(market: str) -> str:
+    mkt = normalize_book_market(market) if market not in ("crypto", "us") else market
+    return BOOK_PLATFORM_CRYPTO if mkt == "crypto" else BOOK_PLATFORM_US
+
+
+def clone_legacy_trades_into_book_account(
+    account_id: int,
+    *,
+    replace: bool = False,
+) -> Dict[str, Any]:
+    """把对应市场 legacy 成交按本金比例复制到 ba_*（不改源账户）。"""
+    session = _session()
+    try:
+        acc = (
+            session.query(PortalBookAccount)
+            .filter(PortalBookAccount.id == int(account_id))
+            .first()
+        )
+        if not acc:
+            raise ValueError(f"账面账户不存在: {account_id}")
+        mkt = (acc.market or "crypto").strip().lower()
+        if mkt not in ("crypto", "us"):
+            mkt = "crypto"
+        src_plat = legacy_platform_for_market(mkt)
+        dest_plat = book_platform_key(acc.id)
+        existing_n = (
+            session.query(PortalTrade)
+            .filter(
+                PortalTrade.user_id == BOOK_SHARED_USER_ID,
+                PortalTrade.platform == dest_plat,
+            )
+            .count()
+        )
+        if existing_n and not replace:
+            return {
+                "ok": True,
+                "skipped": True,
+                "copied": 0,
+                "platform": dest_plat,
+                "source": src_plat,
+            }
+        if replace and existing_n:
+            session.query(PortalTrade).filter(
+                PortalTrade.user_id == BOOK_SHARED_USER_ID,
+                PortalTrade.platform == dest_plat,
+            ).delete(synchronize_session=False)
+
+        src_cap = get_book_initial_capital(src_plat)
+        dest_cap = float(acc.initial_capital or 0)
+        if src_cap <= 0 or dest_cap <= 0:
+            raise ValueError("本金无效，无法复制成交")
+        factor = dest_cap / src_cap
+
+        src_rows = (
+            session.query(PortalTrade)
+            .filter(
+                PortalTrade.user_id == BOOK_SHARED_USER_ID,
+                PortalTrade.platform == src_plat,
+            )
+            .order_by(PortalTrade.created_at.asc(), PortalTrade.id.asc())
+            .all()
+        )
+        copied = 0
+        for r in src_rows:
+            margin = None
+            if r.margin is not None:
+                margin = round(float(r.margin) * factor, 4)
+            session.add(
+                PortalTrade(
+                    user_id=BOOK_SHARED_USER_ID,
+                    platform=dest_plat,
+                    symbol=r.symbol or "",
+                    side=r.side or "",
+                    action=r.action or "",
+                    strategy_name=r.strategy_name or "",
+                    timeframe=r.timeframe or "",
+                    price=r.price,
+                    quantity=r.quantity,
+                    margin=margin,
+                    leverage=int(r.leverage or 5),
+                    pnl=round(float(r.pnl or 0) * factor, 4),
+                    status=r.status or "ok",
+                    detail=((r.detail or "") + " | clone→" + dest_plat)[:255],
+                    order_id=r.order_id or "",
+                    created_at=r.created_at or datetime.now(),
+                )
+            )
+            copied += 1
+        session.commit()
+        equity = round(dest_cap + sum_trade_pnl(BOOK_SHARED_USER_ID, platform=dest_plat), 4)
+        return {
+            "ok": True,
+            "skipped": False,
+            "copied": copied,
+            "factor": round(factor, 8),
+            "platform": dest_plat,
+            "source": src_plat,
+            "initial_capital": dest_cap,
+            "equity": equity,
+        }
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def ensure_empty_dynamic_book_trades_cloned() -> Dict[str, Any]:
+    """已有 ba_* 若尚无成交，则从对应 legacy 复制一份（幂等）。"""
+    session = _session()
+    try:
+        ids = [int(r[0]) for r in session.query(PortalBookAccount.id).all()]
+    finally:
+        session.close()
+    results = []
+    for aid in ids:
+        try:
+            results.append(clone_legacy_trades_into_book_account(aid, replace=False))
+        except Exception as exc:
+            results.append({"ok": False, "id": aid, "error": str(exc)[:160]})
+    return {"ok": True, "items": results}
+
+
 def create_book_account(market: str, capital_raw: Any, *, label: str = "") -> Dict[str, Any]:
-    """新增一张账面账户；不改动已有 legacy / 其它 ba_* 账户。"""
+    """新增一张账面账户；并把对应市场 legacy 成交按本金比例复制过来（源账户不变）。"""
     mkt = normalize_book_market(market)
     capital = parse_capital_amount(capital_raw)
     session = _session()
@@ -508,24 +631,35 @@ def create_book_account(market: str, capital_raw: Any, *, label: str = "") -> Di
         ).hexdigest()
         row.account_no = f"0x{dig[:4]}…{dig[-4:]}"
         session.commit()
-        plat = book_platform_key(row.id)
-        return {
-            "ok": True,
-            "created": True,
-            "id": int(row.id),
-            "platform": plat,
-            "market": mkt,
-            "title": BOOK_MARKET_TITLES.get(mkt, "Binance Crypto"),
-            "account_no": row.account_no,
-            "initial_capital": float(row.initial_capital),
-            "equity": float(row.initial_capital),
-            "label": row.label or "",
-        }
+        ba_id = int(row.id)
+        account_no = row.account_no
+        init_cap = float(row.initial_capital)
     except Exception:
         session.rollback()
         raise
     finally:
         session.close()
+
+    plat = book_platform_key(ba_id)
+    clone_info: Dict[str, Any] = {}
+    try:
+        clone_info = clone_legacy_trades_into_book_account(ba_id, replace=True)
+    except Exception as exc:
+        clone_info = {"ok": False, "error": str(exc)[:200]}
+    equity = float(clone_info.get("equity") or init_cap)
+    return {
+        "ok": True,
+        "created": True,
+        "id": ba_id,
+        "platform": plat,
+        "market": mkt,
+        "title": BOOK_MARKET_TITLES.get(mkt, "Binance Crypto"),
+        "account_no": account_no,
+        "initial_capital": init_cap,
+        "equity": equity,
+        "label": label or "",
+        "clone": clone_info,
+    }
 
 
 def restore_legacy_book_accounts_from_csv() -> Dict[str, Any]:
