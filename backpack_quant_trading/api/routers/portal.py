@@ -335,6 +335,25 @@ async def portal_tv_webhook(request: Request):
     return result
 
 
+def _public_webhook_base() -> str:
+    """TradingView 只允许 80/443：对外走 Nginx，不要带 :8100/:8005。
+
+    与实盘策略一致，例如 http://47.110.57.118/adaptive-long/webhook
+    → 账面记账：http://47.110.57.118/api/portal/book-trade-webhook
+    """
+    raw = (
+        os.getenv("PORTAL_PUBLIC_BASE_URL")
+        or os.getenv("PUBLIC_WEBHOOK_BASE")
+        or os.getenv("PUBLIC_API_BASE")
+        or "http://47.110.57.118"
+    ).strip().rstrip("/")
+    # 误配成 :8100/:8005 时剥掉，强制走默认 80/443
+    for port in (":8100", ":8005", ":8050"):
+        if port in raw:
+            raw = raw.replace(port, "")
+    return raw.rstrip("/")
+
+
 @router.get("/tv-webhook/hint")
 def portal_tv_webhook_hint(user: dict = Depends(require_user)):
     """前端展示用：webhook URL 与字段示例。"""
@@ -342,10 +361,13 @@ def portal_tv_webhook_hint(user: dict = Depends(require_user)):
     book_path = "/api/portal/book-trade-webhook"
     if token:
         book_path = f"{book_path}?token={token}"
+    base = _public_webhook_base()
     return {
         "ok": True,
         "path": "/api/portal/tv-webhook",
+        "url": f"{base}/api/portal/tv-webhook",
         "method": "POST",
+        "public_base": base,
         "example": {
             "strategy_name": "test",
             "symbol": "BTC",
@@ -354,8 +376,9 @@ def portal_tv_webhook_hint(user: dict = Depends(require_user)):
         },
         "book_journal": {
             "path": book_path,
+            "url": f"{base}{book_path}",
             "method": "POST",
-            "note": "只写入账面交易清单；开仓同步当前持仓。不下真实交易所单。",
+            "note": "TV 请用 80 端口公网地址（经 Nginx /api → 8100）。只记账、不下真实单。",
             "example": {
                 "market": "加密",
                 "strategy_name": "加密追踪策略",

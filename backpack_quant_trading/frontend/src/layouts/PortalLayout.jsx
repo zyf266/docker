@@ -12,6 +12,7 @@ const PortalLayout = () => {
   const navigate = useNavigate()
   const user = useMemo(() => readStoredUser(), [])
   const showAdminSwitch = isAdminRole(user?.role)
+  const [capOpen, setCapOpen] = useState(false)
   const [bookMarket, setBookMarket] = useState('加密')
   const [bookCapital, setBookCapital] = useState('')
   const [bookBusy, setBookBusy] = useState(false)
@@ -21,6 +22,11 @@ const PortalLayout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     navigate('/login', { replace: true })
+  }
+
+  const closeCap = () => {
+    setCapOpen(false)
+    setBookMsg('')
   }
 
   const onApplyBookCapital = async () => {
@@ -39,6 +45,7 @@ const PortalLayout = () => {
         : bookCapital
       setBookMsg(`已将「${bookMarket}」本金调整为 ${shown}`)
       window.dispatchEvent(new CustomEvent('portal-book-capital-updated', { detail: res }))
+      setTimeout(() => closeCap(), 600)
     } catch (e) {
       setBookMsg(e?.response?.data?.detail || e?.message || '调整失败')
     } finally {
@@ -65,39 +72,16 @@ const PortalLayout = () => {
             <Link className="portal-btn portal-btn-cyan" to="/trading">进入管理端</Link>
           ) : null}
           {showAdminSwitch ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <select
-                className="qt-select"
-                value={bookMarket}
-                onChange={(e) => setBookMarket(e.target.value)}
-                style={{ minWidth: 88, height: 34 }}
-                title="市场"
-              >
-                <option value="加密">加密</option>
-                <option value="美股">美股</option>
-              </select>
-              <input
-                className="qt-select"
-                value={bookCapital}
-                onChange={(e) => setBookCapital(e.target.value)}
-                placeholder="本金 如 200w"
-                style={{ width: 110, height: 34 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onApplyBookCapital()
-                }}
-              />
-              <button
-                type="button"
-                className="portal-btn portal-btn-primary"
-                disabled={bookBusy}
-                onClick={onApplyBookCapital}
-              >
-                {bookBusy ? '调整中…' : '应用本金'}
-              </button>
-              {bookMsg ? (
-                <span style={{ fontSize: 12, color: 'var(--qt-muted)', maxWidth: 200 }}>{bookMsg}</span>
-              ) : null}
-            </div>
+            <button
+              type="button"
+              className="portal-btn portal-btn-primary"
+              onClick={() => {
+                setBookMsg('')
+                setCapOpen(true)
+              }}
+            >
+              连接
+            </button>
           ) : null}
           <button type="button" className="portal-btn portal-btn-ghost" onClick={logout}>退出</button>
         </div>
@@ -117,6 +101,54 @@ const PortalLayout = () => {
           <Link to="/portal/faq">隐私政策</Link>
         </div>
       </footer>
+
+      {capOpen ? (
+        <div className="qt-modal-mask" role="dialog" aria-modal="true">
+          <div className="qt-modal" style={{ maxWidth: 420 }}>
+            <div className="qt-modal-head">
+              <strong>账面本金</strong>
+              <button type="button" className="portal-btn portal-btn-ghost" onClick={closeCap}>关闭</button>
+            </div>
+            <p className="qt-sub" style={{ marginTop: 0 }}>
+              选择市场并填写本金后应用：按比例缩放该市场账面仓位与盈亏。
+            </p>
+            <label className="qt-field">
+              市场
+              <select
+                className="qt-select"
+                value={bookMarket}
+                onChange={(e) => setBookMarket(e.target.value)}
+              >
+                <option value="加密">加密</option>
+                <option value="美股">美股</option>
+              </select>
+            </label>
+            <label className="qt-field">
+              本金
+              <input
+                className="qt-select"
+                value={bookCapital}
+                onChange={(e) => setBookCapital(e.target.value)}
+                placeholder="如 200w 或 2000000"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onApplyBookCapital()
+                }}
+              />
+            </label>
+            {bookMsg ? <p className="qt-sub">{bookMsg}</p> : null}
+            <div className="qt-modal-actions">
+              <button
+                type="button"
+                className="portal-btn portal-btn-primary"
+                disabled={bookBusy}
+                onClick={onApplyBookCapital}
+              >
+                {bookBusy ? '调整中…' : '应用本金'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

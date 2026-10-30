@@ -1275,12 +1275,25 @@ def ensure_us_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID) -> Dict[str
         return {"ok": False, "error": str(exc)[:200]}
 
 
+_BOOK_ENSURE_TS = 0.0
+_BOOK_ENSURE_CACHE: Dict[str, Any] = {}
+
+
 def ensure_book_account_csv_trades(user_id: int = BOOK_SHARED_USER_ID) -> Dict[str, Any]:
-    """加密 + 美股账面 CSV 一并确保。"""
-    return {
+    """加密 + 美股账面 CSV 一并确保。短时去抖，避免每次拉余额都扫 CSV。"""
+    import time as _time
+
+    global _BOOK_ENSURE_TS, _BOOK_ENSURE_CACHE
+    now = _time.time()
+    if _BOOK_ENSURE_CACHE and now - _BOOK_ENSURE_TS < 60:
+        return _BOOK_ENSURE_CACHE
+    out = {
         "crypto": ensure_crypto_account_csv_trades(user_id),
         "us": ensure_us_account_csv_trades(user_id),
     }
+    _BOOK_ENSURE_CACHE = out
+    _BOOK_ENSURE_TS = now
+    return out
 
 
 def _apply_trade_filters(q, *, platform: str = "", symbol: str = "", strategy: str = ""):

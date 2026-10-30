@@ -137,18 +137,29 @@ const PortalAccount = () => {
 
   useEffect(() => {
     loadBalances()
-    if (isAdmin) {
+  }, [loadBalances])
+
+  useEffect(() => {
+    if (!isAdmin) return undefined
+    const t = window.setTimeout(() => {
       getTvWebhookHint()
         .then((res) => {
+          // 优先用服务端公网地址（80/443，无 :8100），与实盘策略 webhook 一致
+          const url = res?.book_journal?.url
+          if (url) {
+            setWebhookHint(url)
+            return
+          }
+          const base = (res?.public_base || 'http://47.110.57.118').replace(/:8100|:8005|:8050/g, '')
           const p = res?.book_journal?.path || '/api/portal/book-trade-webhook'
-          const origin = window.location.origin
-          setWebhookHint(`${origin}${p.startsWith('/') ? p : `/${p}`}`)
+          setWebhookHint(`${base.replace(/\/$/, '')}${p.startsWith('/') ? p : `/${p}`}`)
         })
         .catch(() => {
-          setWebhookHint(`${window.location.origin}/api/portal/book-trade-webhook`)
+          setWebhookHint('http://47.110.57.118/api/portal/book-trade-webhook')
         })
-    }
-  }, [loadBalances, isAdmin])
+    }, 800)
+    return () => window.clearTimeout(t)
+  }, [isAdmin])
 
   useEffect(() => {
     if (window.location.hash === '#portal-watchlist') {
@@ -160,22 +171,28 @@ const PortalAccount = () => {
     return undefined
   }, [])
 
+  // 等账户就绪后再拉成交/净值，避免与余额/观察库抢首屏带宽
   useEffect(() => {
-    loadTrades()
-  }, [loadTrades])
+    if (!viewPlatform || loading) return undefined
+    const t = window.setTimeout(() => { loadTrades() }, 200)
+    return () => window.clearTimeout(t)
+  }, [viewPlatform, loading, loadTrades])
 
   useEffect(() => {
-    if (!viewPlatform) return
-    getPortalTrades({ platform: viewPlatform })
-      .then((res) => {
-        const items = res?.items || []
-        setTradeOpts({
-          symbols: Array.from(new Set(items.map((r) => r.symbol).filter(Boolean))),
-          strategies: Array.from(new Set(items.map((r) => r.strategy_name).filter(Boolean))),
+    if (!viewPlatform || loading) return undefined
+    const t = window.setTimeout(() => {
+      getPortalTrades({ platform: viewPlatform })
+        .then((res) => {
+          const items = res?.items || []
+          setTradeOpts({
+            symbols: Array.from(new Set(items.map((r) => r.symbol).filter(Boolean))),
+            strategies: Array.from(new Set(items.map((r) => r.strategy_name).filter(Boolean))),
+          })
         })
-      })
-      .catch(() => {})
-  }, [viewPlatform])
+        .catch(() => {})
+    }, 400)
+    return () => window.clearTimeout(t)
+  }, [viewPlatform, loading])
 
   const loadCurve = useCallback(async () => {
     if (!viewPlatform) {
@@ -199,8 +216,10 @@ const PortalAccount = () => {
   }, [viewPlatform, curveDays])
 
   useEffect(() => {
-    loadCurve()
-  }, [loadCurve])
+    if (!viewPlatform || loading) return undefined
+    const t = window.setTimeout(() => { loadCurve() }, 350)
+    return () => window.clearTimeout(t)
+  }, [viewPlatform, loading, loadCurve])
 
   useEffect(() => {
     const onCap = () => {

@@ -6,8 +6,8 @@ export const removeFavorite = (symbol) => request.delete(`/portal/favorites/${en
 export const getWatchlist = (metrics = 0, force = 0) =>
   request.get('/portal/watchlist', {
     params: { metrics: metrics ? 1 : 0, force: force ? 1 : 0 },
-    // force 才可能真拉 K 线；缓存命中应很快，仍给足超时兜底
-    timeout: metrics ? (force ? 120000 : 45000) : 15000,
+    // 无指标：快速；有指标缓存：稍长；强制重拉 K 线：最长
+    timeout: metrics ? (force ? 120000 : 60000) : 12000,
   })
 export const searchBinanceSymbols = (q, market = 'all') =>
   request.get('/portal/watchlist/binance-symbols', { params: { q, market }, timeout: 20000 })

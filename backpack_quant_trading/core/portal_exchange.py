@@ -58,7 +58,8 @@ def _run_async(coro):
     except RuntimeError:
         return asyncio.run(coro)
     with ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(_in_thread).result(timeout=120)
+        # 余额页不能被交易所卡住两分钟，否则前端整页超时
+        return pool.submit(_in_thread).result(timeout=12)
 
 
 def _verify_hyperliquid(private_key: str) -> Dict[str, Any]:

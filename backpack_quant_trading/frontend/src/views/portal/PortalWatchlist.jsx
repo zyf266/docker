@@ -260,15 +260,39 @@ const PortalWatchlist = ({ embedded = false }) => {
     let cancelled = false
     ;(async () => {
       setError('')
-      // 有本地快照则静默读服务端缓存；无快照才显示加载
+      // 两阶段：先秒开库表（metrics=0）；有标的再后台补指标。空库不再打 metrics，避免无谓超时
       if (!_watchlistSnap) setLoading(true)
       try {
-        const res = await getWatchlist(1, 0)
-        if (!cancelled) applyList(res)
+        const bare = await getWatchlist(0, 0)
+        if (cancelled) return
+        applyList(bare)
+        setLoading(false)
+        const n = (bare?.items || []).length
+        if (n === 0) {
+          setMetricsLoading(false)
+          return
+        }
+        setMetricsLoading(true)
+        try {
+          const withMetrics = await getWatchlist(1, 0)
+          if (!cancelled) {
+            applyList(withMetrics)
+            setError('')
+          }
+        } catch (e) {
+          // 列表已出：指标失败只提示，不当整页失败
+          if (!cancelled) {
+            const msg = e?.response?.data?.detail || e?.message || '指标加载失败'
+            setError(/timeout/i.test(String(msg))
+              ? '指标加载超时（后端可能正忙于拉余额/K线），可稍后点「刷新指标」'
+              : msg)
+          }
+        } finally {
+          if (!cancelled) setMetricsLoading(false)
+        }
       } catch (e) {
-        if (!cancelled) setError(e?.response?.data?.detail || e?.message || '加载失败')
-      } finally {
         if (!cancelled) {
+          setError(e?.response?.data?.detail || e?.message || '加载失败')
           setLoading(false)
           setMetricsLoading(false)
         }
