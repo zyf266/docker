@@ -612,6 +612,44 @@ def ensure_empty_dynamic_book_trades_cloned() -> Dict[str, Any]:
     return {"ok": True, "items": results}
 
 
+def delete_book_account(account_ref: Any) -> Dict[str, Any]:
+    """删除动态账面账户 ba_* 及其成交；不可删 legacy crypto_account / us_account。"""
+    ba_id = parse_book_account_id(str(account_ref or ""))
+    if ba_id is None:
+        try:
+            ba_id = int(str(account_ref).strip())
+        except (TypeError, ValueError) as exc:
+            raise ValueError("账户 id 无效") from exc
+    plat = book_platform_key(ba_id)
+    session = _session()
+    try:
+        row = session.query(PortalBookAccount).filter(PortalBookAccount.id == ba_id).first()
+        if not row:
+            raise ValueError(f"账面账户不存在: {plat}")
+        deleted_trades = (
+            session.query(PortalTrade)
+            .filter(
+                PortalTrade.user_id == BOOK_SHARED_USER_ID,
+                PortalTrade.platform == plat,
+            )
+            .delete(synchronize_session=False)
+        )
+        session.delete(row)
+        session.commit()
+        return {
+            "ok": True,
+            "deleted": True,
+            "id": ba_id,
+            "platform": plat,
+            "deleted_trades": int(deleted_trades or 0),
+        }
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def create_book_account(market: str, capital_raw: Any, *, label: str = "") -> Dict[str, Any]:
     """新增一张账面账户；并把对应市场 legacy 成交按本金比例复制过来（源账户不变）。"""
     mkt = normalize_book_market(market)

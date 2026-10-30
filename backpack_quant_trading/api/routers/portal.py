@@ -591,3 +591,15 @@ def post_book_capital(body: BookCapitalIn, user: dict = Depends(require_admin)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"新增账面账户失败: {e}") from e
     return {"ok": True, **result}
+
+
+@router.delete("/book-accounts/{account_ref}")
+def delete_book_account(account_ref: str, user: dict = Depends(require_admin)):
+    """管理员：删除动态账面账户（ba_*）及其成交；legacy 加密/美股不可删。"""
+    try:
+        result = store.delete_book_account(account_ref)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除账面账户失败: {e}") from e
+    return {"ok": True, **result}

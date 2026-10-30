@@ -46674,3 +46674,484 @@
 2026-10-30 16:33:28 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
 2026-10-30 16:33:29 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
 2026-10-30 16:33:29 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:33:31 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:31 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:33:32 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:32 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:33:34 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:34 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:33:36 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:33:37 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:37 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:33:39 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:39 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:33:40 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:40 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:33:42 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:42 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:33:43 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:43 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:33:45 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:45 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:33:46 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:33:48 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:48 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:33:49 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:33:49 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-30 16:33:52 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-30 16:33:52 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-30 16:33:53 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:33:54 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 5007
+2026-10-30 16:33:54 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:33:55 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4673
+2026-10-30 16:33:55 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 39 条
+2026-10-30 16:33:55 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-30 16:33:55 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-30 16:33:55 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-30 16:33:57 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-30 16:33:57 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-30 16:33:58 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-30 16:33:58 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-30 16:33:58 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): oapi.dingtalk.com:443
+2026-10-30 16:33:59 | DEBUG    | urllib3.connectionpool:475 | https://oapi.dingtalk.com:443 "POST /robot/send?access_token=b9505860132b3e8d09aa9a6975566974d0bc6152e5af1c425e2fb251c142d16a HTTP/1.1" 200 None
+2026-10-30 16:33:59 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:33:59 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-30 08:33:19 | 拉取 286 条 (金十数据=17, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=39, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 1 | 非最新 5 | 未命中关键词 249 | 非重要快讯 30 | 内容相似去重 0 | 新命中 1 | 待推送 1 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC | 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:33:59 | WARNING  | stock_news_alert:621 | 轮询异常: 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:34:29 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-30 16:34:29 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-30 16:34:29 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-30 16:34:30 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 33838
+2026-10-30 16:34:30 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-30 16:34:30 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-30 16:34:31 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-30 16:34:31 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-30 16:34:31 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-30 16:34:32 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 55393
+2026-10-30 16:34:32 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-30 16:34:34 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-30 16:34:34 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-30 16:34:35 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:35 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-30 16:34:37 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:37 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:34:38 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:38 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:34:39 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:39 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:34:41 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:41 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:34:42 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:42 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:34:44 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:44 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:34:45 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:45 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:34:47 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:47 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:34:48 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:48 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:34:50 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:53 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:34:54 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:54 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:34:55 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:34:57 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:34:58 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:34:58 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:35:00 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-30 16:35:01 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-30 16:35:01 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-30 16:35:03 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:35:04 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 5006
+2026-10-30 16:35:04 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:35:05 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4673
+2026-10-30 16:35:05 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 39 条
+2026-10-30 16:35:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-30 16:35:05 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-30 16:35:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-30 16:35:06 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-30 16:35:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-30 16:35:08 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-30 16:35:08 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-30 16:35:08 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): oapi.dingtalk.com:443
+2026-10-30 16:35:08 | DEBUG    | urllib3.connectionpool:475 | https://oapi.dingtalk.com:443 "POST /robot/send?access_token=b9505860132b3e8d09aa9a6975566974d0bc6152e5af1c425e2fb251c142d16a HTTP/1.1" 200 None
+2026-10-30 16:35:08 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:35:08 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-30 08:34:29 | 拉取 287 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=39, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 1 | 非最新 5 | 未命中关键词 250 | 非重要快讯 30 | 内容相似去重 0 | 新命中 1 | 待推送 1 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC | 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:35:08 | WARNING  | stock_news_alert:621 | 轮询异常: 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:35:38 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-30 16:35:39 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-30 16:35:39 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-30 16:35:40 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 33314
+2026-10-30 16:35:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-30 16:35:40 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-30 16:35:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-30 16:35:41 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-30 16:35:41 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-30 16:35:42 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 55393
+2026-10-30 16:35:42 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-30 16:35:43 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-30 16:35:43 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-30 16:35:44 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-30 16:35:46 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:35:47 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:47 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:35:49 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:49 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:35:50 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:50 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:35:52 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:52 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:35:53 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:53 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:35:54 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:35:56 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:56 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:35:57 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:35:59 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:35:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:36:00 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:36:02 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:02 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:36:03 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:36:05 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:05 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:36:06 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:06 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-30 16:36:08 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-30 16:36:09 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:36:10 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 5008
+2026-10-30 16:36:11 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:36:11 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4675
+2026-10-30 16:36:11 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 39 条
+2026-10-30 16:36:11 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-30 16:36:12 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-30 16:36:12 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-30 16:36:13 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-30 16:36:13 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-30 16:36:14 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-30 16:36:14 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-30 16:36:14 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): oapi.dingtalk.com:443
+2026-10-30 16:36:15 | DEBUG    | urllib3.connectionpool:475 | https://oapi.dingtalk.com:443 "POST /robot/send?access_token=b9505860132b3e8d09aa9a6975566974d0bc6152e5af1c425e2fb251c142d16a HTTP/1.1" 200 None
+2026-10-30 16:36:15 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:36:15 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-30 08:35:38 | 拉取 286 条 (金十数据=17, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=39, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 1 | 非最新 5 | 未命中关键词 250 | 非重要快讯 29 | 内容相似去重 0 | 新命中 1 | 待推送 1 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC | 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:36:15 | WARNING  | stock_news_alert:621 | 轮询异常: 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:36:45 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-30 16:36:46 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-30 16:36:46 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-30 16:36:46 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 33284
+2026-10-30 16:36:46 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-30 16:36:47 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-30 16:36:47 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-30 16:36:47 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-30 16:36:47 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-30 16:36:48 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 57475
+2026-10-30 16:36:48 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-30 16:36:50 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-30 16:36:50 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-30 16:36:51 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:51 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-30 16:36:53 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:53 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:36:54 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:54 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:36:55 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:55 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:36:57 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:57 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:36:59 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:36:59 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:37:00 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:00 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:37:02 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:02 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:37:03 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:03 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:37:05 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:05 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:37:07 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:07 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:37:09 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:09 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:37:10 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:37:11 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:37:12 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:12 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:37:14 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:14 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-30 16:37:16 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-30 16:37:16 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-30 16:37:18 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:37:18 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 5008
+2026-10-30 16:37:19 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:37:19 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4675
+2026-10-30 16:37:19 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 39 条
+2026-10-30 16:37:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-30 16:37:20 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-30 16:37:20 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-30 16:37:21 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-30 16:37:22 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-30 16:37:22 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-30 16:37:22 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-30 16:37:22 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): oapi.dingtalk.com:443
+2026-10-30 16:37:23 | DEBUG    | urllib3.connectionpool:475 | https://oapi.dingtalk.com:443 "POST /robot/send?access_token=b9505860132b3e8d09aa9a6975566974d0bc6152e5af1c425e2fb251c142d16a HTTP/1.1" 200 None
+2026-10-30 16:37:23 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:37:23 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-30 08:36:45 | 拉取 286 条 (金十数据=17, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=39, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 1 | 非最新 5 | 未命中关键词 250 | 非重要快讯 29 | 内容相似去重 0 | 新命中 1 | 待推送 1 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC | 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:37:23 | WARNING  | stock_news_alert:621 | 轮询异常: 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:37:53 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-30 16:37:54 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-30 16:37:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-30 16:37:54 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 32625
+2026-10-30 16:37:54 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-30 16:37:55 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-30 16:37:55 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-30 16:37:56 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-30 16:37:56 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-30 16:37:56 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 57475
+2026-10-30 16:37:56 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-30 16:37:58 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-30 16:37:58 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-30 16:37:59 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:37:59 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-30 16:38:01 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:01 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:38:02 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:02 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:38:04 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:04 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:38:05 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:05 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:38:06 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:06 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:38:08 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:08 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:38:10 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:38:11 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:38:13 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:13 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:38:14 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:14 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:38:16 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:16 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:38:17 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:38:19 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:19 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:38:21 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:21 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:38:23 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:38:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-30 16:38:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-30 16:38:26 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:38:27 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4852
+2026-10-30 16:38:28 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:38:28 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4673
+2026-10-30 16:38:28 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 39 条
+2026-10-30 16:38:28 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-30 16:38:29 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-30 16:38:29 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-30 16:38:30 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-30 16:38:30 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-30 16:38:31 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-30 16:38:31 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-30 16:38:31 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): oapi.dingtalk.com:443
+2026-10-30 16:38:32 | DEBUG    | urllib3.connectionpool:475 | https://oapi.dingtalk.com:443 "POST /robot/send?access_token=b9505860132b3e8d09aa9a6975566974d0bc6152e5af1c425e2fb251c142d16a HTTP/1.1" 200 None
+2026-10-30 16:38:32 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:38:32 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-30 08:37:53 | 拉取 286 条 (金十数据=17, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=39, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 1 | 非最新 5 | 未命中关键词 250 | 非重要快讯 29 | 内容相似去重 0 | 新命中 1 | 待推送 1 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC | 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:38:32 | WARNING  | stock_news_alert:621 | 轮询异常: 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:39:02 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-30 16:39:03 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-30 16:39:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-30 16:39:03 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 32625
+2026-10-30 16:39:03 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-30 16:39:04 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-30 16:39:04 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-30 16:39:05 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-30 16:39:05 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-30 16:39:06 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 58475
+2026-10-30 16:39:06 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-30 16:39:07 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-30 16:39:07 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-30 16:39:09 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:09 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-30 16:39:10 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:10 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:39:11 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:11 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:39:13 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:13 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:39:14 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:14 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:39:16 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:16 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:39:17 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:39:19 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:19 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:39:20 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:20 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:39:22 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:22 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:39:23 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:39:24 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:24 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:39:26 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:26 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:39:27 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:27 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:39:28 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:28 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:39:30 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:39:30 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-30 16:39:31 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-30 16:39:31 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-30 16:39:33 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:39:33 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4853
+2026-10-30 16:39:34 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:39:34 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4674
+2026-10-30 16:39:34 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 39 条
+2026-10-30 16:39:34 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-30 16:39:35 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-30 16:39:35 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-30 16:39:36 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-30 16:39:36 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-30 16:39:37 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-30 16:39:37 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-30 16:39:37 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): oapi.dingtalk.com:443
+2026-10-30 16:39:38 | DEBUG    | urllib3.connectionpool:475 | https://oapi.dingtalk.com:443 "POST /robot/send?access_token=b9505860132b3e8d09aa9a6975566974d0bc6152e5af1c425e2fb251c142d16a HTTP/1.1" 200 None
+2026-10-30 16:39:38 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:39:38 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-30 08:39:02 | 拉取 286 条 (金十数据=17, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=39, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 1 | 非最新 5 | 未命中关键词 250 | 非重要快讯 29 | 内容相似去重 0 | 新命中 1 | 待推送 1 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC | 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:39:38 | WARNING  | stock_news_alert:621 | 轮询异常: 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:40:08 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-30 16:40:09 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-30 16:40:09 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-30 16:40:09 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 32029
+2026-10-30 16:40:09 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-30 16:40:10 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-30 16:40:10 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-30 16:40:11 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-30 16:40:11 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-30 16:40:11 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 59135
+2026-10-30 16:40:11 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-30 16:40:13 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-30 16:40:13 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-30 16:40:14 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:14 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-30 16:40:16 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:16 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:40:17 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:17 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:40:19 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:19 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:40:20 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:20 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:40:21 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:21 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:40:23 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:23 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:40:24 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:24 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:40:25 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:29 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:40:30 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:30 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:40:32 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:32 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:40:33 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:33 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:40:34 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:34 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:40:36 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:40:37 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:37 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:40:39 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:40:39 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-30 16:40:40 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "POST /xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin HTTP/1.1" 403 3369
+2026-10-30 16:40:40 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-30 16:40:42 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:40:43 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4852
+2026-10-30 16:40:43 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:40:44 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4674
+2026-10-30 16:40:44 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 39 条
+2026-10-30 16:40:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-30 16:40:44 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-30 16:40:44 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443
+2026-10-30 16:40:46 | DEBUG    | urllib3.connectionpool:475 | https://rss-public.bwe-ws.com:443 "GET / HTTP/1.1" 200 None
+2026-10-30 16:40:46 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.theblockbeats.info:443
+2026-10-30 16:40:46 | DEBUG    | urllib3.connectionpool:475 | https://www.theblockbeats.info:443 "GET /flash HTTP/1.1" 404 3686
+2026-10-30 16:40:46 | WARNING  | backpack_quant_trading.core.stock_news_feeds:1164 | stock_news_feeds blockbeats: ('Received response with content-encoding: br, but failed to decode it.', error('brotli: decoder failed'))
+2026-10-30 16:40:46 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): oapi.dingtalk.com:443
+2026-10-30 16:40:47 | DEBUG    | urllib3.connectionpool:475 | https://oapi.dingtalk.com:443 "POST /robot/send?access_token=b9505860132b3e8d09aa9a6975566974d0bc6152e5af1c425e2fb251c142d16a HTTP/1.1" 200 None
+2026-10-30 16:40:47 | ERROR    | stock_news_alert:823 | 钉钉推送失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:40:47 | INFO     | stock_news_alert:619 | 轮询完成 @ 2026-10-30 08:40:08 | 拉取 287 条 (金十数据=18, 同花顺=20, 东方财富=80, 新浪财经=30, 富途牛牛=40, 雅虎财经=39, 吴说区块链=50, 方程式新闻=10, 律动BlockBeats=0) | 已推送过 1 | 非最新 5 | 未命中关键词 251 | 非重要快讯 29 | 内容相似去重 0 | 新命中 1 | 待推送 1 | 雅虎搜索词: NVIDIA, NVDA, MICRON, MU, SanDisk, SNDK, INTEL, INTC | 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:40:47 | WARNING  | stock_news_alert:621 | 轮询异常: 钉钉失败: {'errcode': 90030, 'errmsg': '您的企业或者机器人本月webhook调用量已超过限制,请登录开发者后台-资源管理-查看用量明细。'}
+2026-10-30 16:41:17 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): flash-api.jin10.com:443
+2026-10-30 16:41:18 | DEBUG    | urllib3.connectionpool:475 | https://flash-api.jin10.com:443 "GET /get_flash_list?channel=-8200&vip=1 HTTP/1.1" 200 None
+2026-10-30 16:41:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.10jqka.com.cn:443
+2026-10-30 16:41:18 | DEBUG    | urllib3.connectionpool:475 | https://news.10jqka.com.cn:443 "GET /tapp/news/push/stock?page=1&tag=&track=website HTTP/1.1" 200 31863
+2026-10-30 16:41:18 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): np-weblist.eastmoney.com:443
+2026-10-30 16:41:19 | DEBUG    | urllib3.connectionpool:475 | https://np-weblist.eastmoney.com:443 "GET /comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=80&req_trace=1710315450384 HTTP/1.1" 200 None
+2026-10-30 16:41:19 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): zhibo.sina.com.cn:443
+2026-10-30 16:41:20 | DEBUG    | urllib3.connectionpool:475 | https://zhibo.sina.com.cn:443 "GET /api/zhibo/feed?page=1&page_size=30&zhibo_id=152&tag_id=0&dire=f&dpc=1&pagesize=30&type=1 HTTP/1.1" 200 None
+2026-10-30 16:41:20 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): news.futunn.com:443
+2026-10-30 16:41:21 | DEBUG    | urllib3.connectionpool:475 | https://news.futunn.com:443 "GET /news-site-api/main/get-flash-list?pageSize=40 HTTP/1.1" 200 58637
+2026-10-30 16:41:21 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): finance.yahoo.com:443
+2026-10-30 16:41:23 | DEBUG    | urllib3.connectionpool:475 | https://finance.yahoo.com:443 "GET / HTTP/1.1" 403 3369
+2026-10-30 16:41:23 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query1.finance.yahoo.com:443
+2026-10-30 16:41:24 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:24 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): query2.finance.yahoo.com:443
+2026-10-30 16:41:26 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVIDIA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:26 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:41:27 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:27 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:41:29 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=NVDA&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:29 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:41:30 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:30 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:41:32 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MICRON&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:32 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:41:33 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:33 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:41:35 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=MU&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:35 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:41:36 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:36 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:41:38 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SanDisk&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:38 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:41:39 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:39 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:41:41 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=SNDK&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:41 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:41:42 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:42 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:41:44 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTEL&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:44 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query1.finance.yahoo.com
+2026-10-30 16:41:46 | DEBUG    | urllib3.connectionpool:475 | https://query1.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:46 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: query2.finance.yahoo.com
+2026-10-30 16:41:47 | DEBUG    | urllib3.connectionpool:475 | https://query2.finance.yahoo.com:443 "GET /v1/finance/search?q=INTC&quotesCount=0&newsCount=50&enableFuzzyQuery=false HTTP/1.1" 403 3369
+2026-10-30 16:41:47 | DEBUG    | urllib3.connectionpool:291 | Resetting dropped connection: finance.yahoo.com
+2026-10-30 16:41:49 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): feeds.finance.yahoo.com:443
+2026-10-30 16:41:50 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVIDIA&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:41:51 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=NVDA&region=US&lang=en-US HTTP/1.1" 200 4852
+2026-10-30 16:41:51 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MICRON&region=US&lang=en-US HTTP/1.1" 200 394
+2026-10-30 16:41:52 | DEBUG    | urllib3.connectionpool:475 | https://feeds.finance.yahoo.com:443 "GET /rss/2.0/headline?s=MU&region=US&lang=en-US HTTP/1.1" 200 4674
+2026-10-30 16:41:52 | DEBUG    | backpack_quant_trading.core.stock_news_feeds:832 | [雅虎财经] 直连 Search 获取 39 条
+2026-10-30 16:41:52 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): www.wublock123.com:443
+2026-10-30 16:41:53 | DEBUG    | urllib3.connectionpool:475 | https://www.wublock123.com:443 "GET /rss HTTP/1.1" 200 None
+2026-10-30 16:41:53 | DEBUG    | urllib3.connectionpool:1022 | Starting new HTTPS connection (1): rss-public.bwe-ws.com:443

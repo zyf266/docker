@@ -32,6 +32,9 @@ export const createBookAccount = (data) =>
   request.post('/portal/book-capital', data, { timeout: 90000 })
 /** @deprecated 使用 createBookAccount */
 export const scaleBookCapital = createBookAccount
+/** 删除动态账面账户 ba_* */
+export const deleteBookAccount = (accountRef) =>
+  request.delete(`/portal/book-accounts/${encodeURIComponent(accountRef)}`, { timeout: 30000 })
 export const searchPortal = (q) => request.get('/portal/search', { params: { q } })
 export const getInbox = () => request.get('/portal/inbox')
 export const testInbox = (data) => request.post('/portal/inbox/test', data)

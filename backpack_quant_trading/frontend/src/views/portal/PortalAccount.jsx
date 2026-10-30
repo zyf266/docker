@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import {
   disconnectExchange,
+  deleteBookAccount,
   getEquityCurve,
   getExchangeBalances,
   getPortalTrades,
@@ -321,6 +322,7 @@ const PortalAccount = () => {
         const title =
           a.title
           || (market === 'us' || a.platform === 'us_account' ? 'Binance 美股' : 'Binance Crypto')
+        const isDyn = typeof a.platform === 'string' && a.platform.startsWith('ba_')
         cards.push({
           platform: a.platform,
           title,
@@ -328,6 +330,8 @@ const PortalAccount = () => {
           balance: a.equity,
           currency: a.currency || 'USD',
           market,
+          bookAccountId: a.book_account_id,
+          canDelete: isDyn,
           sortKey:
             a.platform === 'crypto_account'
               ? 0
@@ -395,6 +399,25 @@ const PortalAccount = () => {
     }
   }
 
+  const onDeleteBook = async (card) => {
+    const ref = card?.bookAccountId || card?.platform
+    if (!ref) return
+    if (!window.confirm(`确定删除「${card.title}」？将移除该账户卡及其成交记录，原加密/美股账户不受影响。`)) return
+    setDisconnectBusy(card.platform)
+    setError('')
+    try {
+      await deleteBookAccount(ref)
+      await loadBalances()
+      if (viewPlatform === card.platform) setViewPlatform('')
+      await loadTrades()
+      loadCurve()
+    } catch (e) {
+      setError(e?.response?.data?.detail || e?.message || '删除失败')
+    } finally {
+      setDisconnectBusy('')
+    }
+  }
+
   return (
     <div>
       <div className="qt-hero">
@@ -427,6 +450,27 @@ const PortalAccount = () => {
                     {card.balance != null ? `$ ${fmtMoney(card.balance)}` : '—'}
                     {card.currency ? ` ${card.currency}` : ''}
                   </div>
+                  {card.canDelete ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="portal-btn portal-btn-ghost"
+                      style={{ marginTop: 8, padding: '2px 8px', fontSize: 12, display: 'inline-block' }}
+                      disabled={disconnectBusy === card.platform}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDeleteBook(card)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.stopPropagation()
+                          onDeleteBook(card)
+                        }
+                      }}
+                    >
+                      {disconnectBusy === card.platform ? '删除中…' : '删除'}
+                    </span>
+                  ) : null}
                   {card.canDisconnect ? (
                     <span
                       role="button"
@@ -567,6 +611,10 @@ const PortalAccount = () => {
           </p>
         </section>
       </div>
+
+      <section className="qt-card" style={{ marginTop: 16 }}>
+        <PortalWatchlist embedded />
+      </section>
 
       <section className="qt-card" style={{ marginTop: 16 }}>
         <strong>当前持仓 ({positions.length})</strong>
@@ -736,10 +784,6 @@ const PortalAccount = () => {
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="qt-card" style={{ marginTop: 16 }}>
-        <PortalWatchlist embedded />
       </section>
 
       <PortalConnectModal
