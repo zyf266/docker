@@ -27,7 +27,7 @@ export const getPortalTrades = (params = {}) =>
   request.get('/portal/trades', { params, timeout: 20000 })
 export const getEquityCurve = (params = {}) =>
   request.get('/portal/equity-curve', { params, timeout: 25000 })
-/** 新增账面账户（市场+本金），并复制对应市场历史成交 */
+/** 新增账面账户（市场+本金+开始日期），并复制对应市场历史成交 */
 export const createBookAccount = (data) =>
   request.post('/portal/book-capital', data, { timeout: 90000 })
 /** @deprecated 使用 createBookAccount */
@@ -35,6 +35,12 @@ export const scaleBookCapital = createBookAccount
 /** 删除动态账面账户 ba_* */
 export const deleteBookAccount = (accountRef) =>
   request.delete(`/portal/book-accounts/${encodeURIComponent(accountRef)}`, { timeout: 30000 })
+export const getBookStrategies = (platform) =>
+  request.get('/portal/book-strategies', { params: { platform } })
+export const upsertBookStrategy = (data) =>
+  request.post('/portal/book-strategies', data)
+export const deleteBookStrategy = (id) =>
+  request.delete(`/portal/book-strategies/${id}`)
 export const searchPortal = (q) => request.get('/portal/search', { params: { q } })
 export const getInbox = () => request.get('/portal/inbox')
 export const testInbox = (data) => request.post('/portal/inbox/test', data)

@@ -1,6 +1,6 @@
 """认证 API"""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backpack_quant_trading.database.models import DatabaseManager
 from backpack_quant_trading.api.deps import (
@@ -10,6 +10,7 @@ from backpack_quant_trading.api.deps import (
     get_current_user,
     require_user,
 )
+from backpack_quant_trading.core import portal_password_reset as pw_reset
 
 router = APIRouter()
 
@@ -28,6 +29,16 @@ class UserResponse(BaseModel):
     id: int
     username: str
     role: str
+
+
+class ForgotSendCodeIn(BaseModel):
+    username: str = Field(..., description="手机号/登录账号")
+
+
+class ForgotResetIn(BaseModel):
+    username: str
+    code: str
+    new_password: str
 
 
 @router.post("/login")
@@ -63,6 +74,26 @@ def register(req: RegisterRequest):
         "token_type": "bearer",
         "user": {"id": user.id, "username": user.username, "role": user.role},
     }
+
+
+@router.post("/forgot-password/send-code")
+def forgot_send_code(body: ForgotSendCodeIn):
+    try:
+        return pw_reset.send_reset_code(body.username)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"发送验证码失败: {e}") from e
+
+
+@router.post("/forgot-password/reset")
+def forgot_reset(body: ForgotResetIn):
+    try:
+        return pw_reset.reset_password(body.username, body.code, body.new_password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"重置密码失败: {e}") from e
 
 
 @router.get("/me", response_model=UserResponse)

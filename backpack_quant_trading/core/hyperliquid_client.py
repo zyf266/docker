@@ -15,6 +15,27 @@ from web3 import Web3
 
 logger = logging.getLogger(__name__)
 
+# TradingView / 展示名 → Hyperliquid 宇宙 coin（去 xyz: 前缀后的短码）
+# 例：网页常写 SKHYNIX，XYZ meta 实际为 xyz:SKHX
+HL_SYMBOL_ALIASES: Dict[str, str] = {
+    "SKHYNIX": "SKHX",
+}
+
+
+def normalize_hl_asset_symbol(symbol: str) -> str:
+    """把 TV/Webhook 符号收成可与 meta.universe 比对的短码（大写）。"""
+    raw = (symbol or "").strip()
+    raw = raw.split(":")[-1]  # xyz:NVDA / XYZ:NVDA
+    if raw.upper().endswith(".P"):
+        raw = raw[:-2]
+    for suffix in ("USDT.P", "USDC.P", "USDT", "USDC", "USD", "PERP", "/USDT", "/USD"):
+        if raw.upper().endswith(suffix.upper()):
+            raw = raw[: -len(suffix)]
+            break
+    asset = raw.replace("-USD", "").replace("-USDT", "").replace("-USDC", "").split("_")[0].upper()
+    return HL_SYMBOL_ALIASES.get(asset, asset)
+
+
 class HyperliquidAPIClient:
     """Hyperliquid API 客户端 (参考 OstiumClient 实现风格)"""
     
@@ -124,16 +145,8 @@ class HyperliquidAPIClient:
         - Perps 资产: dex_name="", asset_id = 宇宙中的索引
         - XYZ 资产:  dex_name="xyz", asset_id = 110000 + 索引
         """
-        # 统一规范化输入：支持 "xyz:NVDA" / "XYZ:NVDA" / "NVDA-USD" / "NVDAUSDT.P" 等
-        raw = (symbol or "").strip()
-        raw = raw.split(":")[-1]  # 去掉 TradingView/DEX 前缀，如 XYZ:NVDA、xyz:NVDA
-        if raw.upper().endswith(".P"):
-            raw = raw[:-2]
-        for suffix in ["USDT.P", "USDC.P", "USDT", "USDC", "USD", "PERP", "/USDT", "/USD"]:
-            if raw.upper().endswith(suffix.upper()):
-                raw = raw[: -len(suffix)]
-                break
-        asset = raw.replace("-USD", "").replace("-USDT", "").replace("-USDC", "").split("_")[0].upper()
+        # 统一规范化输入：支持 "xyz:NVDA" / "NVDAUSDT.P" / 别名 SKHYNIX→SKHX 等
+        asset = normalize_hl_asset_symbol(symbol)
         # 先查 Perps
         perps_meta = await self.get_meta("")
         for i, c in enumerate(perps_meta.get('universe', [])):
@@ -158,7 +171,7 @@ class HyperliquidAPIClient:
 
     async def get_price(self, symbol: str, dex: str = "") -> float:
         """获取实时价格（支持 Perps 和 XYZ）"""
-        asset = symbol.replace("-USD", "").replace("-USDT", "").replace("-USDC", "").split("_")[0]
+        asset = normalize_hl_asset_symbol(symbol)
         all_mids = await self.post_info({"type": "allMids", "dex": dex})
         # XYZ 资产的 allMids 键格式为 "xyz:CRCL"，Perps 为 "CRCL"
         price = all_mids.get(asset) or all_mids.get(f"{dex}:{asset}") if dex else all_mids.get(asset)

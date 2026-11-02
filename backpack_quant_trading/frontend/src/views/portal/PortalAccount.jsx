@@ -3,10 +3,12 @@ import * as echarts from 'echarts'
 import {
   disconnectExchange,
   deleteBookAccount,
+  getBookStrategies,
   getEquityCurve,
   getExchangeBalances,
   getPortalTrades,
   getTvWebhookHint,
+  upsertBookStrategy,
 } from '../../api/portal'
 import { isAdminRole, readStoredUser } from '../../utils/authRole'
 import PortalConnectModal from './PortalConnectModal'
@@ -92,6 +94,12 @@ const PortalAccount = () => {
   const [curveErr, setCurveErr] = useState('')
   const [curveLoading, setCurveLoading] = useState(false)
   const [curveDays, setCurveDays] = useState(0)
+  const [stratOpen, setStratOpen] = useState(false)
+  const [stratSymbol, setStratSymbol] = useState('')
+  const [stratPct, setStratPct] = useState('10')
+  const [stratBusy, setStratBusy] = useState(false)
+  const [stratMsg, setStratMsg] = useState('')
+  const [stratItems, setStratItems] = useState([])
   const chartRef = useRef(null)
   const chartInst = useRef(null)
 
@@ -137,6 +145,63 @@ const PortalAccount = () => {
       setTradeStats(null)
     }
   }, [viewPlatform, tradeSymbol, tradeStrategy])
+
+  const loadStrategies = useCallback(async () => {
+    if (!viewPlatform || !isAdmin) {
+      setStratItems([])
+      return
+    }
+    try {
+      const res = await getBookStrategies(viewPlatform)
+      setStratItems(res?.items || [])
+    } catch (_) {
+      setStratItems([])
+    }
+  }, [viewPlatform, isAdmin])
+
+  useEffect(() => {
+    loadStrategies()
+  }, [loadStrategies])
+
+  const onSaveStrategy = async () => {
+    if (!viewPlatform) {
+      setStratMsg('请先选择账户')
+      return
+    }
+    if (!stratSymbol.trim()) {
+      setStratMsg('请填写币种，如 BTC')
+      return
+    }
+    if (!stratPct.trim()) {
+      setStratMsg('请填写仓位比例，如 10')
+      return
+    }
+    setStratBusy(true)
+    setStratMsg('')
+    try {
+      const res = await upsertBookStrategy({
+        platform: viewPlatform,
+        symbol: stratSymbol.trim(),
+        position_pct: stratPct.trim(),
+      })
+      const item = res?.item
+      setStratMsg(
+        item
+          ? `已保存 ${item.symbol} · ${item.position_pct_display}（仓位≈本金×比例）`
+          : '已保存',
+      )
+      setStratSymbol('')
+      await loadStrategies()
+      setTimeout(() => {
+        setStratOpen(false)
+        setStratMsg('')
+      }, 900)
+    } catch (e) {
+      setStratMsg(e?.response?.data?.detail || e?.message || '保存失败')
+    } finally {
+      setStratBusy(false)
+    }
+  }
 
   useEffect(() => {
     loadBalances()
@@ -673,14 +738,34 @@ const PortalAccount = () => {
       <section className="qt-card" style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <strong>交易记录清单</strong>
-          <button type="button" className="portal-btn portal-btn-ghost" onClick={() => { loadTrades() }}>
-            刷新
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {isAdmin ? (
+              <button
+                type="button"
+                className="portal-btn portal-btn-primary"
+                onClick={() => {
+                  setStratMsg('')
+                  setStratOpen(true)
+                }}
+              >
+                增加策略
+              </button>
+            ) : null}
+            <button type="button" className="portal-btn portal-btn-ghost" onClick={() => { loadTrades() }}>
+              刷新
+            </button>
+          </div>
         </div>
         {isAdmin && webhookHint ? (
           <p className="qt-sub" style={{ marginTop: 8, wordBreak: 'break-all' }}>
             账面 TV Webhook（只记账）：
             <code style={{ color: '#4ade80' }}>{webhookHint}</code>
+          </p>
+        ) : null}
+        {isAdmin && stratItems.length > 0 ? (
+          <p className="qt-sub" style={{ marginTop: 6 }}>
+            已配置仓位：
+            {stratItems.map((s) => `${s.symbol} ${s.position_pct_display}`).join(' · ')}
           </p>
         ) : null}
         <div className="qt-toolbar" style={{ marginTop: 12 }}>
@@ -795,6 +880,51 @@ const PortalAccount = () => {
           loadCurve()
         }}
       />
+
+      {stratOpen ? (
+        <div className="qt-modal-mask" role="dialog" aria-modal="true">
+          <div className="qt-modal" style={{ maxWidth: 400 }}>
+            <div className="qt-modal-head">
+              <strong>增加策略仓位</strong>
+              <button type="button" className="portal-btn portal-btn-ghost" onClick={() => setStratOpen(false)}>
+                关闭
+              </button>
+            </div>
+            <p className="qt-sub" style={{ marginTop: 0 }}>
+              当前账户 <code>{viewPlatform || '—'}</code>。例如本金 300w、BTC 填 10%，则 webhook 记账仓位为 30w。
+            </p>
+            <label className="qt-field">
+              币种
+              <input
+                className="qt-select"
+                value={stratSymbol}
+                onChange={(e) => setStratSymbol(e.target.value)}
+                placeholder="如 BTC / ETH / SOXL"
+              />
+            </label>
+            <label className="qt-field">
+              仓位比例（%）
+              <input
+                className="qt-select"
+                value={stratPct}
+                onChange={(e) => setStratPct(e.target.value)}
+                placeholder="如 10"
+              />
+            </label>
+            {stratMsg ? <p className="qt-sub">{stratMsg}</p> : null}
+            <div className="qt-modal-actions">
+              <button
+                type="button"
+                className="portal-btn portal-btn-primary"
+                disabled={stratBusy}
+                onClick={onSaveStrategy}
+              >
+                {stratBusy ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

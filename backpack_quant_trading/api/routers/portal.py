@@ -653,18 +653,60 @@ class BookCapitalIn(BaseModel):
     market: str = Field(..., description="加密 / 美股")
     capital: str = Field(..., description="本金，如 200w 或 2000000")
     phone: str = Field(..., description="手机号，同步创建普通用户（默认密码 123456）")
+    start_date: str = Field("", description="开始日期 YYYY-MM-DD；空=不截断历史")
+
+
+class BookStrategyIn(BaseModel):
+    platform: str = Field(..., description="crypto_account / us_account / ba_N")
+    symbol: str = Field(..., description="币种，如 BTC")
+    position_pct: str = Field(..., description="仓位比例，如 10 或 10%")
 
 
 @router.post("/book-capital")
 def post_book_capital(body: BookCapitalIn, user: dict = Depends(require_admin)):
     """管理员：新增账面账户，并按手机号创建/绑定普通用户。"""
     try:
-        result = store.create_book_account(body.market, body.capital, phone=body.phone)
+        result = store.create_book_account(
+            body.market,
+            body.capital,
+            phone=body.phone,
+            start_date=body.start_date or None,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"新增账面账户失败: {e}") from e
     return {"ok": True, **result}
+
+
+@router.get("/book-strategies")
+def get_book_strategies(
+    platform: str = Query(..., description="账面 platform"),
+    user: dict = Depends(require_user),
+):
+    plat = (platform or "").strip().lower()
+    if store.is_book_platform(plat) and not _can_view_book_platform(user, plat):
+        raise HTTPException(status_code=403, detail="无权查看该账面账户")
+    return {"ok": True, "items": store.list_book_strategy_margins(plat)}
+
+
+@router.post("/book-strategies")
+def post_book_strategy(body: BookStrategyIn, user: dict = Depends(require_admin)):
+    try:
+        item = store.upsert_book_strategy_margin(body.platform, body.symbol, body.position_pct)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存策略失败: {e}") from e
+    return {"ok": True, "item": item}
+
+
+@router.delete("/book-strategies/{strategy_id}")
+def delete_book_strategy(strategy_id: int, user: dict = Depends(require_admin)):
+    ok = store.delete_book_strategy_margin(strategy_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="策略不存在")
+    return {"ok": True, "deleted": True}
 
 
 @router.delete("/book-accounts/{account_ref}")

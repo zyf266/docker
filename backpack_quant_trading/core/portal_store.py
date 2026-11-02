@@ -10,6 +10,7 @@ import hashlib
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     Integer,
@@ -205,7 +206,22 @@ class PortalBookAccount(StoreBase):
     initial_capital = Column(Float, nullable=False, default=0.0)
     label = Column(String(64), nullable=False, default="")
     owner_user_id = Column(Integer, nullable=True, index=True)  # 绑定的普通用户
+    start_date = Column(Date, nullable=True)  # 成交起算日；空=不截断
     created_at = Column(DateTime, nullable=False, default=datetime.now)
+
+
+class PortalBookStrategyMargin(StoreBase):
+    """账面 platform 下按币种的仓位比例（0~1），供 TV webhook 记账用。"""
+
+    __tablename__ = "portal_book_strategy_margins"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    platform = Column(String(32), nullable=False, index=True)  # crypto_account | us_account | ba_N
+    symbol = Column(String(32), nullable=False, default="")
+    position_pct = Column(Float, nullable=False, default=0.1)  # 0.1 = 10%
+    updated_at = Column(DateTime, nullable=False, default=datetime.now)
+    __table_args__ = (
+        UniqueConstraint("platform", "symbol", name="uq_portal_book_strat_plat_sym"),
+    )
 
 
 BOOK_USER_DEFAULT_PASSWORD = "123456"
@@ -264,7 +280,7 @@ def _ensure_watch_config_columns(engine) -> None:
 
 
 def _ensure_book_account_columns(engine) -> None:
-    """已有 portal_book_accounts 时补 owner_user_id。"""
+    """已有 portal_book_accounts 时补 owner_user_id / start_date。"""
     from sqlalchemy import text
 
     with engine.begin() as conn:
@@ -279,6 +295,10 @@ def _ensure_book_account_columns(engine) -> None:
                     "ALTER TABLE portal_book_accounts "
                     "ADD COLUMN owner_user_id INT NULL"
                 )
+            )
+        if "start_date" not in existing:
+            conn.execute(
+                text("ALTER TABLE portal_book_accounts ADD COLUMN start_date DATE NULL")
             )
 
 
@@ -508,6 +528,7 @@ def list_portal_book_accounts(*, owner_user_id: Optional[int] = None) -> List[Di
                     "equity": round(init_cap + pnl, 4),
                     "label": r.label or "",
                     "owner_user_id": int(r.owner_user_id) if r.owner_user_id is not None else None,
+                    "start_date": r.start_date.isoformat() if getattr(r, "start_date", None) else None,
                     "book": True,
                 }
             )
@@ -584,12 +605,44 @@ def legacy_platform_for_market(market: str) -> str:
     return BOOK_PLATFORM_CRYPTO if mkt == "crypto" else BOOK_PLATFORM_US
 
 
+def _parse_book_start_date(raw: Any):
+    """解析 YYYY-MM-DD → date；空则 None。"""
+    from datetime import date as date_cls
+
+    if raw is None:
+        return None
+    if isinstance(raw, date_cls) and not isinstance(raw, datetime):
+        return raw
+    if isinstance(raw, datetime):
+        return raw.date()
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("开始日期格式须为 YYYY-MM-DD") from exc
+
+
+def _trade_is_close_row(r: "PortalTrade") -> bool:
+    action = (getattr(r, "action", None) or "").strip().lower()
+    if action in ("close", "平仓", "出场", "sell_close"):
+        return True
+    if action in ("open", "开仓", "进场", "入场"):
+        return False
+    # 无 action 时保守保留，避免误丢
+    return False
+
+
 def clone_legacy_trades_into_book_account(
     account_id: int,
     *,
     replace: bool = False,
 ) -> Dict[str, Any]:
-    """把对应市场 legacy 成交按本金比例复制到 ba_*（不改源账户）。"""
+    """把对应市场 legacy 成交按本金比例复制到 ba_*（不改源账户）。
+
+    若账户有 start_date：只复制该日及之后；截断后若首笔是平仓则跳过直至首笔开仓。
+    """
     session = _session()
     try:
         acc = (
@@ -631,6 +684,7 @@ def clone_legacy_trades_into_book_account(
         if src_cap <= 0 or dest_cap <= 0:
             raise ValueError("本金无效，无法复制成交")
         factor = dest_cap / src_cap
+        start_d = getattr(acc, "start_date", None)
 
         src_rows = (
             session.query(PortalTrade)
@@ -641,8 +695,26 @@ def clone_legacy_trades_into_book_account(
             .order_by(PortalTrade.created_at.asc(), PortalTrade.id.asc())
             .all()
         )
-        copied = 0
+        filtered: List[PortalTrade] = []
+        skipped_before = 0
         for r in src_rows:
+            if start_d is not None:
+                ca = r.created_at
+                if ca is None:
+                    skipped_before += 1
+                    continue
+                row_d = ca.date() if isinstance(ca, datetime) else ca
+                if row_d < start_d:
+                    skipped_before += 1
+                    continue
+            filtered.append(r)
+        skipped_leading_close = 0
+        while filtered and _trade_is_close_row(filtered[0]):
+            filtered.pop(0)
+            skipped_leading_close += 1
+
+        copied = 0
+        for r in filtered:
             margin = None
             if r.margin is not None:
                 margin = round(float(r.margin) * factor, 4)
@@ -673,6 +745,9 @@ def clone_legacy_trades_into_book_account(
             "ok": True,
             "skipped": False,
             "copied": copied,
+            "skipped_before_start": skipped_before,
+            "skipped_leading_close": skipped_leading_close,
+            "start_date": start_d.isoformat() if start_d else None,
             "factor": round(factor, 8),
             "platform": dest_plat,
             "source": src_plat,
@@ -746,10 +821,12 @@ def create_book_account(
     *,
     phone: Any = "",
     label: str = "",
+    start_date: Any = None,
 ) -> Dict[str, Any]:
     """新增账面账户，并按手机号创建/绑定普通用户（默认密码 123456）；复制 legacy 成交。"""
     mkt = normalize_book_market(market)
     capital = parse_capital_amount(capital_raw)
+    start_d = _parse_book_start_date(start_date)
     user_info = ensure_portal_user_by_phone(phone)
     owner_id = int(user_info["user_id"])
     session = _session()
@@ -760,6 +837,7 @@ def create_book_account(
             initial_capital=float(capital),
             label=(label or "").strip()[:64],
             owner_user_id=owner_id,
+            start_date=start_d,
         )
         session.add(row)
         session.flush()
@@ -795,6 +873,7 @@ def create_book_account(
         "initial_capital": init_cap,
         "equity": equity,
         "label": label or "",
+        "start_date": start_d.isoformat() if start_d else None,
         "clone": clone_info,
         "owner_user_id": owner_id,
         "login_username": user_info.get("username"),
@@ -1094,6 +1173,174 @@ def _norm_book_trade_side(payload: Dict[str, Any], *, action: str) -> str:
     return "BUY"
 
 
+def parse_position_pct(raw: Any) -> float:
+    """10 / '10%' / 0.1 → 0.1；须在 (0, 1]。"""
+    if raw is None or str(raw).strip() == "":
+        raise ValueError("请填写仓位比例，如 10 或 10%")
+    s = str(raw).strip().replace("%", "").replace("％", "")
+    try:
+        v = float(s)
+    except ValueError as exc:
+        raise ValueError("仓位比例无效") from exc
+    if v > 1.0:
+        v = v / 100.0
+    if v <= 0 or v > 1.0:
+        raise ValueError("仓位比例须在 0~100% 之间")
+    return round(v, 6)
+
+
+def normalize_book_strategy_symbol(symbol: str, *, book_market: str = "crypto") -> str:
+    s = (symbol or "").strip().upper().replace("/", "").replace("-", "")
+    for suf in ("USDT.P", "USDC.P", ".P"):
+        if s.endswith(suf):
+            s = s[: -len(suf)]
+            break
+    for suf in ("USDT", "USDC", "USD", "PERP"):
+        if s.endswith(suf) and len(s) > len(suf):
+            base = s[: -len(suf)]
+            if book_market == "us":
+                s = base
+            else:
+                s = f"{base}USDT" if not base.endswith("USDT") else s
+            break
+    if book_market == "crypto" and s and not s.endswith("USDT") and s.isalpha():
+        s = f"{s}USDT"
+    if not s:
+        raise ValueError("币种不能为空")
+    return s
+
+
+def list_book_strategy_margins(platform: str) -> List[Dict[str, Any]]:
+    plat = (platform or "").strip().lower()
+    if not plat:
+        return []
+    session = _session()
+    try:
+        rows = (
+            session.query(PortalBookStrategyMargin)
+            .filter(PortalBookStrategyMargin.platform == plat)
+            .order_by(PortalBookStrategyMargin.symbol.asc())
+            .all()
+        )
+        return [
+            {
+                "id": int(r.id),
+                "platform": r.platform,
+                "symbol": r.symbol,
+                "position_pct": float(r.position_pct),
+                "position_pct_display": f"{round(float(r.position_pct) * 100, 4):g}%",
+                "updated_at": r.updated_at.strftime("%Y-%m-%d %H:%M:%S") if r.updated_at else None,
+            }
+            for r in rows
+        ]
+    finally:
+        session.close()
+
+
+def upsert_book_strategy_margin(
+    platform: str,
+    symbol: str,
+    position_pct_raw: Any,
+) -> Dict[str, Any]:
+    plat = (platform or "").strip().lower()
+    if not (is_book_platform(plat) or plat in (BOOK_PLATFORM_CRYPTO, BOOK_PLATFORM_US)):
+        raise ValueError("platform 无效")
+    book_market = "us" if plat == BOOK_PLATFORM_US else "crypto"
+    ba_id = parse_book_account_id(plat)
+    if ba_id is not None:
+        session = _session()
+        try:
+            brow = session.query(PortalBookAccount).filter(PortalBookAccount.id == ba_id).first()
+            if brow and (brow.market or "").strip().lower() == "us":
+                book_market = "us"
+        finally:
+            session.close()
+    sym = normalize_book_strategy_symbol(symbol, book_market=book_market)
+    pct = parse_position_pct(position_pct_raw)
+    session = _session()
+    try:
+        row = (
+            session.query(PortalBookStrategyMargin)
+            .filter(
+                PortalBookStrategyMargin.platform == plat,
+                PortalBookStrategyMargin.symbol == sym,
+            )
+            .first()
+        )
+        if row:
+            row.position_pct = pct
+            row.updated_at = datetime.now()
+        else:
+            row = PortalBookStrategyMargin(
+                platform=plat,
+                symbol=sym,
+                position_pct=pct,
+                updated_at=datetime.now(),
+            )
+            session.add(row)
+        session.commit()
+        session.refresh(row)
+        return {
+            "id": int(row.id),
+            "platform": row.platform,
+            "symbol": row.symbol,
+            "position_pct": float(row.position_pct),
+            "position_pct_display": f"{round(float(row.position_pct) * 100, 4):g}%",
+        }
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def delete_book_strategy_margin(strategy_id: int) -> bool:
+    session = _session()
+    try:
+        row = (
+            session.query(PortalBookStrategyMargin)
+            .filter(PortalBookStrategyMargin.id == int(strategy_id))
+            .first()
+        )
+        if not row:
+            return False
+        session.delete(row)
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def get_book_strategy_position_pct(platform: str, symbol: str) -> Optional[float]:
+    """查找 platform+symbol 的仓位比例；兼容 BTC / BTCUSDT。"""
+    plat = (platform or "").strip().lower()
+    sym = (symbol or "").strip().upper()
+    if not plat or not sym:
+        return None
+    candidates = {sym}
+    if sym.endswith("USDT"):
+        candidates.add(sym[:-4])
+    else:
+        candidates.add(f"{sym}USDT")
+    session = _session()
+    try:
+        rows = (
+            session.query(PortalBookStrategyMargin)
+            .filter(PortalBookStrategyMargin.platform == plat)
+            .all()
+        )
+        for r in rows:
+            rs = (r.symbol or "").upper()
+            if rs in candidates or rs == sym:
+                return float(r.position_pct)
+        return None
+    finally:
+        session.close()
+
+
 def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     """TradingView → 只记账面交易清单（不下真实交易所单）。
 
@@ -1204,9 +1451,12 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     elif pnl is None:
         pnl = 0.0
 
-    # 仓位缺省：按当前本金一半（与历史半仓习惯接近）
-    if margin is None or margin <= 0:
-        init_cap = get_book_initial_capital(platform)
+    # 有「增加策略」仓位比例时强制 margin = 本金 × 比例；否则缺省用 40% 本金
+    init_cap = get_book_initial_capital(platform)
+    strat_pct = get_book_strategy_position_pct(platform, symbol)
+    if strat_pct is not None and init_cap > 0:
+        margin = round(init_cap * float(strat_pct), 4)
+    elif margin is None or margin <= 0:
         margin = round(init_cap * 0.4, 4) if init_cap > 0 else None
 
     row = record_trade(
