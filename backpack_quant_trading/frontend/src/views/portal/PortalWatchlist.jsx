@@ -86,69 +86,32 @@ const statusColor = (label) => {
   return 'var(--qt-muted)'
 }
 
-const StatusCell = ({ row, onConnect }) => {
-  const st = (row?.config?.status || row?.status || '').toLowerCase()
+const PINE_STATUS_SET = new Set(['趋势', '反弹', '牛市空头', '熊市空头', '空头'])
+
+const StatusCell = ({ row }) => {
   const plats = parseExchanges(row?.config?.exchange || row?.exchange || '')
   const exTip = plats
     .map((ex) => (ex === 'hyperliquid' ? 'Hype' : ex === 'okx' ? 'OKX' : ex))
     .join('+')
-  const pineLabel = row?.status_label || ''
-  // Pine 三状态：有标签即展示（绿/黄/红）
-  if (pineLabel) {
-    return (
-      <span
-        className="qt-pill"
-        style={{
-          color: statusColor(pineLabel),
-          borderColor: statusColor(pineLabel),
-        }}
-        title={`TV三状态 · ${pineLabel}`}
-      >
-        <span className="qt-status-dot" style={{ background: statusColor(pineLabel) }} />
-        {pineLabel}
-        {exTip ? ` · ${exTip}` : ''}
-      </span>
-    )
+  // 本列只展示 Pine 四态；无指标时 —，绝不回落 watching/living/connected
+  const pineLabel = String(row?.status_label || '').trim()
+  if (!pineLabel || !PINE_STATUS_SET.has(pineLabel)) {
+    return <span style={{ color: 'var(--qt-muted)' }}>—</span>
   }
-  if (st === 'connected') {
-    if (!onConnect) {
-      return (
-        <span className="qt-pill qt-pill-live">
-          <span className="qt-status-dot" />
-          connected
-          {exTip ? ` · ${exTip}` : ''}
-        </span>
-      )
-    }
-    return (
-      <button type="button" className="qt-status-btn" onClick={() => onConnect?.(row)} title="已连接，可重新绑定">
-        <span className="qt-pill qt-pill-live">
-          <span className="qt-status-dot" />
-          connected
-          {exTip ? ` · ${exTip}` : ''}
-        </span>
-      </button>
-    )
-  }
-  if (st === 'living' || st === 'watching') {
-    if (!onConnect) {
-      return (
-        <span className="qt-pill qt-pill-live">
-          <span className="qt-status-dot" />
-          {st === 'watching' ? 'watching' : 'living'}
-        </span>
-      )
-    }
-    return (
-      <button type="button" className="qt-status-btn" onClick={() => onConnect?.(row)} title="点击立即连接交易所">
-        <span className="qt-pill qt-pill-live">
-          <span className="qt-status-dot" />
-          {st === 'watching' ? 'watching' : 'living'}
-        </span>
-      </button>
-    )
-  }
-  return <span style={{ color: 'var(--qt-muted)' }}>—</span>
+  return (
+    <span
+      className="qt-pill"
+      style={{
+        color: statusColor(pineLabel),
+        borderColor: statusColor(pineLabel),
+      }}
+      title={`TV三状态 · ${pineLabel}${exTip ? ` · ${exTip}` : ''}`}
+    >
+      <span className="qt-status-dot" style={{ background: statusColor(pineLabel) }} />
+      {pineLabel}
+      {exTip ? ` · ${exTip}` : ''}
+    </span>
+  )
 }
 
 const emptyConfig = {
@@ -677,7 +640,7 @@ const PortalWatchlist = ({ embedded = false }) => {
                     <td><SignalCell value={row.signal_4h} /></td>
                     <td><Strength on={row.mid_on} label="中强" /></td>
                     <td><Strength on={row.long_on} label="长强" /></td>
-                    <td><StatusCell row={row} onConnect={isAdmin ? openConnect : undefined} /></td>
+                    <td><StatusCell row={row} /></td>
                     <td>
                       {isAdmin ? (
                         <>
