@@ -104,8 +104,10 @@ class WatchConfigIn(BaseModel):
     require_2h: bool = False
     require_4h: bool = False
     status_mode: str = "趋势"  # 兼容旧单配置
-    # 三套状态：{"趋势":{require_2h..},"反弹":{...},"空头":{...}}
+    # 三套状态：{"趋势":{require_2h..},"反弹":{...},"空头":{...},"allowed_statuses":[...]}
     status_profiles: Optional[Dict[str, Any]] = None
+    # 允许开仓的 Pine 四态（多选 OR）；写入 status_profiles.allowed_statuses
+    allowed_statuses: Optional[List[str]] = None
     strategy_name: str = ""
     timeframe: str = "2h"
     size_mode: str = "percent"  # fixed | percent
@@ -236,6 +238,10 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
         gates_only = bool(body.gates_only) or kind == "status"
         trade_only = kind == "trade"
         mkt = (body.market or "").strip().lower()
+        # 合并 allowed_statuses → status_profiles
+        profiles_payload = dict(body.status_profiles or {})
+        if body.allowed_statuses is not None:
+            profiles_payload["allowed_statuses"] = list(body.allowed_statuses)
         raw_symbols = []
         for s in body.symbols:
             s = (s or "").strip().upper()
@@ -257,7 +263,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                         "require_2h": body.require_2h,
                         "require_4h": body.require_4h,
                         "status_mode": body.status_mode,
-                        "status_profiles": body.status_profiles,
+                        "status_profiles": profiles_payload or body.status_profiles,
                     },
                 )
             if not gates_only:
@@ -273,6 +279,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                         "take_profit": body.take_profit,
                         "stop_loss": body.stop_loss,
                         "exchanges": body.exchanges,
+                        "allowed_statuses": store.normalize_allowed_statuses(profiles_payload),
                     },
                 )
         if trade_only and not gates_only:
@@ -281,6 +288,10 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
             items = []
             for sym in raw_symbols:
                 seed = existing.get(sym) or {}
+                seed_profiles = dict(seed.get("status_profiles") or {})
+                seed_profiles["allowed_statuses"] = store.normalize_allowed_statuses(
+                    profiles_payload or seed.get("allowed_statuses")
+                )
                 items.extend(
                     store.upsert_watch_configs(
                         user["id"],
@@ -291,6 +302,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                         require_2h=bool(seed.get("require_2h", body.require_2h)),
                         require_4h=bool(seed.get("require_4h", body.require_4h)),
                         status_mode=seed.get("status_mode") or body.status_mode,
+                        status_profiles=seed_profiles,
                         strategy_name=body.strategy_name,
                         timeframe=body.timeframe,
                         size_mode=body.size_mode,
@@ -312,7 +324,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                 require_2h=body.require_2h,
                 require_4h=body.require_4h,
                 status_mode=body.status_mode,
-                status_profiles=body.status_profiles,
+                status_profiles=profiles_payload or body.status_profiles,
                 strategy_name=body.strategy_name,
                 timeframe=body.timeframe,
                 size_mode=body.size_mode,
@@ -552,7 +564,9 @@ def get_portal_trades(
     platform: str = Query("", description="交易所过滤，空=全部"),
     symbol: str = Query("", description="币种过滤，空=全部"),
     strategy: str = Query("", description="策略名过滤，空=全部"),
-    limit: int = Query(200, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    page: int = Query(0, ge=0, description="可选；>=1 时按 page/limit 算 offset"),
     user: dict = Depends(require_user),
 ):
     """交易记录清单 + 7/30/180 天收益、盈亏比与订单统计（按筛选条件）。"""
@@ -568,13 +582,55 @@ def get_portal_trades(
             store.ensure_book_account_csv_trades(user["id"])
         except Exception:
             pass
-    items = store.list_trades(
-        user["id"], platform=view_plat, symbol=symbol, strategy=strategy, limit=limit
+    off = int(offset or 0)
+    if int(page or 0) >= 1:
+        off = (int(page) - 1) * int(limit)
+    page_data = store.list_trades(
+        user["id"],
+        platform=view_plat,
+        symbol=symbol,
+        strategy=strategy,
+        limit=limit,
+        offset=off,
     )
     stats = store.trade_stats(
         user["id"], platform=view_plat, symbol=symbol, strategy=strategy
     )
-    return {"ok": True, "items": items, "stats": stats}
+    return {
+        "ok": True,
+        "items": page_data.get("items") or [],
+        "total": int(page_data.get("total") or 0),
+        "limit": int(page_data.get("limit") or limit),
+        "offset": int(page_data.get("offset") or off),
+        "stats": stats,
+    }
+
+
+class BookTradeDeleteIn(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    date_ymd: str = Field(..., description="YYYY-MM-DD")
+    strategy_name: str = ""
+    platform: str = ""
+    margin: Optional[float] = None
+
+
+@router.delete("/trades")
+def delete_portal_book_trades(
+    body: BookTradeDeleteIn,
+    user: dict = Depends(require_admin),
+):
+    """管理员按条件删除账面测试/误记成交。"""
+    try:
+        result = store.delete_book_trades_by_filter(
+            symbol=body.symbol,
+            date_ymd=body.date_ymd,
+            strategy_name=body.strategy_name or "",
+            platform=body.platform or "",
+            margin_near=body.margin,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, **result}
 
 
 @router.get("/equity-overlay")

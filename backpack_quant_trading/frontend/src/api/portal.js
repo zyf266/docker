@@ -25,6 +25,9 @@ export const disconnectExchange = (platform) =>
 export const getTvWebhookHint = () => request.get('/portal/tv-webhook/hint')
 export const getPortalTrades = (params = {}) =>
   request.get('/portal/trades', { params, timeout: 20000 })
+/** 管理员按条件删除账面误记成交 */
+export const deletePortalBookTrades = (data) =>
+  request.delete('/portal/trades', { data, timeout: 30000 })
 export const getEquityCurve = (params = {}) =>
   request.get('/portal/equity-curve', { params, timeout: 25000 })
 /** 新增账面账户（市场+本金+开始日期），并复制对应市场历史成交 */

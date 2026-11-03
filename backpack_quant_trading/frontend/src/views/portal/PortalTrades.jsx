@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getPortalTrades } from '../../api/portal'
 
+const PAGE_SIZE = 50
+
 const fmtMoney = (n, digits = 2) => {
   const v = Number(n)
   if (!Number.isFinite(v)) return '—'
@@ -32,7 +34,9 @@ const PortalTrades = () => {
   const [platform, setPlatform] = useState(initialPlat)
   const [symbol, setSymbol] = useState('all')
   const [strategy, setStrategy] = useState('all')
+  const [page, setPage] = useState(1)
   const [items, setItems] = useState([])
+  const [total, setTotal] = useState(0)
   const [stats, setStats] = useState(null)
   const [optSymbols, setOptSymbols] = useState([])
   const [optStrategies, setOptStrategies] = useState([])
@@ -44,6 +48,10 @@ const PortalTrades = () => {
     if (p) setPlatform(p)
   }, [searchParams])
 
+  useEffect(() => {
+    setPage(1)
+  }, [platform, symbol, strategy])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -52,16 +60,18 @@ const PortalTrades = () => {
         platform,
         symbol: symbol === 'all' ? '' : symbol,
         strategy: strategy === 'all' ? '' : strategy,
-        limit: 500,
+        limit: PAGE_SIZE,
+        page,
       })
       setItems(res?.items || [])
+      setTotal(Number(res?.total) || 0)
       setStats(res?.stats || null)
     } catch (e) {
       setError(e?.response?.data?.detail || e?.message || '加载失败')
     } finally {
       setLoading(false)
     }
-  }, [platform, symbol, strategy])
+  }, [platform, symbol, strategy, page])
 
   useEffect(() => {
     getPortalTrades({ platform, limit: 500 })
@@ -80,6 +90,7 @@ const PortalTrades = () => {
   const s7 = stats?.['7d'] || {}
   const s30 = stats?.['30d'] || {}
   const s180 = stats?.['180d'] || {}
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <div>
@@ -227,6 +238,54 @@ const PortalTrades = () => {
             </tbody>
           </table>
         </div>
+        {total > 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 8,
+              marginTop: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span className="qt-sub" style={{ margin: 0 }}>
+              第 {page} / {totalPages} 页（共 {total} 条）
+            </span>
+            <button
+              type="button"
+              className="portal-btn portal-btn-ghost"
+              disabled={page <= 1}
+              onClick={() => setPage(1)}
+            >
+              首页
+            </button>
+            <button
+              type="button"
+              className="portal-btn portal-btn-ghost"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              className="portal-btn portal-btn-ghost"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              下一页
+            </button>
+            <button
+              type="button"
+              className="portal-btn portal-btn-ghost"
+              disabled={page >= totalPages}
+              onClick={() => setPage(totalPages)}
+            >
+              末页
+            </button>
+          </div>
+        ) : null}
       </section>
     </div>
   )

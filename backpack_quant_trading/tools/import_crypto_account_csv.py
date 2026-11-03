@@ -46,9 +46,11 @@ def main() -> int:
     with db.engine.connect() as conn:
         user_ids = [int(r[0]) for r in conn.execute(text("SELECT id FROM users ORDER BY id")).fetchall()]
     for uid in user_ids[:3]:
-        items = store.list_trades(uid, platform=store.BOOK_PLATFORM_CRYPTO, limit=5)
+        crypto = store.list_trades(uid, platform=store.BOOK_PLATFORM_CRYPTO, limit=5)
+        items = crypto.get("items") or []
         stats = store.trade_stats(uid, platform=store.BOOK_PLATFORM_CRYPTO)
-        us_items = store.list_trades(uid, platform=store.BOOK_PLATFORM_US, limit=5)
+        us = store.list_trades(uid, platform=store.BOOK_PLATFORM_US, limit=5)
+        us_items = us.get("items") or []
         us_stats = store.trade_stats(uid, platform=store.BOOK_PLATFORM_US)
         print(
             f"user={uid} crypto_items={len(items)} orders={stats.get('total_orders')} "

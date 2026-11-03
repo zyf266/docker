@@ -101,12 +101,16 @@ class PortalWatchConfig(StoreBase):
 
 # 判定优先级顺序：趋势 → 反弹 → 空头（eval_tradable 按此顺序取首个满足）
 WATCH_STATUS_MODES = ("趋势", "反弹", "空头")
+# Pine 四态（交易配置多选 OR：当前状态命中任一才允许开仓）
+PINE_STATUS_LABELS = ("趋势", "反弹", "牛市空头", "熊市空头")
 
 
 def normalize_status_mode(raw: Any) -> str:
     s = str(raw or "").strip()
     if s in WATCH_STATUS_MODES:
         return s
+    if s in ("牛市空头", "熊市空头"):
+        return "空头"
     low = s.lower()
     if low in ("bear", "short", "空", "bearish"):
         return "空头"
@@ -115,6 +119,49 @@ def normalize_status_mode(raw: Any) -> str:
     if low in ("trend", "趋势中", "trending"):
         return "趋势"
     return "趋势"
+
+
+def _parse_profiles_blob(raw: Any) -> Dict[str, Any]:
+    data = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw or "{}")
+        except Exception:
+            data = {}
+    return data if isinstance(data, dict) else {}
+
+
+def normalize_allowed_statuses(raw: Any) -> List[str]:
+    """允许开仓的 Pine 状态列表（多选 OR）。兼容旧「空头」→ 牛/熊市空头。"""
+    data = raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        if text.startswith("{") or text.startswith("["):
+            try:
+                data = json.loads(text)
+            except Exception:
+                data = [x.strip() for x in text.split(",") if x.strip()]
+        else:
+            data = [x.strip() for x in text.split(",") if x.strip()]
+    if isinstance(data, dict):
+        data = data.get("allowed_statuses") or data.get("allowed") or []
+    if not isinstance(data, (list, tuple, set)):
+        return []
+    out: List[str] = []
+    for x in data:
+        s = str(x or "").strip()
+        if not s:
+            continue
+        if s == "空头":
+            for lab in ("牛市空头", "熊市空头"):
+                if lab not in out:
+                    out.append(lab)
+            continue
+        if s in PINE_STATUS_LABELS and s not in out:
+            out.append(s)
+    return out
 
 
 def _empty_status_profile() -> Dict[str, bool]:
@@ -128,15 +175,8 @@ def _empty_status_profile() -> Dict[str, bool]:
 
 
 def normalize_status_profiles(raw: Any) -> Dict[str, Dict[str, bool]]:
-    """趋势/反弹/空头 各一套站上条件。"""
-    data = raw
-    if isinstance(raw, str):
-        try:
-            data = json.loads(raw or "{}")
-        except Exception:
-            data = {}
-    if not isinstance(data, dict):
-        data = {}
+    """趋势/反弹/空头 各一套站上条件（兼容旧配置）。"""
+    data = _parse_profiles_blob(raw)
     out: Dict[str, Dict[str, bool]] = {}
     for mode in WATCH_STATUS_MODES:
         src = data.get(mode) if isinstance(data.get(mode), dict) else {}
@@ -158,8 +198,15 @@ def status_profiles_configured(profiles: Optional[Dict[str, Any]]) -> bool:
     return False
 
 
-def dump_status_profiles(profiles: Any) -> str:
-    return json.dumps(normalize_status_profiles(profiles), ensure_ascii=False)
+def dump_status_profiles(profiles: Any, *, allowed_statuses: Optional[Any] = None) -> str:
+    """落库 JSON：旧三套站上条件 + allowed_statuses（开仓多选 OR）。"""
+    blob: Dict[str, Any] = dict(normalize_status_profiles(profiles))
+    allowed = normalize_allowed_statuses(allowed_statuses)
+    if not allowed:
+        allowed = normalize_allowed_statuses(_parse_profiles_blob(profiles))
+    if allowed:
+        blob["allowed_statuses"] = allowed
+    return json.dumps(blob, ensure_ascii=False)
 
 
 class PortalExchangeBinding(StoreBase):
@@ -1038,6 +1085,15 @@ def save_watch_market_default(
         if trade.get("exchanges") is not None:
             cur["exchanges"] = _normalize_exchanges(trade.get("exchanges"))
             cur["exchange"] = ",".join(cur["exchanges"])
+        if trade.get("allowed_statuses") is not None or trade.get("status_profiles") is not None:
+            allowed = normalize_allowed_statuses(
+                trade.get("allowed_statuses")
+                if trade.get("allowed_statuses") is not None
+                else trade.get("status_profiles")
+            )
+            profiles = normalize_status_profiles(cur.get("status_profiles") or trade.get("status_profiles"))
+            cur["status_profiles"] = {**profiles, "allowed_statuses": allowed} if allowed else profiles
+            cur["allowed_statuses"] = allowed
     cur["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     data[key] = cur
     _save_market_defaults(data)
@@ -2122,7 +2178,9 @@ def list_trades(
     symbol: str = "",
     strategy: str = "",
     limit: int = 200,
-) -> List[Dict[str, Any]]:
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """分页交易清单。返回 {items, total, limit, offset}。"""
     session = _session()
     try:
         rows = _trade_rows_for_view(
@@ -2137,8 +2195,70 @@ def list_trades(
             key=lambda r: (r.created_at or datetime.min, r.id or 0),
             reverse=True,
         )
+        total = len(rows)
         lim = max(1, min(int(limit or 200), 500))
-        return [_trade_dict(r) for r in rows[:lim]]
+        off = max(0, int(offset or 0))
+        page = rows[off : off + lim]
+        return {
+            "items": [_trade_dict(r) for r in page],
+            "total": total,
+            "limit": lim,
+            "offset": off,
+        }
+    finally:
+        session.close()
+
+
+def delete_book_trades_by_filter(
+    *,
+    symbol: str,
+    date_ymd: str,
+    strategy_name: str = "",
+    platform: str = "",
+    margin_near: Optional[float] = None,
+    margin_tol: float = 1.0,
+) -> Dict[str, Any]:
+    """删除账面共享成交（user_id=0）中匹配条件的行。返回 deleted/ids。"""
+    sym = (symbol or "").strip().upper()
+    day = (date_ymd or "").strip()[:10]
+    if not sym or len(day) < 10:
+        raise ValueError("symbol 与 date_ymd(YYYY-MM-DD) 必填")
+    try:
+        day0 = datetime.strptime(day, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError("date_ymd 须为 YYYY-MM-DD") from exc
+    day1 = day0 + timedelta(days=1)
+    plat = (platform or "").strip().lower()
+    strat = (strategy_name or "").strip()
+
+    session = _session()
+    try:
+        q = session.query(PortalTrade).filter(
+            PortalTrade.user_id == BOOK_SHARED_USER_ID,
+            PortalTrade.symbol == sym,
+            PortalTrade.created_at >= day0,
+            PortalTrade.created_at < day1,
+        )
+        if plat:
+            q = q.filter(PortalTrade.platform == plat)
+        if strat:
+            q = q.filter(PortalTrade.strategy_name == strat)
+        rows = q.all()
+        if margin_near is not None:
+            target = float(margin_near)
+            rows = [
+                r
+                for r in rows
+                if r.margin is not None and abs(float(r.margin) - target) <= float(margin_tol)
+            ]
+        ids = [int(r.id) for r in rows]
+        for r in rows:
+            session.delete(r)
+        session.commit()
+        return {"deleted": len(ids), "ids": ids}
+    except Exception:
+        session.rollback()
+        raise
     finally:
         session.close()
 
@@ -2453,6 +2573,7 @@ def _watch_config_dict(r: PortalWatchConfig) -> Dict[str, Any]:
         "require_4h": bool(getattr(r, "require_4h", False)),
         "status_mode": normalize_status_mode(getattr(r, "status_mode", None)),
         "status_profiles": normalize_status_profiles(getattr(r, "status_profiles", None) or "{}"),
+        "allowed_statuses": normalize_allowed_statuses(getattr(r, "status_profiles", None) or "{}"),
         "strategy_name": r.strategy_name or "",
         "timeframe": r.timeframe or "2h",
         "size_mode": r.size_mode or "percent",
@@ -2499,11 +2620,11 @@ def find_connected_configs(
     symbol: str,
     timeframe: str,
 ) -> List[Dict[str, Any]]:
-    """全库匹配 status=connected 且策略名/币种/周期一致的观察配置。"""
+    """全库匹配 status=connected：币种+周期一致；策略名为空则匹配任意 TV 策略名。"""
     name = (strategy_name or "").strip()
     tf = _norm_tf(timeframe)
     want_bases = _symbol_bases(symbol)
-    if not name or not tf or not want_bases:
+    if not tf or not want_bases:
         return []
     session = _session()
     try:
@@ -2514,7 +2635,11 @@ def find_connected_configs(
         )
         out = []
         for r in rows:
-            if (r.strategy_name or "").strip() != name:
+            cfg_name = (r.strategy_name or "").strip()
+            # 配置未填策略名：只按币种+周期匹配；填了则须与 TV 一致
+            if cfg_name and name and cfg_name != name:
+                continue
+            if cfg_name and not name:
                 continue
             if _norm_tf(r.timeframe or "") != tf:
                 continue
@@ -2603,7 +2728,9 @@ def upsert_watch_gates(
                 "require_4h": require_4h,
             }
         })
-    profiles_json = dump_status_profiles(profiles)
+    profiles_json = dump_status_profiles(
+        status_profiles if status_profiles is not None else profiles
+    )
     session = _session()
     try:
         out = []
@@ -2678,9 +2805,10 @@ def upsert_watch_configs(
         raise ValueError("请至少选择一个交易对")
     mode = "fixed" if (size_mode or "").lower() in ("fixed", "amount", "固定", "固定金额") else "percent"
     tf = (timeframe or "2h").strip() or "2h"
-    name = (strategy_name or "").strip()
-    if not name:
-        raise ValueError("请选择策略名称")
+    name = (strategy_name or "").strip()  # 可空：空则跟单只按币种+周期匹配
+    allowed = normalize_allowed_statuses(status_profiles)
+    if not allowed:
+        raise ValueError("请至少选择一个允许开仓的状态（趋势/反弹/牛市空头/熊市空头）")
     value = str(size_value or "").strip()
     if not value:
         raise ValueError("请填写仓位大小")
@@ -2716,8 +2844,10 @@ def upsert_watch_configs(
             row.require_2h = bool(require_2h)
             row.require_4h = bool(require_4h)
             row.status_mode = normalize_status_mode(status_mode)
-            if status_profiles is not None:
-                row.status_profiles = dump_status_profiles(status_profiles)
+            row.status_profiles = dump_status_profiles(
+                status_profiles if status_profiles is not None else getattr(row, "status_profiles", None),
+                allowed_statuses=allowed,
+            )
             row.strategy_name = name
             row.timeframe = tf
             row.size_mode = mode

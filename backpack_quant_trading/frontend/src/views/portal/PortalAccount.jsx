@@ -86,12 +86,17 @@ const PortalAccount = () => {
   const [tradeSymbol, setTradeSymbol] = useState('all')
   const [tradeStrategy, setTradeStrategy] = useState('all')
   const [trades, setTrades] = useState([])
+  const [tradeTotal, setTradeTotal] = useState(0)
+  const [tradePage, setTradePage] = useState(1)
+  const tradePageSize = 50
   const [tradeStats, setTradeStats] = useState(null)
   const [tradeOpts, setTradeOpts] = useState({ symbols: [], strategies: [] })
   const [tradeErr, setTradeErr] = useState('')
   const [webhookHint, setWebhookHint] = useState('')
   const [curve, setCurve] = useState(null)
-  const isAdmin = useMemo(() => isAdminRole(readStoredUser()?.role), [])
+  const storedUser = useMemo(() => readStoredUser(), [])
+  const isAdmin = useMemo(() => isAdminRole(storedUser?.role), [storedUser])
+  const loginId = String(storedUser?.username || '').trim()
   const [curveErr, setCurveErr] = useState('')
   const [curveLoading, setCurveLoading] = useState(false)
   const [curveDays, setCurveDays] = useState(0)
@@ -128,6 +133,7 @@ const PortalAccount = () => {
   const loadTrades = useCallback(async () => {
     if (!viewPlatform) {
       setTrades([])
+      setTradeTotal(0)
       setTradeStats(null)
       return
     }
@@ -137,15 +143,19 @@ const PortalAccount = () => {
         platform: viewPlatform,
         symbol: tradeSymbol === 'all' ? '' : tradeSymbol,
         strategy: tradeStrategy === 'all' ? '' : tradeStrategy,
+        limit: tradePageSize,
+        page: tradePage,
       })
       setTrades(res?.items || [])
+      setTradeTotal(Number(res?.total) || 0)
       setTradeStats(res?.stats || null)
     } catch (e) {
       setTradeErr(e?.response?.data?.detail || e?.message || '交易记录加载失败')
       setTrades([])
+      setTradeTotal(0)
       setTradeStats(null)
     }
-  }, [viewPlatform, tradeSymbol, tradeStrategy])
+  }, [viewPlatform, tradeSymbol, tradeStrategy, tradePage])
 
   const loadStrategies = useCallback(async () => {
     if (!viewPlatform || !isAdmin) {
@@ -240,6 +250,10 @@ const PortalAccount = () => {
     return undefined
   }, [])
 
+  useEffect(() => {
+    setTradePage(1)
+  }, [viewPlatform, tradeSymbol, tradeStrategy])
+
   // 成交/净值不绑死余额 loading：账面接口本地秒回，避免被交易所卡住
   useEffect(() => {
     if (!viewPlatform) return undefined
@@ -250,7 +264,7 @@ const PortalAccount = () => {
   useEffect(() => {
     if (!viewPlatform) return undefined
     const t = window.setTimeout(() => {
-      getPortalTrades({ platform: viewPlatform })
+      getPortalTrades({ platform: viewPlatform, limit: 500 })
         .then((res) => {
           const items = res?.items || []
           setTradeOpts({
@@ -576,7 +590,7 @@ const PortalAccount = () => {
                   ) : null}
                   <div style={{ fontWeight: 700, fontSize: 14, paddingRight: 40 }}>{card.title}</div>
                   <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 6 }}>
-                    号码: {card.accountId}
+                    ID: {loginId || card.accountId || '—'}
                   </div>
                   <div className="qt-up" style={{ fontWeight: 700, fontSize: 16, marginTop: 8 }}>
                     {card.balance != null ? `$ ${fmtMoney(card.balance)}` : '—'}
@@ -669,17 +683,20 @@ const PortalAccount = () => {
 
       <div className="qt-grid-4">
         <section className="qt-card">
-          <p className="qt-stat-label">账户总权益</p>
+          <p className="qt-stat-label">初始账户权益</p>
           <p className="qt-stat-value">
-            {filteredEquity != null ? `$ ${fmtMoney(filteredEquity)}` : '—'}
+            {(() => {
+              const init = okAccounts[0]?.initial_capital ?? curve?.initial_capital
+              return init != null && Number.isFinite(Number(init))
+                ? `$ ${fmtMoney(init)}`
+                : '—'
+            })()}
           </p>
         </section>
         <section className="qt-card">
-          <p className="qt-stat-label">可用余额合计</p>
+          <p className="qt-stat-label">账户总权益</p>
           <p className="qt-stat-value qt-up">
-            {okAccounts.length
-              ? `$ ${fmtMoney(okAccounts.reduce((s, a) => s + (Number(a.balance) || 0), 0))}`
-              : '—'}
+            {filteredEquity != null ? `$ ${fmtMoney(filteredEquity)}` : '—'}
           </p>
         </section>
         <section className="qt-card">
@@ -873,7 +890,7 @@ const PortalAccount = () => {
               {trades.length === 0 ? (
                 <tr><td colSpan={9}>暂无交易记录</td></tr>
               ) : (
-                trades.slice(0, 50).flatMap((row, idx, arr) => {
+                trades.flatMap((row, idx, arr) => {
                   const curY = String(row.created_at || '').slice(0, 4)
                   const prevY = idx > 0 ? String(arr[idx - 1].created_at || '').slice(0, 4) : curY
                   const yearRow = (idx === 0 || curY !== prevY) && curY
@@ -926,6 +943,54 @@ const PortalAccount = () => {
             </tbody>
           </table>
         </div>
+        {tradeTotal > 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 8,
+              marginTop: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span className="qt-sub" style={{ margin: 0 }}>
+              第 {tradePage} / {Math.max(1, Math.ceil(tradeTotal / tradePageSize))} 页（共 {tradeTotal} 条）
+            </span>
+            <button
+              type="button"
+              className="portal-btn portal-btn-ghost"
+              disabled={tradePage <= 1}
+              onClick={() => setTradePage(1)}
+            >
+              首页
+            </button>
+            <button
+              type="button"
+              className="portal-btn portal-btn-ghost"
+              disabled={tradePage <= 1}
+              onClick={() => setTradePage((p) => Math.max(1, p - 1))}
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              className="portal-btn portal-btn-ghost"
+              disabled={tradePage >= Math.ceil(tradeTotal / tradePageSize)}
+              onClick={() => setTradePage((p) => p + 1)}
+            >
+              下一页
+            </button>
+            <button
+              type="button"
+              className="portal-btn portal-btn-ghost"
+              disabled={tradePage >= Math.ceil(tradeTotal / tradePageSize)}
+              onClick={() => setTradePage(Math.max(1, Math.ceil(tradeTotal / tradePageSize)))}
+            >
+              末页
+            </button>
+          </div>
+        ) : null}
       </section>
 
       <PortalConnectModal

@@ -191,36 +191,51 @@ def _leverage_from_cfg(cfg: Dict[str, Any], default: int = 5) -> int:
 
 
 def _check_ma_gate(cfg: Dict[str, Any], side: str) -> Tuple[bool, str]:
-    """买入前检查勾选条件是否全部站上（含 2h/4h 相对日线 WMA15、中强等）。卖出/平仓不校验。"""
+    """开多前：当前 Pine 四态须命中交易配置的多选状态（OR）。平仓/开空不拦。"""
     if side != "BUY":
         return True, ""
-    need_short = bool(cfg.get("require_short"))
-    need_mid = bool(cfg.get("require_mid"))
-    need_long = bool(cfg.get("require_long"))
-    need_2h = bool(cfg.get("require_2h"))
-    need_4h = bool(cfg.get("require_4h"))
-    if not (need_short or need_mid or need_long or need_2h or need_4h):
-        return True, ""
 
+    from backpack_quant_trading.core import portal_store as store
     from backpack_quant_trading.core.portal_watchlist import compute_symbol_metrics, eval_tradable
 
-    symbol = str(cfg.get("symbol") or "")
-    try:
-        metrics = compute_symbol_metrics(symbol, market="crypto", force=False)
-    except Exception as exc:
-        return False, f"均线状态拉取失败: {exc}"
+    allowed = store.normalize_allowed_statuses(
+        cfg.get("allowed_statuses")
+        if cfg.get("allowed_statuses") is not None
+        else cfg.get("status_profiles")
+    )
+    # 未配置允许状态时：兼容旧 require_* 全空则放行；否则仍按行情算状态
+    if not allowed:
+        need_any = any(
+            bool(cfg.get(k))
+            for k in ("require_short", "require_mid", "require_long", "require_2h", "require_4h")
+        )
+        if not need_any:
+            return True, ""
 
-    if metrics.get("error") and metrics.get("ma5") is None and metrics.get("ma30") is None:
-        return False, f"均线数据不足: {metrics.get('error')}"
+    symbol = str(cfg.get("symbol") or "")
+    market = "us" if not str(symbol).upper().endswith(("USDT", "USDC")) and len(str(symbol)) <= 6 else "crypto"
+    try:
+        metrics = compute_symbol_metrics(symbol, market=market, force=False)
+    except Exception as exc:
+        return False, f"状态拉取失败: {exc}"
+
+    if metrics.get("error") and metrics.get("ma200") is None and metrics.get("ma30") is None:
+        return False, f"日线数据不足: {metrics.get('error')}"
 
     gate = eval_tradable(cfg, metrics)
-    if gate["tradable"]:
+    label = str(gate.get("status_label") or "")
+    if allowed:
+        if label in allowed:
+            return True, ""
+        return False, (
+            f"当前状态={label or '未知'}，允许开仓状态=[{'、'.join(allowed)}]，未命中（OR），拒绝开多"
+        )
+    # 旧逻辑兜底：趋势/反弹才 tradable
+    if gate.get("tradable"):
         return True, ""
     missing = gate.get("missing") or []
     return False, (
-        f"未满足可交易条件: {','.join(missing) or '未知'} "
-        f"（2h={metrics.get('signal_2h')}, 4h={metrics.get('signal_4h')}, "
-        f"mid={metrics.get('mid_on')}, wma15d={metrics.get('wma15_daily')}），拒绝开多"
+        f"未满足可交易条件: {','.join(missing) or label or '未知'}，拒绝开多"
     )
 
 

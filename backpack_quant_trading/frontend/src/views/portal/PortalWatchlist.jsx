@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   addWatchSymbol,
   getExchangeBindings,
@@ -11,10 +10,12 @@ import {
 import { isAdminRole, readStoredUser } from '../../utils/authRole'
 import PortalConnectModal from './PortalConnectModal'
 
-const STRATEGY_OPTIONS = [
-  { value: '自适应做多策略', hint: 'buy 开多 · sell 平多' },
-  { value: '自适应做空策略', hint: 'sell 开空 · buy 平空' },
-  { value: '自适应平仓策略', hint: '多仓 sell 平 · 空仓 buy 平' },
+/** 交易配置：允许开仓的 Pine 四态（多选 OR） */
+const PINE_STATUS_OPTIONS = [
+  { value: '趋势', label: '趋势' },
+  { value: '反弹', label: '反弹' },
+  { value: '牛市空头', label: '牛市空头' },
+  { value: '熊市空头', label: '熊市空头' },
 ]
 
 const platLabel = (id) => {
@@ -44,45 +45,28 @@ const SignalCell = ({ value }) => {
   return <span style={{ color: 'var(--qt-muted)' }}>{value || '—'}</span>
 }
 
-const STATUS_MODE_OPTIONS = [
-  { value: '趋势', label: '趋势' },
-  { value: '反弹', label: '反弹' },
-  { value: '空头', label: '空头' },
-]
-
-const emptyStatusProfile = () => ({
-  require_2h: false,
-  require_4h: false,
-  require_mid: false,
-  require_long: false,
-})
-
-const emptyStatusProfiles = () => ({
-  趋势: { ...emptyStatusProfile(), require_2h: true, require_4h: true, require_mid: true },
-  反弹: { ...emptyStatusProfile(), require_2h: true },
-  空头: { ...emptyStatusProfile(), require_long: true },
-})
-
-const normalizeProfiles = (raw) => {
-  const base = emptyStatusProfiles()
-  if (!raw || typeof raw !== 'object') return base
-  for (const mode of ['趋势', '反弹', '空头']) {
-    const src = raw[mode] || {}
-    base[mode] = {
-      require_2h: !!src.require_2h,
-      require_4h: !!src.require_4h,
-      require_mid: !!src.require_mid,
-      require_long: !!src.require_long,
-    }
+const normalizeAllowedStatuses = (raw) => {
+  let list = raw
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    list = raw.allowed_statuses || raw.allowed || []
   }
-  return base
+  if (typeof list === 'string') {
+    list = list.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+  }
+  if (!Array.isArray(list)) return []
+  const out = []
+  for (const x of list) {
+    const s = String(x || '').trim()
+    if (s === '空头') {
+      ;['牛市空头', '熊市空头'].forEach((lab) => {
+        if (!out.includes(lab)) out.push(lab)
+      })
+      continue
+    }
+    if (PINE_STATUS_OPTIONS.some((o) => o.value === s) && !out.includes(s)) out.push(s)
+  }
+  return out
 }
-
-const profilesConfigured = (profiles) =>
-  ['趋势', '反弹', '空头'].some((m) => {
-    const g = profiles?.[m] || {}
-    return g.require_2h || g.require_4h || g.require_mid || g.require_long
-  })
 
 /** 状态列排序：趋势 > 反弹 > 牛市空头 > 熊市空头 > — */
 const statusSortRank = (row) => {
@@ -169,13 +153,13 @@ const StatusCell = ({ row, onConnect }) => {
 
 const emptyConfig = {
   require_short: false,
-  require_mid: true,
+  require_mid: false,
   require_long: false,
-  require_2h: true,
-  require_4h: true,
+  require_2h: false,
+  require_4h: false,
   status_mode: '趋势',
-  status_profiles: emptyStatusProfiles(),
-  strategy_name: STRATEGY_OPTIONS[0].value,
+  allowed_statuses: ['趋势'],
+  strategy_name: '',
   timeframe: '2h',
   size_mode: 'percent',
   size_value: '10',
@@ -210,7 +194,7 @@ const PortalWatchlist = ({ embedded = false }) => {
   const [loading, setLoading] = useState(!_watchlistSnap)
   const [error, setError] = useState('')
   const [marketFilter, setMarketFilter] = useState('all')
-  const [strengthFilter, setStrengthFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState([])
 
@@ -343,8 +327,10 @@ const PortalWatchlist = ({ embedded = false }) => {
     const rows = (items || []).filter((row) => {
       if (marketFilter === 'crypto' && row.market === 'us') return false
       if (marketFilter === 'us' && row.market !== 'us') return false
-      if (strengthFilter === 'mid' && !row.mid_on) return false
-      if (strengthFilter === 'long' && !row.long_on) return false
+      if (statusFilter !== 'all') {
+        const lab = row.status_label || ''
+        if (lab !== statusFilter) return false
+      }
       if (!q) return true
       return `${row.code || ''} ${row.symbol || ''} ${row.name || ''}`.toUpperCase().includes(q)
     })
@@ -353,7 +339,7 @@ const PortalWatchlist = ({ embedded = false }) => {
       if (d !== 0) return d
       return String(a.code || a.symbol || '').localeCompare(String(b.code || b.symbol || ''))
     })
-  }, [items, marketFilter, strengthFilter, query])
+  }, [items, marketFilter, statusFilter, query])
 
   const allChecked = filtered.length > 0 && filtered.every((row) => selected.includes(row.symbol))
 
@@ -386,33 +372,20 @@ const PortalWatchlist = ({ embedded = false }) => {
     const boundIds = (boundItems || []).map((b) => String(b.platform || '').toLowerCase()).filter(Boolean)
     let exchanges = seedEx.filter((p) => boundIds.includes(p))
     if (!exchanges.length && boundIds.length === 1) exchanges = [...boundIds]
-    const seedStrategy = (seed?.strategy_name || '').trim()
-    const strategyOk = STRATEGY_OPTIONS.some((o) => o.value === seedStrategy)
-    const seedMode = STATUS_MODE_OPTIONS.some((o) => o.value === seed?.status_mode)
-      ? seed.status_mode
-      : '趋势'
-    let profiles = normalizeProfiles(seed?.status_profiles)
-    if (!profilesConfigured(profiles) && (seed?.require_2h || seed?.require_4h || seed?.require_mid || seed?.require_long)) {
-      profiles = normalizeProfiles({
-        [seedMode]: {
-          require_2h: !!seed.require_2h,
-          require_4h: !!seed.require_4h,
-          require_mid: !!seed.require_mid,
-          require_long: !!seed.require_long,
-        },
-      })
-    }
+    const allowed = normalizeAllowedStatuses(
+      seed?.allowed_statuses ?? seed?.status_profiles,
+    )
     return {
       ...emptyConfig,
       ...(seed || {}),
       require_short: false,
-      require_mid: seed?.require_mid ?? true,
-      require_long: seed?.require_long ?? false,
-      require_2h: seed?.require_2h ?? true,
-      require_4h: seed?.require_4h ?? true,
-      status_mode: seedMode,
-      status_profiles: profiles,
-      strategy_name: strategyOk ? seedStrategy : STRATEGY_OPTIONS[0].value,
+      require_mid: false,
+      require_long: false,
+      require_2h: false,
+      require_4h: false,
+      status_mode: '趋势',
+      allowed_statuses: allowed.length ? allowed : ['趋势'],
+      strategy_name: '',
       timeframe: seed?.timeframe || '2h',
       size_mode: seed?.size_mode || 'percent',
       size_value: seed?.size_value || '10',
@@ -423,18 +396,12 @@ const PortalWatchlist = ({ embedded = false }) => {
     }
   }
 
-  /** 批量状态配置（市场级，新标的会继承） */
-  const openStatusBatch = async () => {
-    const mkt = marketFilter === 'us' ? 'us' : 'crypto'
-    const seedRow = (items || []).find((r) => (mkt === 'us' ? r.market === 'us' : r.market !== 'us') && r.config)
-    const bound = await loadBindings()
-    setCfgMode('status')
-    setCfgMarket(mkt)
-    setCfgSymbols([])
-    setCfg(buildCfgFromSeed(seedRow?.config, bound))
-    setCfgStep(1)
-    setCfgMsg('')
-    setCfgOpen(true)
+  const toggleAllowedStatus = (label) => {
+    setCfg((prev) => {
+      const cur = normalizeAllowedStatuses(prev.allowed_statuses)
+      const next = cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label]
+      return { ...prev, allowed_statuses: next }
+    })
   }
 
   /** 批量交易配置（市场级） */
@@ -526,54 +493,10 @@ const PortalWatchlist = ({ embedded = false }) => {
     setConnectOpen(true)
   }
 
-  const onSaveStatusBatch = async () => {
-    const profiles = normalizeProfiles(cfg.status_profiles)
-    if (!profilesConfigured(profiles)) {
-      setCfgMsg('请至少为「趋势 / 反弹 / 空头」中的一套勾选站上条件')
-      return
-    }
-    setCfgBusy(true)
-    setCfgMsg('')
-    try {
-      await saveWatchConfig({
-        symbols: [],
-        market: cfgMarket,
-        config_kind: 'status',
-        require_short: false,
-        require_mid: !!profiles[cfg.status_mode]?.require_mid,
-        require_long: !!profiles[cfg.status_mode]?.require_long,
-        require_2h: !!profiles[cfg.status_mode]?.require_2h,
-        require_4h: !!profiles[cfg.status_mode]?.require_4h,
-        status_mode: cfg.status_mode || '趋势',
-        status_profiles: profiles,
-        gates_only: true,
-      })
-      setCfgOpen(false)
-      await load({ force: true })
-    } catch (e) {
-      setCfgMsg(e?.response?.data?.detail || e?.message || '保存失败')
-    } finally {
-      setCfgBusy(false)
-    }
-  }
-
-  const setProfileGate = (key, checked) => {
-    const mode = cfg.status_mode || '趋势'
-    setCfg((prev) => ({
-      ...prev,
-      status_profiles: {
-        ...normalizeProfiles(prev.status_profiles),
-        [mode]: {
-          ...normalizeProfiles(prev.status_profiles)[mode],
-          [key]: checked,
-        },
-      },
-    }))
-  }
-
   const onSaveTradeConfig = async () => {
-    if (!STRATEGY_OPTIONS.some((o) => o.value === cfg.strategy_name)) {
-      setCfgMsg('请选择策略名称')
+    const allowed = normalizeAllowedStatuses(cfg.allowed_statuses)
+    if (!allowed.length) {
+      setCfgMsg('请至少勾选一个允许开仓的状态')
       return
     }
     const boundIds = bindings.map((b) => String(b.platform || '').toLowerCase()).filter(Boolean)
@@ -594,12 +517,14 @@ const PortalWatchlist = ({ embedded = false }) => {
         market: isBatch ? cfgMarket : '',
         config_kind: 'trade',
         require_short: false,
-        require_mid: !!cfg.require_mid,
-        require_long: !!cfg.require_long,
-        require_2h: !!cfg.require_2h,
-        require_4h: !!cfg.require_4h,
-        status_mode: cfg.status_mode || '趋势',
-        strategy_name: cfg.strategy_name,
+        require_mid: false,
+        require_long: false,
+        require_2h: false,
+        require_4h: false,
+        status_mode: '趋势',
+        allowed_statuses: allowed,
+        status_profiles: { allowed_statuses: allowed },
+        strategy_name: '',
         timeframe: cfg.timeframe,
         size_mode: cfg.size_mode,
         size_value: cfg.size_value,
@@ -626,19 +551,13 @@ const PortalWatchlist = ({ embedded = false }) => {
     <div id="portal-watchlist">
       {embedded ? (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <div>
-            <strong style={{ fontSize: 16 }}>标的观察库</strong>
-            <p className="qt-sub" style={{ margin: '4px 0 0' }}>
-              状态按 TV 三态自动判定（趋势绿 / 反弹黄 / 空头红）；配置交易平台后 Webhook 跟单
-            </p>
-          </div>
+          <strong style={{ fontSize: 16 }}>标的观察库</strong>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {isAdmin ? (
               <button type="button" className="portal-btn portal-btn-primary" onClick={() => setAddOpen(true)}>
                 + 添加标的
               </button>
             ) : null}
-            <Link className="portal-btn portal-btn-cyan" to="/portal/ma-cards">多卡片均线</Link>
           </div>
         </div>
       ) : (
@@ -646,10 +565,6 @@ const PortalWatchlist = ({ embedded = false }) => {
           <div>
             <p className="qt-kicker">WATCHLIST</p>
             <h1 className="qt-title">标的观察库 · 概览</h1>
-            <p className="qt-sub">
-              添加只写库、秒返回；指标默认读 Hyperliquid。勾选条件全部满足后，状态显示所选的空头/反弹/趋势，否则为 —。
-              TradingView webhook（策略名+币种+周期一致）在条件满足且已连接时按仓位下单。
-            </p>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {isAdmin ? (
@@ -657,7 +572,6 @@ const PortalWatchlist = ({ embedded = false }) => {
                 + 添加标的
               </button>
             ) : null}
-            <Link className="portal-btn portal-btn-cyan" to="/portal/ma-cards">多卡片均线视图</Link>
           </div>
         </div>
       )}
@@ -669,10 +583,11 @@ const PortalWatchlist = ({ embedded = false }) => {
             <option value="crypto">加密</option>
             <option value="us">美股</option>
           </select>
-          <select className="qt-select" value={strengthFilter} onChange={(e) => setStrengthFilter(e.target.value)}>
-            <option value="all">强弱: 全部</option>
-            <option value="mid">中强</option>
-            <option value="long">长强</option>
+          <select className="qt-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="all">状态: 全部</option>
+            {PINE_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </select>
           <input
             className="qt-input"
@@ -891,104 +806,41 @@ const PortalWatchlist = ({ embedded = false }) => {
                   美股
                 </button>
                 <span className="qt-sub" style={{ margin: 0, fontSize: 12 }}>
-                  保存后对该市场全部标的生效；新加标的默认继承状态配置
+                  保存后对该市场全部标的生效；新加标的默认继承
                 </span>
               </div>
             ) : null}
 
             {cfgMode === 'status' || cfgStep === 1 ? (
               <div>
-                <p className="qt-sub" style={{ marginTop: 0 }}>
-                  趋势 / 反弹 / 空头是三套独立配置：点下方标签切换，再勾选该状态下的「站上」条件。判定优先级：趋势 → 反弹 → 空头；都不满足显示 —。
-                </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                  {STATUS_MODE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      className={`portal-btn ${cfg.status_mode === opt.value ? 'portal-btn-primary' : 'portal-btn-ghost'}`}
-                      onClick={() => setCfg((prev) => ({ ...prev, status_mode: opt.value }))}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="qt-sub" style={{ margin: '0 0 8px' }}>
-                  正在编辑「{cfg.status_mode || '趋势'}」的站上条件（可多选）
-                </p>
-                {(() => {
-                  const g = normalizeProfiles(cfg.status_profiles)[cfg.status_mode || '趋势'] || emptyStatusProfile()
-                  return (
-                    <>
-                      <label className="qt-check">
-                        <input
-                          type="checkbox"
-                          checked={!!g.require_2h}
-                          onChange={(e) => setProfileGate('require_2h', e.target.checked)}
-                        />
-                        2h状态 · 2H收盘站上日线 WMA15
-                      </label>
-                      <label className="qt-check">
-                        <input
-                          type="checkbox"
-                          checked={!!g.require_4h}
-                          onChange={(e) => setProfileGate('require_4h', e.target.checked)}
-                        />
-                        4h状态 · 4H收盘站上日线 WMA15
-                      </label>
-                      <label className="qt-check">
-                        <input
-                          type="checkbox"
-                          checked={!!g.require_mid}
-                          onChange={(e) => setProfileGate('require_mid', e.target.checked)}
-                        />
-                        中强 · 日线站上 MA30
-                      </label>
-                      <label className="qt-check">
-                        <input
-                          type="checkbox"
-                          checked={!!g.require_long}
-                          onChange={(e) => setProfileGate('require_long', e.target.checked)}
-                        />
-                        长强 · 站上 MA200
-                      </label>
-                    </>
-                  )
-                })()}
-                {cfgMsg ? <p className="qt-sub" style={{ marginTop: 8 }}>{cfgMsg}</p> : null}
-                <div className="qt-modal-actions" style={{ gap: 8 }}>
-                  <button
-                    type="button"
-                    className="portal-btn portal-btn-primary"
-                    disabled={cfgBusy}
-                    onClick={onSaveStatusBatch}
-                  >
-                    {cfgBusy ? '保存中…' : '保存三套状态配置'}
-                  </button>
+                <p className="qt-sub">状态配置已改为交易配置内的「允许开仓状态」多选，请关闭后点「交易配置」。</p>
+                <div className="qt-modal-actions">
+                  <button type="button" className="portal-btn portal-btn-ghost" onClick={() => setCfgOpen(false)}>关闭</button>
                 </div>
               </div>
             ) : (
               <div>
-                <p className="qt-sub" style={{ marginTop: 0 }}>
-                  策略、下单平台、K 线与仓位（TradingView 策略名须一致）
-                </p>
-                <label className="qt-field">
-                  策略名称
-                  <select
-                    className="qt-select"
-                    value={cfg.strategy_name}
-                    onChange={(e) => setCfg((prev) => ({ ...prev, strategy_name: e.target.value }))}
-                  >
-                    {STRATEGY_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.value}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="qt-sub" style={{ margin: '4px 0 0', fontSize: 12 }}>
-                    {STRATEGY_OPTIONS.find((o) => o.value === cfg.strategy_name)?.hint || ''}
+                <div className="qt-field">
+                  <span>允许开仓状态（可多选，OR：命中任一即可）</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+                    {PINE_STATUS_OPTIONS.map((opt) => {
+                      const checked = normalizeAllowedStatuses(cfg.allowed_statuses).includes(opt.value)
+                      return (
+                        <label key={opt.value} className="qt-check" style={{ margin: 0 }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleAllowedStatus(opt.value)}
+                          />
+                          {opt.label}
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <span className="qt-sub" style={{ margin: '6px 0 0', fontSize: 12 }}>
+                    信号进线后，标的当前状态须落在勾选项内才开仓；平仓不受此限制。
                   </span>
-                </label>
+                </div>
                 <div className="qt-field">
                   <span>下单平台（可多选）</span>
                   {bindings.length ? (

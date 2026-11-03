@@ -761,13 +761,21 @@ def add_watch_symbol(
         mkt = "us" if is_us else "crypto"
         default = store.get_watch_market_default(user_id, mkt)
         profiles = store.normalize_status_profiles(default.get("status_profiles") if default else None)
-        if default and store.status_profiles_configured(profiles):
+        allowed = store.normalize_allowed_statuses(
+            (default or {}).get("allowed_statuses")
+            or (default or {}).get("status_profiles")
+        )
+        profiles_blob = {**profiles, "allowed_statuses": allowed} if allowed else profiles
+        if default and (store.status_profiles_configured(profiles) or allowed):
             store.upsert_watch_gates(
                 user_id,
                 [item["symbol"]],
-                status_profiles=profiles,
+                status_profiles=profiles_blob,
             )
-            item["config"] = {"status_profiles": profiles}
+            item["config"] = {
+                "status_profiles": profiles,
+                "allowed_statuses": allowed,
+            }
         elif default and (
             default.get("require_2h")
             or default.get("require_4h")
