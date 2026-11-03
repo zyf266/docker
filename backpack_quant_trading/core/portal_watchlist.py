@@ -1,7 +1,7 @@
-"""标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 2h/4h 相对 WMA15 状态。
+"""标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 三状态（对齐 TV Pine）。
 
 列表默认只读库（秒开）；指标默认读 30 分钟缓存（内存+磁盘），仅 force 时重拉 K 线。
-变盘：2H/4H 收盘站上「日线 WMA15」；中强：日线收盘 > MA30。
+三状态（固定级别）：熊市空头 / 趋势 / 反弹 / 牛市空头；2h 站上本周期 MA30；日线 MACD 水上金叉。
 任一状态变化推钉钉。加密 K 线优先 Hyperliquid。
 """
 from __future__ import annotations
@@ -173,7 +173,7 @@ def wma(values: List[float], length: int) -> Optional[float]:
 
 
 def _vs_daily_wma15(tf_closes: List[float], daily_closes: List[float]) -> str:
-    """2h/4h 状态：该周期最新收盘 vs 日线 WMA15（15 日均线）。"""
+    """2h/4h 状态（旧）：该周期最新收盘 vs 日线 WMA15。"""
     if not tf_closes:
         return "—"
     daily_wma = wma(daily_closes, 15)
@@ -182,81 +182,97 @@ def _vs_daily_wma15(tf_closes: List[float], daily_closes: List[float]) -> str:
     return "站上" if float(tf_closes[-1]) >= float(daily_wma) else "未站上"
 
 
-def _profile_gate_check(gates: Dict[str, Any], metrics: Dict[str, Any]) -> tuple:
-    """返回 (used_gate_keys, missing_labels)。"""
-    used = []
-    missing = []
-    if gates.get("require_2h"):
-        used.append("2h")
-        if str(metrics.get("signal_2h") or "") != "站上":
-            missing.append("2h状态")
-    if gates.get("require_4h"):
-        used.append("4h")
-        if str(metrics.get("signal_4h") or "") != "站上":
-            missing.append("4h状态")
-    if gates.get("require_mid"):
-        used.append("mid")
-        if not metrics.get("mid_on"):
-            missing.append("中强(MA30)")
-    if gates.get("require_long"):
-        used.append("long")
-        if not metrics.get("long_on"):
-            missing.append("长强(MA200)")
-    return used, missing
+def _vs_own_sma(tf_closes: List[float], length: int = 30) -> str:
+    """周期收盘 vs 本周期 SMA（对齐 Pine：h2Close > ma2h）。"""
+    if not tf_closes or length <= 0:
+        return "—"
+    ma = sma(tf_closes, length)
+    if ma is None:
+        return "—"
+    return "站上" if float(tf_closes[-1]) >= float(ma) else "未站上"
+
+
+def _ema_series(values: List[float], length: int) -> List[Optional[float]]:
+    if length <= 0 or not values:
+        return []
+    k = 2.0 / (length + 1)
+    out: List[Optional[float]] = [None] * len(values)
+    seed = sma(values[:length], length) if len(values) >= length else None
+    if seed is None:
+        return out
+    start = length - 1
+    out[start] = float(seed)
+    prev = float(seed)
+    for i in range(start + 1, len(values)):
+        prev = float(values[i]) * k + prev * (1 - k)
+        out[i] = prev
+    return out
+
+
+def _macd_water_golden(closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9) -> bool:
+    """日线 MACD：柱/线在零轴上方且 MACD > Signal（水上金叉）。"""
+    if len(closes) < slow + signal + 2:
+        return False
+    ema_fast = _ema_series(closes, fast)
+    ema_slow = _ema_series(closes, slow)
+    macd_line: List[Optional[float]] = [None] * len(closes)
+    for i in range(len(closes)):
+        if ema_fast[i] is None or ema_slow[i] is None:
+            continue
+        macd_line[i] = float(ema_fast[i]) - float(ema_slow[i])
+    macd_vals = [float(x) for x in macd_line if x is not None]
+    if len(macd_vals) < signal + 1:
+        return False
+    # 用完整 macd_line 对齐索引算 signal EMA
+    filled = []
+    for x in macd_line:
+        filled.append(float(x) if x is not None else (filled[-1] if filled else 0.0))
+    sig_series = _ema_series(filled, signal)
+    i = len(closes) - 1
+    m = macd_line[i]
+    s = sig_series[i] if i < len(sig_series) else None
+    if m is None or s is None:
+        return False
+    return float(m) > 0 and float(m) > float(s)
 
 
 def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """三套状态配置：按 趋势>反弹>空头 优先级，先满足者显示该标签；都不满足为 —。"""
-    if not cfg:
+    """对齐 TV「三状态监控」Pine：熊市空头 / 趋势 / 反弹 / 牛市空头。
+
+    不再依赖观察库「状态配置」弹窗；有日线 MA200 即可判定。
+    """
+    _ = cfg  # 交易配置仍挂在 config；状态与门控改由行情判定
+    if metrics.get("ma200") is None:
         return {
             "tradable": False,
             "gates": [],
-            "missing": [],
+            "missing": ["日线数据不足"],
             "configured": False,
             "status_label": "",
             "status_mode": "",
         }
-    profiles = store.normalize_status_profiles(cfg.get("status_profiles"))
-    if store.status_profiles_configured(profiles):
-        configured = True
-        last_missing = []
-        last_gates = []
-        for mode in store.WATCH_STATUS_MODES:  # 趋势 → 反弹 → 空头
-            g = profiles.get(mode) or {}
-            used, missing = _profile_gate_check(g, metrics)
-            if not used:
-                continue
-            last_gates, last_missing = used, missing
-            if not missing:
-                return {
-                    "tradable": True,
-                    "gates": used,
-                    "missing": [],
-                    "configured": True,
-                    "status_mode": mode,
-                    "status_label": mode,
-                }
-        return {
-            "tradable": False,
-            "gates": last_gates,
-            "missing": last_missing,
-            "configured": configured,
-            "status_mode": "",
-            "status_label": "",
-        }
+    above200 = bool(metrics.get("long_on"))
+    above30 = bool(metrics.get("mid_on"))
+    above2h = bool(metrics.get("above_2h_ma")) or str(metrics.get("signal_2h") or "") == "站上"
+    water = bool(metrics.get("macd_water_golden"))
 
-    # 兼容旧版单配置
-    used, missing = _profile_gate_check(cfg, metrics)
-    configured = bool(used)
-    ok = bool(configured and not missing)
-    mode = store.normalize_status_mode(cfg.get("status_mode"))
+    if not above200:
+        label = "熊市空头"
+    elif above2h and (not above30) and (not water):
+        label = "反弹"
+    elif above2h or above30 or water:
+        label = "趋势"
+    else:
+        label = "牛市空头"
+
+    # 展示用：有状态即显示；跟单侧仍可用 tradable=趋势/反弹
     return {
-        "tradable": ok,
-        "gates": used,
-        "missing": missing,
-        "configured": configured,
-        "status_mode": mode,
-        "status_label": mode if ok else "",
+        "tradable": label in ("趋势", "反弹"),
+        "gates": ["pine3"],
+        "missing": [],
+        "configured": True,
+        "status_mode": label,
+        "status_label": label,
     }
 
 
@@ -472,6 +488,8 @@ def _empty_metrics(symbol: str, market: str, name: str = "") -> Dict[str, Any]:
         "price": None,
         "signal_2h": "—",
         "signal_4h": "—",
+        "above_2h_ma": False,
+        "macd_water_golden": False,
         "short_on": False,
         "mid_on": False,
         "long_on": False,
@@ -518,15 +536,15 @@ def compute_symbol_metrics(
             k2, src2 = f2.result()
             k4, src4 = f4.result()
         closes_1d = _closes_from_bars(k1d)
+        closes_2h = _closes_from_bars(k2)
         m1d = _daily_stand(closes_1d)
-        # 2h/4h：收盘 vs 日线 WMA15（15日均线）
-        sig2 = _vs_daily_wma15(_closes_from_bars(k2), closes_1d)
+        # 2h：对齐 Pine（本周期 MA30）；4h 仍对照日线 WMA15 作参考列
+        sig2 = _vs_own_sma(closes_2h, 30)
         sig4 = _vs_daily_wma15(_closes_from_bars(k4), closes_1d)
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
         if last_px is None and k2:
-            closes2 = _closes_from_bars(k2)
-            last_px = closes2[-1] if closes2 else None
+            last_px = closes_2h[-1] if closes_2h else None
     else:
         pair = normalize_crypto_pair(symbol)
         base = _empty_metrics(pair, "crypto")
@@ -541,8 +559,9 @@ def compute_symbol_metrics(
             k2, src2 = f2.result()
             k4, src4 = f4.result()
         closes_1d = _closes_from_bars(k1d)
+        closes_2h = _closes_from_bars(k2)
         m1d = _daily_stand(closes_1d)
-        sig2 = _vs_daily_wma15(_closes_from_bars(k2), closes_1d)
+        sig2 = _vs_own_sma(closes_2h, 30)
         sig4 = _vs_daily_wma15(_closes_from_bars(k4), closes_1d)
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
@@ -554,10 +573,14 @@ def compute_symbol_metrics(
                     break
 
     daily_wma15 = wma(closes_1d, 15) if closes_1d else None
+    above_2h = sig2 == "站上"
+    water_golden = _macd_water_golden(closes_1d) if closes_1d else False
     base.update({
         "price": last_px if last_px not in (None, 0) else None,
         "signal_2h": sig2,
         "signal_4h": sig4,
+        "above_2h_ma": above_2h,
+        "macd_water_golden": water_golden,
         "short_on": bool(m1d.get("short_on")),
         "mid_on": bool(m1d.get("mid_on")),
         "long_on": bool(m1d.get("long_on")),

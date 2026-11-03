@@ -84,14 +84,22 @@ const profilesConfigured = (profiles) =>
     return g.require_2h || g.require_4h || g.require_mid || g.require_long
   })
 
-/** 状态列排序：趋势 > 反弹 > 空头 > — */
+/** 状态列排序：趋势 > 反弹 > 牛市空头 > 熊市空头 > — */
 const statusSortRank = (row) => {
-  if (!row?.tradable) return 3
   const label = row.status_label || row.config?.status_mode || ''
   if (label === '趋势') return 0
   if (label === '反弹') return 1
-  if (label === '空头') return 2
-  return 3
+  if (label === '牛市空头' || label === '空头') return 2
+  if (label === '熊市空头') return 3
+  return 4
+}
+
+/** 趋势绿 / 反弹黄 / 空头红 */
+const statusColor = (label) => {
+  if (label === '趋势') return '#4ade80'
+  if (label === '反弹') return '#facc15'
+  if (label === '熊市空头' || label === '牛市空头' || label === '空头') return '#f87171'
+  return 'var(--qt-muted)'
 }
 
 const StatusCell = ({ row, onConnect }) => {
@@ -100,28 +108,21 @@ const StatusCell = ({ row, onConnect }) => {
   const exTip = plats
     .map((ex) => (ex === 'hyperliquid' ? 'Hype' : ex === 'okx' ? 'OKX' : ex))
     .join('+')
-  const missing = row?.tradable_missing || []
-  // 已配置站上条件：全部满足 → 显示空头/反弹/趋势；否则 —
-  if (row?.gates_configured) {
-    if (row?.tradable) {
-      const label = row.status_label || row.config?.status_mode || '趋势'
-      return (
-        <span
-          className="qt-pill qt-pill-live"
-          title={missing.length ? '' : `条件均已满足 · ${label}`}
-        >
-          <span className="qt-status-dot" />
-          {label}
-          {exTip ? ` · ${exTip}` : ''}
-        </span>
-      )
-    }
+  const pineLabel = row?.status_label || ''
+  // Pine 三状态：有标签即展示（绿/黄/红）
+  if (pineLabel) {
     return (
       <span
-        style={{ color: 'var(--qt-muted)' }}
-        title={missing.length ? `未满足: ${missing.join('、')}` : '条件未满足'}
+        className="qt-pill"
+        style={{
+          color: statusColor(pineLabel),
+          borderColor: statusColor(pineLabel),
+        }}
+        title={`TV三状态 · ${pineLabel}`}
       >
-        —
+        <span className="qt-status-dot" style={{ background: statusColor(pineLabel) }} />
+        {pineLabel}
+        {exTip ? ` · ${exTip}` : ''}
       </span>
     )
   }
@@ -628,7 +629,7 @@ const PortalWatchlist = ({ embedded = false }) => {
           <div>
             <strong style={{ fontSize: 16 }}>标的观察库</strong>
             <p className="qt-sub" style={{ margin: '4px 0 0' }}>
-              配置策略与平台后，Webhook 自动跟单
+              状态按 TV 三态自动判定（趋势绿 / 反弹黄 / 空头红）；配置交易平台后 Webhook 跟单
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -688,22 +689,13 @@ const PortalWatchlist = ({ embedded = false }) => {
             {metricsLoading ? '指标刷新中…' : '刷新指标'}
           </button>
           {isAdmin ? (
-            <>
-              <button
-                type="button"
-                className="portal-btn portal-btn-primary"
-                onClick={openStatusBatch}
-              >
-                状态配置
-              </button>
-              <button
-                type="button"
-                className="portal-btn portal-btn-primary"
-                onClick={openTradeBatch}
-              >
-                交易配置
-              </button>
-            </>
+            <button
+              type="button"
+              className="portal-btn portal-btn-primary"
+              onClick={openTradeBatch}
+            >
+              交易配置
+            </button>
           ) : null}
           <span style={{ marginLeft: 'auto', color: 'var(--qt-muted)', fontSize: 12 }}>
             <span className="qt-pill qt-pill-live">●</span>

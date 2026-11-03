@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { getPortalTrades } from '../../api/portal'
 
 const fmtMoney = (n, digits = 2) => {
@@ -27,7 +27,9 @@ const fmtRatio = (bucket) => {
 }
 
 const PortalTrades = () => {
-  const [platform, setPlatform] = useState('crypto_account')
+  const [searchParams] = useSearchParams()
+  const initialPlat = searchParams.get('platform') || 'crypto_account'
+  const [platform, setPlatform] = useState(initialPlat)
   const [symbol, setSymbol] = useState('all')
   const [strategy, setStrategy] = useState('all')
   const [items, setItems] = useState([])
@@ -37,6 +39,11 @@ const PortalTrades = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    const p = searchParams.get('platform')
+    if (p) setPlatform(p)
+  }, [searchParams])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -45,6 +52,7 @@ const PortalTrades = () => {
         platform,
         symbol: symbol === 'all' ? '' : symbol,
         strategy: strategy === 'all' ? '' : strategy,
+        limit: 500,
       })
       setItems(res?.items || [])
       setStats(res?.stats || null)
@@ -56,14 +64,14 @@ const PortalTrades = () => {
   }, [platform, symbol, strategy])
 
   useEffect(() => {
-    getPortalTrades({})
+    getPortalTrades({ platform, limit: 500 })
       .then((res) => {
         const rows = res?.items || []
         setOptSymbols(Array.from(new Set(rows.map((r) => r.symbol).filter(Boolean))))
         setOptStrategies(Array.from(new Set(rows.map((r) => r.strategy_name).filter(Boolean))))
       })
       .catch(() => {})
-  }, [])
+  }, [platform])
 
   useEffect(() => {
     load()
@@ -167,31 +175,54 @@ const PortalTrades = () => {
               {items.length === 0 ? (
                 <tr><td colSpan={9}>暂无记录</td></tr>
               ) : (
-                items.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.created_at}</td>
-                    <td>{row.symbol}</td>
-                    <td>{row.side}</td>
-                    <td>{row.action}</td>
-                    <td>
-                      {row.margin != null && Number.isFinite(Number(row.margin))
-                        ? fmtMoney(row.margin)
-                        : fmtNum(row.quantity)}
-                    </td>
-                    <td>
-                      {row.action === 'open' && row.price != null && Number.isFinite(Number(row.price))
-                        ? fmtNum(row.price)
-                        : '—'}
-                    </td>
-                    <td>
-                      {row.action === 'close' && row.price != null && Number.isFinite(Number(row.price))
-                        ? fmtNum(row.price)
-                        : '—'}
-                    </td>
-                    <td className={Number(row.pnl) >= 0 ? 'qt-up' : 'qt-down'}>{fmtMoney(row.pnl)}</td>
-                    <td>{row.strategy_name || '—'}</td>
-                  </tr>
-                ))
+                items.flatMap((row, idx, arr) => {
+                  const curY = String(row.created_at || '').slice(0, 4)
+                  const prevY = idx > 0 ? String(arr[idx - 1].created_at || '').slice(0, 4) : curY
+                  const yearRow = (idx === 0 || curY !== prevY) && curY
+                    ? [(
+                      <tr key={`year-${curY}-${row.id}`}>
+                        <td
+                          colSpan={9}
+                          style={{
+                            background: 'rgba(148,163,184,0.12)',
+                            color: '#94a3b8',
+                            fontWeight: 600,
+                          }}
+                        >
+                          —— {curY} 年 ——
+                        </td>
+                      </tr>
+                    )]
+                    : []
+                  return [
+                    ...yearRow,
+                    (
+                      <tr key={row.id}>
+                        <td>{row.created_at}</td>
+                        <td>{row.symbol}</td>
+                        <td>{row.side}</td>
+                        <td>{row.action}</td>
+                        <td>
+                          {row.margin != null && Number.isFinite(Number(row.margin))
+                            ? fmtMoney(row.margin)
+                            : fmtNum(row.quantity)}
+                        </td>
+                        <td>
+                          {row.action === 'open' && row.price != null && Number.isFinite(Number(row.price))
+                            ? fmtNum(row.price)
+                            : '—'}
+                        </td>
+                        <td>
+                          {row.action === 'close' && row.price != null && Number.isFinite(Number(row.price))
+                            ? fmtNum(row.price)
+                            : '—'}
+                        </td>
+                        <td className={Number(row.pnl) >= 0 ? 'qt-up' : 'qt-down'}>{fmtMoney(row.pnl)}</td>
+                        <td>{row.strategy_name || '—'}</td>
+                      </tr>
+                    ),
+                  ]
+                })
               )}
             </tbody>
           </table>

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import * as echarts from 'echarts'
 import {
   disconnectExchange,
@@ -317,6 +318,23 @@ const PortalAccount = () => {
         },
       })
     } else {
+      const axisDates = dates.map((d) => String(d).slice(0, 10))
+      const yearMarks = []
+      for (let i = 1; i < axisDates.length; i += 1) {
+        const y0 = axisDates[i - 1].slice(0, 4)
+        const y1 = axisDates[i].slice(0, 4)
+        if (y0 !== y1) {
+          yearMarks.push({
+            xAxis: axisDates[i],
+            label: {
+              formatter: `${y1}年`,
+              color: '#94a3b8',
+              fontSize: 11,
+            },
+            lineStyle: { color: 'rgba(148,163,184,0.55)', type: 'dashed', width: 1.5 },
+          })
+        }
+      }
       ch.setOption({
         backgroundColor: 'transparent',
         tooltip: {
@@ -331,8 +349,16 @@ const PortalAccount = () => {
         grid: { left: 48, right: 16, top: 36, bottom: 28 },
         xAxis: {
           type: 'category',
-          data: dates.map((d) => String(d).slice(5)),
-          axisLabel: { color: '#64748b' },
+          data: axisDates,
+          axisLabel: {
+            color: '#64748b',
+            formatter: (v) => {
+              const s = String(v)
+              // 跨年点显示年份，其余 MM-DD
+              if (s.slice(5) === '01-01') return s.slice(0, 4)
+              return s.slice(5)
+            },
+          },
           axisLine: { lineStyle: { color: '#334155' } },
         },
         yAxis: {
@@ -354,6 +380,13 @@ const PortalAccount = () => {
             lineStyle: { color: '#4ade80', width: 2.5 },
             itemStyle: { color: '#4ade80' },
             areaStyle: { color: 'rgba(74, 222, 128, 0.12)' },
+            markLine: yearMarks.length
+              ? {
+                  symbol: 'none',
+                  silent: true,
+                  data: yearMarks,
+                }
+              : undefined,
           },
         ],
       }, true)
@@ -751,6 +784,12 @@ const PortalAccount = () => {
                 增加策略
               </button>
             ) : null}
+            <Link
+              className="portal-btn portal-btn-ghost"
+              to={`/portal/trades?platform=${encodeURIComponent(viewPlatform || 'crypto_account')}`}
+            >
+              查看全部交易记录
+            </Link>
             <button type="button" className="portal-btn portal-btn-ghost" onClick={() => { loadTrades() }}>
               刷新
             </button>
@@ -834,7 +873,29 @@ const PortalAccount = () => {
               {trades.length === 0 ? (
                 <tr><td colSpan={9}>暂无交易记录</td></tr>
               ) : (
-                trades.slice(0, 50).map((row) => (
+                trades.slice(0, 50).flatMap((row, idx, arr) => {
+                  const curY = String(row.created_at || '').slice(0, 4)
+                  const prevY = idx > 0 ? String(arr[idx - 1].created_at || '').slice(0, 4) : curY
+                  const yearRow = (idx === 0 || curY !== prevY) && curY
+                    ? [(
+                      <tr key={`year-${curY}-${row.id}`}>
+                        <td
+                          colSpan={9}
+                          style={{
+                            background: 'rgba(148,163,184,0.12)',
+                            color: '#94a3b8',
+                            fontWeight: 600,
+                            letterSpacing: '0.04em',
+                          }}
+                        >
+                          —— {curY} 年 ——
+                        </td>
+                      </tr>
+                    )]
+                    : []
+                  return [
+                    ...yearRow,
+                    (
                   <tr key={row.id}>
                     <td>{row.created_at}</td>
                     <td>{row.symbol}</td>
@@ -858,7 +919,9 @@ const PortalAccount = () => {
                     <td className={Number(row.pnl) >= 0 ? 'qt-up' : 'qt-down'}>{fmtSigned(row.pnl)}</td>
                     <td>{row.strategy_name || '—'}</td>
                   </tr>
-                ))
+                    ),
+                  ]
+                })
               )}
             </tbody>
           </table>
