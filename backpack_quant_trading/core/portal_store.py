@@ -536,6 +536,19 @@ def list_dynamic_book_platform_keys() -> List[str]:
         session.close()
 
 
+def _username_by_user_id(user_id: Optional[int]) -> str:
+    """查 users.username（账面绑定手机号登录名）。"""
+    if user_id is None:
+        return ""
+    try:
+        from backpack_quant_trading.database.models import DatabaseManager
+
+        u = DatabaseManager().get_user_by_id(int(user_id))
+        return str(getattr(u, "username", "") or "").strip() if u else ""
+    except Exception:
+        return ""
+
+
 def list_portal_book_accounts(*, owner_user_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """动态账面账户列表（含权益）。owner_user_id 非空时只返回该用户绑定账户。"""
     session = _session()
@@ -544,6 +557,15 @@ def list_portal_book_accounts(*, owner_user_id: Optional[int] = None) -> List[Di
         if owner_user_id is not None:
             q = q.filter(PortalBookAccount.owner_user_id == int(owner_user_id))
         rows = q.all()
+        owner_ids = {
+            int(r.owner_user_id)
+            for r in rows
+            if r.owner_user_id is not None
+        }
+        # 批量解析绑定用户名，避免 N 次会话
+        owner_name_map: Dict[int, str] = {}
+        for oid in owner_ids:
+            owner_name_map[oid] = _username_by_user_id(oid)
         out: List[Dict[str, Any]] = []
         for r in rows:
             plat = book_platform_key(r.id)
@@ -563,6 +585,8 @@ def list_portal_book_accounts(*, owner_user_id: Optional[int] = None) -> List[Di
             market = (r.market or "crypto").strip().lower()
             if market not in ("crypto", "us"):
                 market = "crypto"
+            oid = int(r.owner_user_id) if r.owner_user_id is not None else None
+            owner_name = owner_name_map.get(oid, "") if oid is not None else ""
             out.append(
                 {
                     "id": int(r.id),
@@ -574,7 +598,10 @@ def list_portal_book_accounts(*, owner_user_id: Optional[int] = None) -> List[Di
                     "initial_capital": init_cap,
                     "equity": round(init_cap + pnl, 4),
                     "label": r.label or "",
-                    "owner_user_id": int(r.owner_user_id) if r.owner_user_id is not None else None,
+                    "owner_user_id": oid,
+                    "owner_username": owner_name,
+                    # 卡片 ID：绑定手机号；无绑定则空（前端显示 —）
+                    "display_id": owner_name,
                     "start_date": r.start_date.isoformat() if getattr(r, "start_date", None) else None,
                     "book": True,
                 }
@@ -2488,6 +2515,37 @@ def create_inbox(user_id: int, title: str, body: str = "") -> Dict[str, Any]:
         raise
     finally:
         session.close()
+
+
+def count_inbox_unread(user_id: int) -> int:
+    session = _session()
+    try:
+        return int(
+            session.query(PortalInbox)
+            .filter_by(user_id=int(user_id), is_read=False)
+            .count()
+        )
+    finally:
+        session.close()
+
+
+def broadcast_inbox(title: str, body: str = "") -> int:
+    """向全部用户写入同站内信（观察库状态变更等）。"""
+    from sqlalchemy import text
+
+    session = _session()
+    try:
+        uids = [int(r[0]) for r in session.execute(text("SELECT id FROM users")).fetchall()]
+    finally:
+        session.close()
+    n = 0
+    for uid in uids:
+        try:
+            create_inbox(uid, title, body)
+            n += 1
+        except Exception:
+            continue
+    return n
 
 
 def mark_inbox_read(user_id: int, msg_id: int) -> bool:

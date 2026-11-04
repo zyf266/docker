@@ -46,6 +46,7 @@ export const deleteBookStrategy = (id) =>
   request.delete(`/portal/book-strategies/${id}`)
 export const searchPortal = (q) => request.get('/portal/search', { params: { q } })
 export const getInbox = () => request.get('/portal/inbox')
+export const getInboxUnreadCount = () => request.get('/portal/inbox/unread-count')
 export const testInbox = (data) => request.post('/portal/inbox/test', data)
 export const readInbox = (id) => request.post(`/portal/inbox/${id}/read`)
 export const stubEmail = (data) => request.post('/portal/email/stub', data)

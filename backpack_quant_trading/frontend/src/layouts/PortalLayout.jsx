@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { createBookAccount } from '../api/portal'
+import { createBookAccount, getInbox, getInboxUnreadCount, readInbox } from '../api/portal'
 import { isAdminRole, readStoredUser } from '../utils/authRole'
 import './PortalLayout.css'
 
@@ -19,6 +19,41 @@ const PortalLayout = () => {
   const [bookStartDate, setBookStartDate] = useState('')
   const [bookBusy, setBookBusy] = useState(false)
   const [bookMsg, setBookMsg] = useState('')
+  const [inboxOpen, setInboxOpen] = useState(false)
+  const [inboxUnread, setInboxUnread] = useState(0)
+  const [inboxItems, setInboxItems] = useState([])
+  const [inboxBusy, setInboxBusy] = useState(false)
+
+  const refreshUnread = useCallback(async () => {
+    try {
+      const res = await getInboxUnreadCount()
+      setInboxUnread(Number(res?.unread) || 0)
+    } catch (_) {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshUnread()
+    const t = window.setInterval(refreshUnread, 60000)
+    return () => window.clearInterval(t)
+  }, [refreshUnread])
+
+  const openInboxPanel = async () => {
+    const next = !inboxOpen
+    setInboxOpen(next)
+    if (!next) return
+    setInboxBusy(true)
+    try {
+      const res = await getInbox()
+      setInboxItems(res?.items || [])
+      setInboxUnread(Number(res?.unread) || 0)
+    } catch (_) {
+      setInboxItems([])
+    } finally {
+      setInboxBusy(false)
+    }
+  }
 
   const logout = () => {
     localStorage.removeItem('token')
@@ -79,12 +114,59 @@ const PortalLayout = () => {
           <span className="portal-logo-mark" aria-hidden />
           QUANT TERMINAL
         </Link>
-        <nav className="portal-nav-links">
+        <nav className="portal-nav-links" style={{ position: 'relative' }}>
           {links.map((item) => (
             <NavLink key={item.to} to={item.to} end={!!item.end}>
               {item.label}
             </NavLink>
           ))}
+          <button
+            type="button"
+            className="portal-inbox-bulb"
+            title="状态变更消息"
+            aria-label="状态变更消息"
+            onClick={openInboxPanel}
+          >
+            <span aria-hidden>💡</span>
+            {inboxUnread > 0 ? (
+              <span className="portal-inbox-badge">{inboxUnread > 99 ? '99+' : inboxUnread}</span>
+            ) : null}
+          </button>
+          {inboxOpen ? (
+            <div className="portal-inbox-panel" role="dialog" aria-label="系统消息">
+              <div className="portal-inbox-panel-head">
+                <strong>状态变更消息</strong>
+                <button type="button" className="portal-btn portal-btn-ghost" style={{ padding: '2px 8px' }} onClick={() => setInboxOpen(false)}>关闭</button>
+              </div>
+              {inboxBusy ? <p className="qt-sub">加载中…</p> : null}
+              {!inboxBusy && inboxItems.length === 0 ? (
+                <p className="qt-sub">暂无消息</p>
+              ) : null}
+              <div className="portal-inbox-list">
+                {inboxItems.slice(0, 20).map((it) => (
+                  <button
+                    key={it.id}
+                    type="button"
+                    className={`portal-inbox-item ${it.is_read ? 'is-read' : ''}`}
+                    onClick={async () => {
+                      if (!it.is_read) {
+                        try {
+                          await readInbox(it.id)
+                          setInboxItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, is_read: true } : x)))
+                          setInboxUnread((n) => Math.max(0, n - 1))
+                        } catch (_) { /* ignore */ }
+                      }
+                    }}
+                  >
+                    <div className="portal-inbox-item-title">{it.title}</div>
+                    <div className="portal-inbox-item-body">{it.body}</div>
+                    <div className="portal-inbox-item-time">{it.created_at}</div>
+                  </button>
+                ))}
+              </div>
+              <Link className="portal-inbox-more" to="/portal/inbox" onClick={() => setInboxOpen(false)}>查看全部</Link>
+            </div>
+          ) : null}
         </nav>
         <div className="portal-nav-actions">
           {showAdminSwitch ? (

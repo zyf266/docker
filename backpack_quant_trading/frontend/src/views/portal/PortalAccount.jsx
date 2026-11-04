@@ -97,6 +97,17 @@ const PortalAccount = () => {
   const storedUser = useMemo(() => readStoredUser(), [])
   const isAdmin = useMemo(() => isAdminRole(storedUser?.role), [storedUser])
   const loginId = String(storedUser?.username || '').trim()
+  /** 卡片 ID：账面用绑定手机号；用户端无绑定字段时回落当前登录手机号；交易所用掩码 */
+  const cardDisplayId = (a) => {
+    const bound = String(a?.owner_username || a?.display_id || '').trim()
+    if (bound) return bound
+    if (isBookPlatform(a?.platform)) {
+      // 普通用户只看自己的卡：可用登录手机号；管理员看无绑定共享卡 → —
+      if (!isAdmin && loginId) return loginId
+      return ''
+    }
+    return String(a?.account_id || a?.address_mask || a?.api_key_mask || '').trim()
+  }
   const [curveErr, setCurveErr] = useState('')
   const [curveLoading, setCurveLoading] = useState(false)
   const [curveDays, setCurveDays] = useState(0)
@@ -441,7 +452,7 @@ const PortalAccount = () => {
         cards.push({
           platform: a.platform,
           title,
-          accountId: a.account_id || a.address_mask || a.platform,
+          accountId: cardDisplayId(a),
           balance: a.equity,
           currency: a.currency || 'USD',
           market,
@@ -462,14 +473,14 @@ const PortalAccount = () => {
       cards.push({
         platform: a.platform,
         title: platShort(a.platform),
-        accountId: a.account_id || a.address_mask || a.api_key_mask || a.platform,
+        accountId: cardDisplayId(a),
         balance: a.equity ?? a.balance,
         currency: a.currency || '',
         canDisconnect: true,
       })
     }
     return cards
-  }, [allOkAccounts, exchangeAccounts, isAdmin])
+  }, [allOkAccounts, exchangeAccounts, isAdmin, loginId])
 
   const okAccounts = useMemo(
     () => allOkAccounts.filter((a) => a.platform === viewPlatform),
@@ -590,7 +601,7 @@ const PortalAccount = () => {
                   ) : null}
                   <div style={{ fontWeight: 700, fontSize: 14, paddingRight: 40 }}>{card.title}</div>
                   <div style={{ color: 'var(--qt-muted)', fontSize: 12, marginTop: 6 }}>
-                    ID: {loginId || card.accountId || '—'}
+                    ID: {card.accountId || '—'}
                   </div>
                   <div className="qt-up" style={{ fontWeight: 700, fontSize: 16, marginTop: 8 }}>
                     {card.balance != null ? `$ ${fmtMoney(card.balance)}` : '—'}

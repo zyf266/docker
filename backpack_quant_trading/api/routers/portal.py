@@ -517,7 +517,14 @@ def search(q: str = Query(""), user: dict = Depends(require_user)):
 
 @router.get("/inbox")
 def inbox(user: dict = Depends(require_user)):
-    return {"ok": True, "items": store.list_inbox(user["id"])}
+    items = store.list_inbox(user["id"])
+    unread = store.count_inbox_unread(user["id"])
+    return {"ok": True, "items": items, "unread": unread}
+
+
+@router.get("/inbox/unread-count")
+def inbox_unread_count(user: dict = Depends(require_user)):
+    return {"ok": True, "unread": store.count_inbox_unread(user["id"])}
 
 
 @router.post("/inbox/test")

@@ -339,7 +339,10 @@ def _build_book_accounts(
                     "currency": "USD",
                     "address_mask": "",
                     "api_key_mask": "",
-                    "account_id": _book_display_id(book_plat),
+                    # 默认共享账面无绑定用户，卡片 ID 显示 —
+                    "account_id": "",
+                    "display_id": "",
+                    "owner_username": "",
                     "demo": False,
                     "book": True,
                     "initial_capital": init_cap,
@@ -356,6 +359,7 @@ def _build_book_accounts(
         owned_plats: List[str] = []
         for dyn in dyn_rows:
             owned_plats.append(dyn["platform"])
+            owner_name = str(dyn.get("owner_username") or "").strip()
             book_accounts.append(
                 {
                     "platform": dyn["platform"],
@@ -364,6 +368,7 @@ def _build_book_accounts(
                     "market": dyn.get("market") or "crypto",
                     "book_account_id": dyn.get("id"),
                     "owner_user_id": dyn.get("owner_user_id"),
+                    "owner_username": owner_name,
                     "label": dyn.get("label") or "账面账户",
                     "status": "ok",
                     "equity": dyn.get("equity"),
@@ -371,7 +376,9 @@ def _build_book_accounts(
                     "currency": "USD",
                     "address_mask": "",
                     "api_key_mask": "",
-                    "account_id": dyn.get("account_no") or dyn["platform"],
+                    # account_id / display_id：卡片「ID」用绑定手机号，不用 0x 掩码
+                    "account_id": owner_name or "",
+                    "display_id": owner_name or dyn.get("display_id") or "",
                     "demo": False,
                     "book": True,
                     "initial_capital": dyn.get("initial_capital"),

@@ -43,6 +43,7 @@ import PortalMaCards from './views/portal/PortalMaCards'
 import PortalMarket from './views/portal/PortalMarket'
 import PortalFaq from './views/portal/PortalFaq'
 import PortalContact from './views/portal/PortalContact'
+import PortalInbox from './views/portal/PortalInbox'
 import { isAdminRole, readStoredUser } from './utils/authRole'
 
 const homeForUser = () => {
@@ -129,6 +130,7 @@ function App() {
           <Route path="workflow" element={<Navigate to="/portal" replace />} />
           <Route path="faq" element={<PortalFaq />} />
           <Route path="contact" element={<PortalContact />} />
+          <Route path="inbox" element={<PortalInbox />} />
         </Route>
 
         <Route

@@ -98,6 +98,119 @@
   gap: 10px;
 }
 
+.portal-inbox-bulb {
+  position: relative;
+  margin-left: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.65);
+  color: #fde68a;
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.portal-inbox-bulb:hover {
+  border-color: rgba(253, 230, 138, 0.55);
+}
+
+.portal-inbox-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.portal-inbox-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, 92vw);
+  max-height: 420px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #101826;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  padding: 12px;
+  z-index: 40;
+  text-align: left;
+}
+
+.portal-inbox-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.portal-inbox-list {
+  overflow: auto;
+  flex: 1;
+  max-height: 300px;
+}
+
+.portal-inbox-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  color: inherit;
+  padding: 10px 4px;
+  cursor: pointer;
+}
+
+.portal-inbox-item.is-read {
+  opacity: 0.65;
+}
+
+.portal-inbox-item-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.portal-inbox-item-body {
+  white-space: pre-wrap;
+  color: var(--qt-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.portal-inbox-item-time {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.portal-inbox-more {
+  margin-top: 8px;
+  text-align: center;
+  color: var(--qt-cyan);
+  font-size: 13px;
+  text-decoration: none;
+}
+
 .portal-btn {
   border: 0;
   border-radius: 999px;

@@ -1,8 +1,10 @@
 """标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 三状态（对齐 TV Pine）。
 
 列表默认只读库（秒开）；指标默认读 30 分钟缓存（内存+磁盘），仅 force 时重拉 K 线。
-三状态（固定级别）：熊市空头 / 趋势 / 反弹 / 牛市空头；2h 站上本周期 MA30；日线 MACD 水上金叉。
-任一状态变化推钉钉。加密 K 线优先 Hyperliquid。
+三状态（固定级别）：熊市空头 / 趋势 / 反弹 / 牛市空头；2h 站上本周期 SMA(ma2hLen=180)；日线 MACD 水上金叉。
+Pine 四态变化 → 钉钉（关键词含「信号」）+ 站内信。加密 K 线优先 Hyperliquid。
+
+钉钉 Webhook 只读环境变量 PORTAL_WATCH_DINGTALK_WEBHOOK（勿把 token 写进仓库）。
 """
 from __future__ import annotations
 
@@ -26,10 +28,12 @@ from backpack_quant_trading.core import portal_store as store
 
 logger = logging.getLogger(__name__)
 
-PORTAL_WATCH_DINGTALK_WEBHOOK = (
-    os.environ.get("PORTAL_WATCH_DINGTALK_WEBHOOK")
-    or "https://oapi.dingtalk.com/robot/send?access_token=8b44c3949d211969cb4ec04ac605b605c39d87cc404a200a2b45a19694660b82"
-).strip()
+# 对齐 Pine：ma2hLen（2h 本周期均线长度）
+MA2H_LEN = int(os.environ.get("PORTAL_WATCH_MA2H_LEN") or "180")
+# 缓存版本：改均线参数后旧缓存失效
+_METRICS_CACHE_VER = f"ma2h{MA2H_LEN}"
+
+PORTAL_WATCH_DINGTALK_WEBHOOK = (os.environ.get("PORTAL_WATCH_DINGTALK_WEBHOOK") or "").strip()
 _STATUS_STATE_PATH = Path(__file__).resolve().parents[1] / "data" / "portal_watch_status_state.json"
 _STATUS_STATE_LOCK = threading.Lock()
 
@@ -182,8 +186,8 @@ def _vs_daily_wma15(tf_closes: List[float], daily_closes: List[float]) -> str:
     return "站上" if float(tf_closes[-1]) >= float(daily_wma) else "未站上"
 
 
-def _vs_own_sma(tf_closes: List[float], length: int = 30) -> str:
-    """周期收盘 vs 本周期 SMA（对齐 Pine：h2Close > ma2h）。"""
+def _vs_own_sma(tf_closes: List[float], length: int = MA2H_LEN) -> str:
+    """周期收盘 vs 本周期 SMA（对齐 Pine：h2Close > ma2h，默认 ma2hLen=180）。"""
     if not tf_closes or length <= 0:
         return "—"
     ma = sma(tf_closes, length)
@@ -299,6 +303,7 @@ def _save_status_state(state: Dict[str, Any]) -> None:
 def _send_watch_dingtalk(title: str, body: str) -> None:
     wh = (PORTAL_WATCH_DINGTALK_WEBHOOK or "").strip()
     if not wh:
+        logger.debug("PORTAL_WATCH_DINGTALK_WEBHOOK 未配置，跳过钉钉推送")
         return
     try:
         from backpack_quant_trading.core.stock_news_alert import send_dingtalk_markdown
@@ -310,48 +315,64 @@ def _send_watch_dingtalk(title: str, body: str) -> None:
         logger.warning("portal watch dingtalk error: %s", exc)
 
 
+def _push_status_inbox(title: str, body: str) -> None:
+    """站内信广播：观察库可见用户都能在 💡 里看到。"""
+    try:
+        n = store.broadcast_inbox(title, body)
+        logger.info("portal watch inbox broadcast n=%s title=%s", n, title)
+    except Exception as exc:
+        logger.warning("portal watch inbox failed: %s", exc)
+
+
 def maybe_notify_status_changes(metrics: Dict[str, Any]) -> None:
-    """变盘/趋势状态边沿触发钉钉（站上 WMA15 / 进入日线>MA30）。"""
+    """Pine 四态（status_label）边沿变化 → 钉钉（含关键词「信号」）+ 站内信。"""
     code = str(metrics.get("code") or metrics.get("symbol") or "").upper()
     if not code or metrics.get("error"):
         return
+    # 确保有四态标签
+    label = str(metrics.get("status_label") or "").strip()
+    if not label:
+        gate = eval_tradable(None, metrics)
+        label = str(gate.get("status_label") or "").strip()
+        metrics["status_label"] = label
+    if not label:
+        return
+
     market = "美股" if (metrics.get("market") or "") in ("us", "美股") else "加密"
     key = f"{metrics.get('market') or 'crypto'}:{metrics.get('symbol') or code}"
     cur_2h = str(metrics.get("signal_2h") or "—")
     cur_4h = str(metrics.get("signal_4h") or "—")
-    cur_trend = bool(metrics.get("mid_on"))
     px = metrics.get("price")
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
 
     with _STATUS_STATE_LOCK:
         state = _load_status_state()
         prev = state.get(key) or {}
-        prev_2h = str(prev.get("signal_2h") or "")
-        prev_4h = str(prev.get("signal_4h") or "")
-        prev_trend = prev.get("trend_on")
-        alerts: List[str] = []
-
-        # 任一变化即推（含站上↔未站上、中强真假切换）
-        if prev_2h and cur_2h != prev_2h and cur_2h != "—":
-            alerts.append(f"【2H状态】{code}（{market}）{prev_2h} → {cur_2h}（相对日线 WMA15）")
-        if prev_4h and cur_4h != prev_4h and cur_4h != "—":
-            alerts.append(f"【4H状态】{code}（{market}）{prev_4h} → {cur_4h}（相对日线 WMA15）")
-        if prev_trend is not None and bool(prev_trend) != cur_trend:
-            alerts.append(
-                f"【中强/趋势】{code}（{market}）日线{'站上' if cur_trend else '跌破'} MA30"
-            )
-
+        prev_label = str(prev.get("status_label") or "").strip()
+        changed = bool(prev_label) and prev_label != label
         state[key] = {
+            "status_label": label,
             "signal_2h": cur_2h,
             "signal_4h": cur_4h,
-            "trend_on": cur_trend,
             "price": px,
-            "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "updated_at": ts,
         }
         _save_status_state(state)
 
-    for line in alerts:
-        detail = f"{line}\n最新价: {px if px is not None else '—'}\n2H状态: {cur_2h} · 4H状态: {cur_4h} · 趋势(日>MA30): {'是' if cur_trend else '否'}"
-        _send_watch_dingtalk("观察库状态提醒", detail)
+    if not changed:
+        return
+
+    # 钉钉自定义机器人关键词：信号
+    title = f"信号 · {code} 状态变更"
+    detail = (
+        f"【信号】观察库状态变更\n"
+        f"{code}（{market}）{prev_label} → {label}\n"
+        f"最新价: {px if px is not None else '—'}\n"
+        f"2H(SMA{MA2H_LEN}): {cur_2h} · 4H: {cur_4h}\n"
+        f"时间: {ts}"
+    )
+    _send_watch_dingtalk(title, detail)
+    _push_status_inbox(title, detail)
 
 
 def _daily_stand(closes: List[float]) -> Dict[str, Any]:
@@ -511,7 +532,10 @@ def compute_symbol_metrics(
     from concurrent.futures import ThreadPoolExecutor
 
     is_us = (market or "").lower() in ("us", "美股")
-    cache_key = f"{'us' if is_us else 'crypto'}:{normalize_pair(symbol, 'us' if is_us else 'crypto')}"
+    cache_key = (
+        f"{_METRICS_CACHE_VER}:{'us' if is_us else 'crypto'}:"
+        f"{normalize_pair(symbol, 'us' if is_us else 'crypto')}"
+    )
     if not force:
         hit = _cache_get(cache_key)
         if hit:
@@ -530,7 +554,7 @@ def compute_symbol_metrics(
         # 日线必须；2h/4h 并行且少根数，失败可空
         with ThreadPoolExecutor(max_workers=3) as pool:
             f1 = pool.submit(_fetch_us_klines, ticker, "1d", 220)
-            f2 = pool.submit(_fetch_us_klines, ticker, "2h", 80)
+            f2 = pool.submit(_fetch_us_klines, ticker, "2h", max(220, MA2H_LEN + 40))
             f4 = pool.submit(_fetch_us_klines, ticker, "4h", 80)
             k1d, src1 = f1.result()
             k2, src2 = f2.result()
@@ -539,7 +563,7 @@ def compute_symbol_metrics(
         closes_2h = _closes_from_bars(k2)
         m1d = _daily_stand(closes_1d)
         # 2h：对齐 Pine（本周期 MA30）；4h 仍对照日线 WMA15 作参考列
-        sig2 = _vs_own_sma(closes_2h, 30)
+        sig2 = _vs_own_sma(closes_2h, MA2H_LEN)
         sig4 = _vs_daily_wma15(_closes_from_bars(k4), closes_1d)
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
@@ -553,7 +577,7 @@ def compute_symbol_metrics(
             return base
         with ThreadPoolExecutor(max_workers=3) as pool:
             f1 = pool.submit(_fetch_crypto_klines, pair, "1d", 220)
-            f2 = pool.submit(_fetch_crypto_klines, pair, "2h", 80)
+            f2 = pool.submit(_fetch_crypto_klines, pair, "2h", max(220, MA2H_LEN + 40))
             f4 = pool.submit(_fetch_crypto_klines, pair, "4h", 80)
             k1d, src1 = f1.result()
             k2, src2 = f2.result()
@@ -561,7 +585,7 @@ def compute_symbol_metrics(
         closes_1d = _closes_from_bars(k1d)
         closes_2h = _closes_from_bars(k2)
         m1d = _daily_stand(closes_1d)
-        sig2 = _vs_own_sma(closes_2h, 30)
+        sig2 = _vs_own_sma(closes_2h, MA2H_LEN)
         sig4 = _vs_daily_wma15(_closes_from_bars(k4), closes_1d)
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
@@ -591,6 +615,10 @@ def compute_symbol_metrics(
         "error": m1d.get("error") or "",
         "data_source": "+".join(dict.fromkeys(sources)) if sources else "",
     })
+    gate0 = eval_tradable(None, base)
+    base["status_label"] = gate0.get("status_label") or ""
+    base["status_mode"] = gate0.get("status_mode") or ""
+    base["ma2h_len"] = MA2H_LEN
     _cache_put(cache_key, base)
     base["_from_cache"] = False
     base["_cache_age_sec"] = 0
@@ -676,8 +704,11 @@ def list_watchlist_board(
                 metrics["_from_cache"] = False
         else:
             # 无 metrics 请求时仍尽量回填未过期缓存，避免进页全是「—」
-            cache_key = f"{'us' if (market or '').lower() in ('us', '美股') else 'crypto'}:" \
-                        f"{normalize_pair(sym, market)}"
+            cache_key = (
+                f"{_METRICS_CACHE_VER}:"
+                f"{'us' if (market or '').lower() in ('us', '美股') else 'crypto'}:"
+                f"{normalize_pair(sym, market)}"
+            )
             hit = _cache_get(cache_key)
             if hit:
                 ts, data = hit
