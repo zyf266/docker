@@ -1,7 +1,9 @@
 """标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 三状态（对齐 TV Pine）。
 
 列表默认只读库（秒开）；指标默认读 30 分钟缓存（内存+磁盘），仅 force 时重拉 K 线。
-三状态（固定级别）：熊市空头 / 趋势 / 反弹 / 牛市空头；2h 站上本周期 SMA(ma2hLen=180)；日线 MACD 水上金叉。
+三状态（固定级别）：熊市空头 / 趋势 / 反弹 / 牛市空头。
+- 加密：2h SMA(ma2hLen 默认 180)；日线 MACD「水上金叉」(DIF>0 且 DIF>DEA)
+- 美股：2h SMA(ma2hLen 默认 30)；日线 MACD「水上」(DIF>0 且 DEA>0)
 Pine 四态变化 → 钉钉（关键词含「信号」）+ 站内信。加密 K 线优先 Hyperliquid。
 
 钉钉 Webhook 只读环境变量 PORTAL_WATCH_DINGTALK_WEBHOOK（勿把 token 写进仓库）。
@@ -28,10 +30,13 @@ from backpack_quant_trading.core import portal_store as store
 
 logger = logging.getLogger(__name__)
 
-# 对齐 Pine：ma2hLen（2h 本周期均线长度）
-MA2H_LEN = int(os.environ.get("PORTAL_WATCH_MA2H_LEN") or "180")
-# 缓存版本：改均线参数后旧缓存失效
-_METRICS_CACHE_VER = f"ma2h{MA2H_LEN}"
+# 对齐 Pine：ma2hLen（加密默认 180；美股脚本默认 30）
+MA2H_LEN_CRYPTO = int(os.environ.get("PORTAL_WATCH_MA2H_LEN") or "180")
+MA2H_LEN_US = int(os.environ.get("PORTAL_WATCH_MA2H_LEN_US") or "30")
+# 兼容旧名
+MA2H_LEN = MA2H_LEN_CRYPTO
+# 缓存版本：改均线/美股 MACD 规则后旧缓存失效
+_METRICS_CACHE_VER = f"ma2h{MA2H_LEN_CRYPTO}_us{MA2H_LEN_US}_macdus1"
 
 PORTAL_WATCH_DINGTALK_WEBHOOK = (os.environ.get("PORTAL_WATCH_DINGTALK_WEBHOOK") or "").strip()
 _STATUS_STATE_PATH = Path(__file__).resolve().parents[1] / "data" / "portal_watch_status_state.json"
@@ -186,14 +191,37 @@ def _vs_daily_wma15(tf_closes: List[float], daily_closes: List[float]) -> str:
     return "站上" if float(tf_closes[-1]) >= float(daily_wma) else "未站上"
 
 
-def _vs_own_sma(tf_closes: List[float], length: int = MA2H_LEN) -> str:
-    """周期收盘 vs 本周期 SMA（对齐 Pine：h2Close > ma2h，默认 ma2hLen=180）。"""
+def _vs_own_sma(tf_closes: List[float], length: int = MA2H_LEN_CRYPTO) -> str:
+    """周期收盘 vs 本周期 SMA（对齐 Pine：h2Close > ma2h）。"""
     if not tf_closes or length <= 0:
         return "—"
     ma = sma(tf_closes, length)
     if ma is None:
         return "—"
     return "站上" if float(tf_closes[-1]) >= float(ma) else "未站上"
+
+
+def _macd_last(closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9) -> Tuple[Optional[float], Optional[float]]:
+    """日线 MACD 最新一根：(DIF/macd, DEA/signal)。不足数据返回 (None, None)。"""
+    if len(closes) < slow + signal + 2:
+        return None, None
+    ema_fast = _ema_series(closes, fast)
+    ema_slow = _ema_series(closes, slow)
+    macd_line: List[Optional[float]] = [None] * len(closes)
+    for i in range(len(closes)):
+        if ema_fast[i] is None or ema_slow[i] is None:
+            continue
+        macd_line[i] = float(ema_fast[i]) - float(ema_slow[i])
+    filled: List[float] = []
+    for x in macd_line:
+        filled.append(float(x) if x is not None else (filled[-1] if filled else 0.0))
+    sig_series = _ema_series(filled, signal)
+    i = len(closes) - 1
+    m = macd_line[i]
+    s = sig_series[i] if i < len(sig_series) else None
+    if m is None or s is None:
+        return None, None
+    return float(m), float(s)
 
 
 def _ema_series(values: List[float], length: int) -> List[Optional[float]]:
@@ -214,38 +242,28 @@ def _ema_series(values: List[float], length: int) -> List[Optional[float]]:
 
 
 def _macd_water_golden(closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9) -> bool:
-    """日线 MACD：柱/线在零轴上方且 MACD > Signal（水上金叉）。"""
-    if len(closes) < slow + signal + 2:
-        return False
-    ema_fast = _ema_series(closes, fast)
-    ema_slow = _ema_series(closes, slow)
-    macd_line: List[Optional[float]] = [None] * len(closes)
-    for i in range(len(closes)):
-        if ema_fast[i] is None or ema_slow[i] is None:
-            continue
-        macd_line[i] = float(ema_fast[i]) - float(ema_slow[i])
-    macd_vals = [float(x) for x in macd_line if x is not None]
-    if len(macd_vals) < signal + 1:
-        return False
-    # 用完整 macd_line 对齐索引算 signal EMA
-    filled = []
-    for x in macd_line:
-        filled.append(float(x) if x is not None else (filled[-1] if filled else 0.0))
-    sig_series = _ema_series(filled, signal)
-    i = len(closes) - 1
-    m = macd_line[i]
-    s = sig_series[i] if i < len(sig_series) else None
+    """加密 Pine：日线 MACD 水上金叉（DIF>0 且 DIF>DEA）。"""
+    m, s = _macd_last(closes, fast, slow, signal)
     if m is None or s is None:
         return False
-    return float(m) > 0 and float(m) > float(s)
+    return m > 0 and m > s
+
+
+def _macd_above_water(closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9) -> bool:
+    """美股 Pine：日线 MACD 水上（DIF>0 且 DEA>0）；否则水下。"""
+    m, s = _macd_last(closes, fast, slow, signal)
+    if m is None or s is None:
+        return False
+    return m > 0 and s > 0
 
 
 def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """对齐 TV「三状态监控」Pine：熊市空头 / 趋势 / 反弹 / 牛市空头。
+    """对齐 TV 三状态 Pine。
 
-    不再依赖观察库「状态配置」弹窗；有日线 MA200 即可判定。
+    - 加密：水上金叉 (macd_water_golden)
+    - 美股：水上/水下 (macd_above_water = DIF>0 且 DEA>0)
     """
-    _ = cfg  # 交易配置仍挂在 config；状态与门控改由行情判定
+    _ = cfg
     if metrics.get("ma200") is None:
         return {
             "tradable": False,
@@ -255,10 +273,17 @@ def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dic
             "status_label": "",
             "status_mode": "",
         }
+    is_us = (metrics.get("market") or "") in ("us", "美股")
     above200 = bool(metrics.get("long_on"))
     above30 = bool(metrics.get("mid_on"))
     above2h = bool(metrics.get("above_2h_ma")) or str(metrics.get("signal_2h") or "") == "站上"
-    water = bool(metrics.get("macd_water_golden"))
+    # 美股用 aboveWater；加密用水上金叉
+    if is_us:
+        water = bool(metrics.get("macd_above_water"))
+        gate_tag = "pine_us_macd_water"
+    else:
+        water = bool(metrics.get("macd_water_golden"))
+        gate_tag = "pine_crypto_macd_golden"
 
     if not above200:
         label = "熊市空头"
@@ -269,10 +294,9 @@ def eval_tradable(cfg: Optional[Dict[str, Any]], metrics: Dict[str, Any]) -> Dic
     else:
         label = "牛市空头"
 
-    # 展示用：有状态即显示；跟单侧仍可用 tradable=趋势/反弹
     return {
         "tradable": label in ("趋势", "反弹"),
-        "gates": ["pine3"],
+        "gates": [gate_tag],
         "missing": [],
         "configured": True,
         "status_mode": label,
@@ -511,6 +535,7 @@ def _empty_metrics(symbol: str, market: str, name: str = "") -> Dict[str, Any]:
         "signal_4h": "—",
         "above_2h_ma": False,
         "macd_water_golden": False,
+        "macd_above_water": False,
         "short_on": False,
         "mid_on": False,
         "long_on": False,
@@ -551,10 +576,11 @@ def compute_symbol_metrics(
         if not ticker:
             base["error"] = "无效美股代码"
             return base
-        # 日线必须；2h/4h 并行且少根数，失败可空
+        ma2h_len = MA2H_LEN_US
+        # 日线必须；2h/4h 并行；美股 Pine ma2hLen 默认 30
         with ThreadPoolExecutor(max_workers=3) as pool:
             f1 = pool.submit(_fetch_us_klines, ticker, "1d", 220)
-            f2 = pool.submit(_fetch_us_klines, ticker, "2h", max(220, MA2H_LEN + 40))
+            f2 = pool.submit(_fetch_us_klines, ticker, "2h", max(220, ma2h_len + 40))
             f4 = pool.submit(_fetch_us_klines, ticker, "4h", 80)
             k1d, src1 = f1.result()
             k2, src2 = f2.result()
@@ -562,8 +588,7 @@ def compute_symbol_metrics(
         closes_1d = _closes_from_bars(k1d)
         closes_2h = _closes_from_bars(k2)
         m1d = _daily_stand(closes_1d)
-        # 2h：对齐 Pine（本周期 MA30）；4h 仍对照日线 WMA15 作参考列
-        sig2 = _vs_own_sma(closes_2h, MA2H_LEN)
+        sig2 = _vs_own_sma(closes_2h, ma2h_len)
         sig4 = _vs_daily_wma15(_closes_from_bars(k4), closes_1d)
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
@@ -575,9 +600,10 @@ def compute_symbol_metrics(
         if not pair:
             base["error"] = "无效交易对"
             return base
+        ma2h_len = MA2H_LEN_CRYPTO
         with ThreadPoolExecutor(max_workers=3) as pool:
             f1 = pool.submit(_fetch_crypto_klines, pair, "1d", 220)
-            f2 = pool.submit(_fetch_crypto_klines, pair, "2h", max(220, MA2H_LEN + 40))
+            f2 = pool.submit(_fetch_crypto_klines, pair, "2h", max(220, ma2h_len + 40))
             f4 = pool.submit(_fetch_crypto_klines, pair, "4h", 80)
             k1d, src1 = f1.result()
             k2, src2 = f2.result()
@@ -585,7 +611,7 @@ def compute_symbol_metrics(
         closes_1d = _closes_from_bars(k1d)
         closes_2h = _closes_from_bars(k2)
         m1d = _daily_stand(closes_1d)
-        sig2 = _vs_own_sma(closes_2h, MA2H_LEN)
+        sig2 = _vs_own_sma(closes_2h, ma2h_len)
         sig4 = _vs_daily_wma15(_closes_from_bars(k4), closes_1d)
         sources = [s for s in (src1, src2, src4) if s]
         last_px = m1d.get("price")
@@ -599,12 +625,14 @@ def compute_symbol_metrics(
     daily_wma15 = wma(closes_1d, 15) if closes_1d else None
     above_2h = sig2 == "站上"
     water_golden = _macd_water_golden(closes_1d) if closes_1d else False
+    above_water = _macd_above_water(closes_1d) if closes_1d else False
     base.update({
         "price": last_px if last_px not in (None, 0) else None,
         "signal_2h": sig2,
         "signal_4h": sig4,
         "above_2h_ma": above_2h,
         "macd_water_golden": water_golden,
+        "macd_above_water": above_water,
         "short_on": bool(m1d.get("short_on")),
         "mid_on": bool(m1d.get("mid_on")),
         "long_on": bool(m1d.get("long_on")),
@@ -618,7 +646,7 @@ def compute_symbol_metrics(
     gate0 = eval_tradable(None, base)
     base["status_label"] = gate0.get("status_label") or ""
     base["status_mode"] = gate0.get("status_mode") or ""
-    base["ma2h_len"] = MA2H_LEN
+    base["ma2h_len"] = ma2h_len
     _cache_put(cache_key, base)
     base["_from_cache"] = False
     base["_cache_age_sec"] = 0
