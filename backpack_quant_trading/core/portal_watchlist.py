@@ -1,12 +1,14 @@
 """标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 三状态（对齐 TV Pine）。
 
-列表默认只读库（秒开）；指标按墙钟整点/半点（:00/:30）刷新缓存，仅 force 时立刻重拉 K 线。
+列表默认只读库（秒开）；指标按墙钟整点/半点（:00/:30）由后台强制刷新缓存，
+进页默认读缓存；仅点「刷新指标」时立刻重拉。
 三状态（固定级别）：熊市空头 / 趋势 / 反弹 / 牛市空头。
 - 加密：2h SMA(ma2hLen 默认 180)；日线 MACD「水上金叉」(DIF>0 且 DIF>DEA)
 - 美股：2h SMA(ma2hLen 默认 30)；日线 MACD「水上」(DIF>0 且 DEA>0)
 Pine 四态变化 → 钉钉（关键词含「信号」）+ 站内信。加密 K 线优先 Hyperliquid。
 
 钉钉 Webhook 只读环境变量 PORTAL_WATCH_DINGTALK_WEBHOOK（勿把 token 写进仓库）。
+半点任务可用 PORTAL_WATCH_HALF_HOUR_REFRESH=0 关闭。
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ import os
 import re
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -777,6 +779,67 @@ def search_watch_symbols(q: str = "", market: str = "all", limit: int = 40) -> L
     crypto = search_watch_symbols(q, "crypto", limit=half)
     us = search_us_symbols(q, limit=limit - len(crypto))
     return crypto + us
+
+
+def secs_until_next_half_hour(*, pad_sec: float = 8.0) -> float:
+    """距下一墙钟 :00 / :30 的秒数（可加 pad，避开整点尖峰）。"""
+    now = datetime.now()
+    if now.minute < 30:
+        target = now.replace(minute=30, second=0, microsecond=0)
+    else:
+        target = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    return max(1.0, (target - now).total_seconds() + float(pad_sec))
+
+
+def refresh_all_watchlist_metrics(*, force: bool = True) -> Dict[str, Any]:
+    """半点后台任务：全库观察标的 force 重算指标（写缓存 + 状态变更通知）。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    t0 = time.time()
+    favs = store.list_all_favorites_unique()
+    if not favs:
+        return {
+            "ok": True,
+            "symbols": 0,
+            "ok_n": 0,
+            "err_n": 0,
+            "duration_sec": 0.0,
+            "bucket": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+
+    ok_n = 0
+    err_n = 0
+    errors: List[str] = []
+
+    def _one(fav: Dict[str, Any]) -> None:
+        nonlocal ok_n, err_n
+        sym = fav.get("symbol") or ""
+        market = fav.get("market") or "crypto"
+        try:
+            m = compute_symbol_metrics(sym, market, force=force)
+            if m.get("error") and m.get("ma200") is None and m.get("price") is None:
+                err_n += 1
+                errors.append(f"{sym}:{m.get('error')}")
+            else:
+                ok_n += 1
+        except Exception as exc:
+            err_n += 1
+            errors.append(f"{sym}:{exc}")
+
+    workers = min(4, max(1, len(favs)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(_one, favs))
+
+    return {
+        "ok": True,
+        "symbols": len(favs),
+        "ok_n": ok_n,
+        "err_n": err_n,
+        "duration_sec": round(time.time() - t0, 1),
+        "bucket": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "errors": errors[:12],
+        "force": bool(force),
+    }
 
 
 def list_watchlist_board(

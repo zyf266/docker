@@ -313,6 +313,7 @@ async def start_kline_scheduler():
     _asyncio.create_task(_bootstrap_research_prices())
     _asyncio.create_task(_daily_research_price_sync_loop())
     _asyncio.create_task(_hourly_uptrend_scan_loop())
+    _asyncio.create_task(_portal_watchlist_half_hour_loop())
     _asyncio.create_task(_bootstrap_a_share_mtm())
     _asyncio.create_task(_daily_a_share_mtm_loop())
     _asyncio.create_task(_daily_agent_patrol_loop())
@@ -471,6 +472,46 @@ async def _hourly_uptrend_scan_loop():
             _sched_logger.error("[上涨扫描] 定时异常: %s", exc)
         _sched_logger.info(f"[上涨扫描] 下次扫描约 {interval/3600:.1f}h 后")
         await _asyncio.sleep(interval)
+
+
+async def _portal_watchlist_half_hour_loop():
+    """观察库指标：墙钟 :00 / :30 后台 force 刷新（写缓存 + 状态变更通知）。"""
+    if os.getenv("PORTAL_WATCH_HALF_HOUR_REFRESH", "1").strip().lower() in (
+        "0",
+        "false",
+        "no",
+        "off",
+    ):
+        _sched_logger.info("[观察库半点] 已禁用 PORTAL_WATCH_HALF_HOUR_REFRESH=0")
+        return
+
+    from backpack_quant_trading.core.portal_watchlist import (
+        refresh_all_watchlist_metrics,
+        secs_until_next_half_hour,
+    )
+
+    # 启动后先等到下一个半点，避免与实例恢复抢网络
+    wait0 = secs_until_next_half_hour(pad_sec=10.0)
+    _sched_logger.info("[观察库半点] 已启动，距下次刷新约 %.0fs", wait0)
+    await _asyncio.sleep(wait0)
+    while True:
+        try:
+            res = await _asyncio.to_thread(refresh_all_watchlist_metrics, force=True)
+            _sched_logger.info(
+                "[观察库半点] 刷新完成 bucket=%s symbols=%s ok=%s err=%s 耗时%ss",
+                res.get("bucket"),
+                res.get("symbols"),
+                res.get("ok_n"),
+                res.get("err_n"),
+                res.get("duration_sec"),
+            )
+            if res.get("errors"):
+                _sched_logger.warning("[观察库半点] 部分失败: %s", res.get("errors"))
+        except Exception as exc:
+            _sched_logger.error("[观察库半点] 刷新异常: %s", exc)
+        wait = secs_until_next_half_hour(pad_sec=10.0)
+        _sched_logger.info("[观察库半点] 下次刷新约 %.0fs 后", wait)
+        await _asyncio.sleep(wait)
 
 
 async def _kline_sync_loop():

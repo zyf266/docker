@@ -927,7 +927,11 @@ const PortalAccount = () => {
                   <tr key={row.id}>
                     <td>{row.created_at}</td>
                     <td>{row.symbol}</td>
-                    <td>{row.side === 'BUY' ? '多' : row.side === 'SELL' ? '空' : row.side}</td>
+                    <td>
+                      {row.action === 'close'
+                        ? (row.side === 'BUY' ? '空' : row.side === 'SELL' ? '多' : (row.side || '—'))
+                        : (row.side === 'BUY' ? '多' : row.side === 'SELL' ? '空' : (row.side || '—'))}
+                    </td>
                     <td>{row.action === 'open' ? '开仓' : row.action === 'close' ? '平仓' : row.action}</td>
                     <td>
                       {row.margin != null && Number.isFinite(Number(row.margin))

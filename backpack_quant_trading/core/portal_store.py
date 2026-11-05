@@ -1269,6 +1269,99 @@ def _parse_optional_float(raw: Any) -> Optional[float]:
         return None
 
 
+def _book_close_pos_side(close_order_side: str) -> str:
+    """平仓委托方向 → 被平持仓：BUY 平空，SELL 平多。"""
+    return "Short" if (close_order_side or "").upper() == "BUY" else "Long"
+
+
+def _calc_book_close_pnl(
+    *,
+    entry: Optional[float],
+    exit_px: Optional[float],
+    margin: Optional[float],
+    leverage: int,
+    pos_side: str,
+) -> float:
+    """按保证金×杠杆×涨跌幅算已实现盈亏（空头取反）。"""
+    try:
+        e = float(entry or 0)
+        x = float(exit_px or 0)
+        m = float(margin or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if e <= 0 or x <= 0 or m <= 0:
+        return 0.0
+    lev = max(int(leverage or 1), 1)
+    chg = (x - e) / e
+    if (pos_side or "").lower().startswith("short") or pos_side == "空":
+        chg = -chg
+    return round(m * lev * chg, 4)
+
+
+def find_book_open_trade_for_close(
+    platform: str,
+    symbol: str,
+    *,
+    close_side: str,
+) -> Optional[Dict[str, Any]]:
+    """FIFO 找一笔未平开仓，供平仓自动算盈亏。"""
+    plat = (platform or "").strip().lower()
+    sym = (symbol or "").strip().upper()
+    prefer = _book_close_pos_side(close_side)
+    if not plat or not sym:
+        return None
+    session = _session()
+    try:
+        rows = (
+            session.query(PortalTrade)
+            .filter(
+                PortalTrade.user_id == BOOK_SHARED_USER_ID,
+                PortalTrade.platform == plat,
+                PortalTrade.symbol == sym,
+                PortalTrade.status == "ok",
+            )
+            .order_by(PortalTrade.created_at.asc(), PortalTrade.id.asc())
+            .all()
+        )
+    finally:
+        session.close()
+
+    stacks: Dict[str, List[Any]] = {"Long": [], "Short": []}
+    for r in rows:
+        side_u = (r.side or "").upper()
+        act = (r.action or "").lower()
+        if act == "open":
+            pos = "Long" if side_u == "BUY" else "Short"
+            stacks[pos].append(r)
+        elif act == "close":
+            pref = _book_close_pos_side(side_u)
+            if stacks[pref]:
+                stacks[pref].pop(0)
+            else:
+                alt = "Short" if pref == "Long" else "Long"
+                if stacks[alt]:
+                    stacks[alt].pop(0)
+
+    open_row = None
+    if stacks.get(prefer):
+        open_row = stacks[prefer][0]
+    else:
+        alt = "Short" if prefer == "Long" else "Long"
+        if stacks.get(alt):
+            open_row = stacks[alt][0]
+            prefer = alt
+    if not open_row:
+        return None
+    return {
+        "id": int(open_row.id),
+        "price": open_row.price,
+        "margin": open_row.margin,
+        "leverage": int(open_row.leverage or 5),
+        "side": prefer,
+        "strategy_name": open_row.strategy_name or "",
+    }
+
+
 def fetch_book_fallback_price(symbol: str, *, book_market: str = "crypto") -> Optional[float]:
     """账面 webhook 缺价格时：拉平台最新价兜底（加密 HL→币安；美股 Massive/Yahoo）。"""
     sym = (symbol or "").strip().upper()
@@ -1787,11 +1880,9 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     quantity = _parse_optional_float(
         payload.get("数量") or payload.get("quantity") or payload.get("qty") or payload.get("contracts")
     )
-    pnl = _parse_optional_float(payload.get("盈亏") or payload.get("pnl") or payload.get("profit"))
-    if action == "open":
-        pnl = 0.0
-    elif pnl is None:
-        pnl = 0.0
+    pnl_raw = _parse_optional_float(payload.get("盈亏") or payload.get("pnl") or payload.get("profit"))
+    leverage = int(_parse_optional_float(payload.get("leverage") or payload.get("杠杆")) or 5)
+    pnl_source = "payload"
 
     # 有「增加策略」仓位比例时强制 margin = 本金 × 比例；否则缺省用 40% 本金
     init_cap = get_book_initial_capital(platform)
@@ -1804,9 +1895,45 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         margin = round(init_cap * 0.4, 4) if init_cap > 0 else None
         margin_source = "default_40pct" if margin is not None else "none"
 
+    matched_open: Optional[Dict[str, Any]] = None
+    if action == "open":
+        pnl = 0.0
+        pnl_source = "open_zero"
+    elif pnl_raw is not None:
+        pnl = float(pnl_raw)
+        pnl_source = "payload"
+    else:
+        # 未传盈亏：按未平开仓 FIFO 自动算（保证金 × 杠杆 × 涨跌幅）
+        matched_open = find_book_open_trade_for_close(platform, symbol, close_side=side)
+        if matched_open:
+            use_margin = matched_open.get("margin")
+            if use_margin is None or float(use_margin or 0) <= 0:
+                use_margin = margin
+            use_lev = int(matched_open.get("leverage") or leverage or 5)
+            pnl = _calc_book_close_pnl(
+                entry=matched_open.get("price"),
+                exit_px=price,
+                margin=use_margin,
+                leverage=use_lev,
+                pos_side=str(matched_open.get("side") or ""),
+            )
+            pnl_source = "auto_vs_open"
+            if margin is None or margin <= 0:
+                margin = use_margin
+            if not strategy_name or strategy_name in ("加密追踪策略", "美股追踪策略"):
+                strategy_name = str(matched_open.get("strategy_name") or strategy_name)
+        else:
+            pnl = 0.0
+            pnl_source = "no_open"
+
     detail = "tv book webhook"
+    extras = []
     if price_source == "market_fallback":
-        detail = "tv book webhook; price=market_fallback"
+        extras.append("price=market_fallback")
+    if pnl_source == "auto_vs_open":
+        extras.append(f"pnl=auto_vs_open#{matched_open.get('id') if matched_open else ''}")
+    if extras:
+        detail = "tv book webhook; " + "; ".join(extras)
 
     row = record_trade(
         BOOK_SHARED_USER_ID,
@@ -1819,7 +1946,7 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         price=price,
         quantity=quantity,
         margin=margin,
-        leverage=int(_parse_optional_float(payload.get("leverage") or payload.get("杠杆")) or 5),
+        leverage=leverage,
         pnl=float(pnl or 0),
         status="ok",
         detail=detail,
@@ -1839,6 +1966,9 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         "symbol": symbol,
         "price": price,
         "price_source": price_source,
+        "pnl": float(pnl or 0),
+        "pnl_source": pnl_source,
+        "matched_open_id": (matched_open or {}).get("id") if action == "close" else None,
         "position_pct": float(strat_pct) if strat_pct is not None else None,
         "margin_source": margin_source,
         "trade": row,
@@ -2704,6 +2834,38 @@ def list_favorites(user_id: int) -> List[Dict[str, Any]]:
         ]
     finally:
         session.close()
+
+
+def list_all_favorites_unique() -> List[Dict[str, Any]]:
+    """全库自选去重（symbol+market），供半点后台刷新指标。"""
+    session = _session()
+    try:
+        rows = (
+            session.query(PortalFavorite)
+            .order_by(PortalFavorite.created_at.desc())
+            .all()
+        )
+    finally:
+        session.close()
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        mkt = "us" if (r.market or "").lower() in ("us", "美股") else "crypto"
+        sym = (r.symbol or "").strip().upper()
+        if not sym:
+            continue
+        key = (mkt, sym)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "symbol": sym,
+                "market": mkt,
+                "name": r.name or sym,
+            }
+        )
+    return out
 
 
 def add_favorite(user_id: int, symbol: str, market: str = "crypto", name: str = "") -> Dict[str, Any]:
