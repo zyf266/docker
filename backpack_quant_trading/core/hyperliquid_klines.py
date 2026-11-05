@@ -69,7 +69,7 @@ def normalize_hl_interval(interval: str) -> str:
 
 
 def to_hl_coin(symbol: str) -> str:
-    """ETHUSDT / ETH-USD / ETH → HL 币种名 ETH。"""
+    """ETHUSDT / ETH-USD / ETH → HL 永续币种名 ETH（去掉 xyz:）。"""
     s = (symbol or "").upper().strip()
     for suffix in ("USDT.P", "USDC.P", "USDT", "USDC", "USD", "PERP", "-USD"):
         if s.endswith(suffix):
@@ -77,7 +77,27 @@ def to_hl_coin(symbol: str) -> str:
             break
     if ":" in s:
         s = s.split(":")[-1]
+    try:
+        from backpack_quant_trading.core.hyperliquid_client import HL_SYMBOL_ALIASES
+
+        s = HL_SYMBOL_ALIASES.get(s, s)
+    except Exception:
+        pass
     return s.strip()
+
+
+def to_hl_candle_coin(symbol: str, *, us_equity: bool = False) -> str:
+    """candleSnapshot 用的 coin：美股 HIP-3 为 xyz:NVDA；加密永续为 ETH。"""
+    base = to_hl_coin(symbol)
+    if not base:
+        return ""
+    if us_equity:
+        return f"xyz:{base}"
+    # 已带 xyz: 的输入保留
+    raw = (symbol or "").strip()
+    if raw.lower().startswith("xyz:"):
+        return f"xyz:{base}"
+    return base
 
 
 def fetch_hl_klines_sync(
@@ -85,11 +105,17 @@ def fetch_hl_klines_sync(
     interval: str,
     start_ms: int,
     end_ms: Optional[int] = None,
+    *,
+    us_equity: bool = False,
 ) -> List[Dict[str, Any]]:
     """同步拉取 HL K 线，返回 [{"t","o","h","l","c","v"}, ...] 升序。"""
     if end_ms is None:
         end_ms = int(time.time() * 1000)
-    coin = to_hl_coin(coin)
+    raw = (coin or "").strip()
+    if raw.lower().startswith("xyz:") or us_equity:
+        coin = to_hl_candle_coin(raw, us_equity=True)
+    else:
+        coin = to_hl_coin(raw)
     interval = normalize_hl_interval(interval)
     payload = {
         "type": "candleSnapshot",
@@ -138,9 +164,10 @@ def fetch_hl_klines_batch(
     total_limit: int = 1000,
     *,
     chunk_bars: int = 500,
+    us_equity: bool = False,
 ) -> Optional[List[Dict[str, Any]]]:
     """分批回溯拉取最多 total_limit 根 K 线（Hyperliquid）。"""
-    coin = to_hl_coin(coin)
+    coin = to_hl_candle_coin(coin, us_equity=us_equity)
     interval = normalize_hl_interval(interval)
     ms = INTERVAL_MS.get(interval, 14_400_000)
     end_ms = int(time.time() * 1000)
@@ -151,7 +178,9 @@ def fetch_hl_klines_batch(
     while remaining > 0:
         need = min(remaining, chunk_bars)
         start_ms = current_end - ms * (need + 5)
-        bars = fetch_hl_klines_sync(coin, interval, start_ms, current_end)
+        bars = fetch_hl_klines_sync(
+            coin, interval, start_ms, current_end, us_equity=us_equity
+        )
         if not bars:
             break
         for b in bars:

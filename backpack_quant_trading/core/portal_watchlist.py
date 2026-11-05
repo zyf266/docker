@@ -35,8 +35,8 @@ MA2H_LEN_CRYPTO = int(os.environ.get("PORTAL_WATCH_MA2H_LEN") or "180")
 MA2H_LEN_US = int(os.environ.get("PORTAL_WATCH_MA2H_LEN_US") or "30")
 # 兼容旧名
 MA2H_LEN = MA2H_LEN_CRYPTO
-# 缓存版本：改均线/美股 MACD 规则后旧缓存失效
-_METRICS_CACHE_VER = f"ma2h{MA2H_LEN_CRYPTO}_us{MA2H_LEN_US}_macdus1"
+# 缓存版本：改均线/美股 MACD/美股改 HL K 线后旧缓存失效
+_METRICS_CACHE_VER = f"ma2h{MA2H_LEN_CRYPTO}_us{MA2H_LEN_US}_hlus1"
 
 PORTAL_WATCH_DINGTALK_WEBHOOK = (os.environ.get("PORTAL_WATCH_DINGTALK_WEBHOOK") or "").strip()
 _STATUS_STATE_PATH = Path(__file__).resolve().parents[1] / "data" / "portal_watch_status_state.json"
@@ -443,23 +443,39 @@ def _closes_from_bars(bars: Optional[List[Dict[str, Any]]]) -> List[float]:
     return out
 
 
+def _normalize_ohlcv_bars(bars: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """兼容 HL batch（已含 close）与原始 t/o/h/l/c。"""
+    out: List[Dict[str, Any]] = []
+    for b in bars or []:
+        if not isinstance(b, dict):
+            continue
+        close = b.get("close", b.get("c"))
+        if close is None:
+            continue
+        item = dict(b)
+        item["close"] = float(close)
+        if "open" not in item and b.get("o") is not None:
+            item["open"] = float(b["o"])
+        if "high" not in item and b.get("h") is not None:
+            item["high"] = float(b["h"])
+        if "low" not in item and b.get("l") is not None:
+            item["low"] = float(b["l"])
+        out.append(item)
+    return out
+
+
 def _fetch_crypto_klines(symbol: str, interval: str, limit: int = 250) -> Tuple[List[Dict[str, Any]], str]:
     """优先 Hyperliquid；失败再回退币安合约/现货。"""
     try:
         from backpack_quant_trading.core.hyperliquid_klines import (
             fetch_hl_klines_batch,
-            hl_bars_to_ohlcv,
             to_hl_coin,
         )
 
         coin = to_hl_coin(symbol)
         raw = fetch_hl_klines_batch(coin, interval, total_limit=max(limit, 80)) or []
-        if raw:
-            bars = hl_bars_to_ohlcv(raw)
-            # 统一 close 字段，兼容 _closes_from_bars
-            for b in bars:
-                if "close" not in b and "c" in b:
-                    b["close"] = b["c"]
+        bars = _normalize_ohlcv_bars(raw)
+        if bars:
             return bars, "hyperliquid"
     except Exception as exc:
         logger.debug("hyperliquid %s %s: %s", symbol, interval, exc)
@@ -504,7 +520,18 @@ def _fetch_yahoo_daily_closes(ticker: str, limit: int = 250) -> List[float]:
 
 
 def _fetch_us_klines(symbol: str, interval: str, limit: int = 250) -> Tuple[List[Dict[str, Any]], str]:
-    """Massive →（日线）Yahoo。"""
+    """优先 Hyperliquid（xyz:TICKER）→ Massive →（日线）Yahoo。"""
+    try:
+        from backpack_quant_trading.core.hyperliquid_klines import fetch_hl_klines_batch
+
+        raw = fetch_hl_klines_batch(
+            symbol, interval, total_limit=max(limit, 80), us_equity=True
+        ) or []
+        bars = _normalize_ohlcv_bars(raw)
+        if bars:
+            return bars, "hyperliquid"
+    except Exception as exc:
+        logger.debug("hyperliquid us %s %s: %s", symbol, interval, exc)
     try:
         from backpack_quant_trading.core.massive_klines import fetch_klines_us
 
@@ -779,7 +806,7 @@ def list_watchlist_board(
         "force": bool(force),
         "cache_ttl_sec": int(_METRICS_TTL_SEC),
         "oldest_cache_age_sec": oldest,
-        "source": "hyperliquid→binance+massive→yahoo",
+        "source": "crypto:HL→binance; us:HL(xyz:)→massive→yahoo",
     }
 
 

@@ -1196,6 +1196,106 @@ def _parse_optional_float(raw: Any) -> Optional[float]:
         return None
 
 
+def _relax_json_text(text: str) -> str:
+    """去掉 // 注释与尾逗号，便于粘贴近似 JSON。"""
+    lines: List[str] = []
+    for line in text.splitlines():
+        in_str = False
+        esc = False
+        cut = len(line)
+        i = 0
+        while i < len(line):
+            c = line[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+            else:
+                if c == '"':
+                    in_str = True
+                elif c == "/" and i + 1 < len(line) and line[i + 1] == "/":
+                    cut = i
+                    break
+            i += 1
+        lines.append(line[:cut].rstrip())
+    cleaned = "\n".join(lines)
+    # ,} / ,] → } / ]
+    out: List[str] = []
+    i = 0
+    n = len(cleaned)
+    while i < n:
+        ch = cleaned[i]
+        if ch == '"':
+            out.append(ch)
+            i += 1
+            while i < n:
+                out.append(cleaned[i])
+                if cleaned[i] == "\\" and i + 1 < n:
+                    out.append(cleaned[i + 1])
+                    i += 2
+                    continue
+                if cleaned[i] == '"':
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch == ",":
+            j = i + 1
+            while j < n and cleaned[j] in " \t\r\n":
+                j += 1
+            if j < n and cleaned[j] in "}]":
+                i += 1
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _parse_cn_kv_webhook_text(text: str) -> Dict[str, Any]:
+    """解析 TradingView 中文「键：值」多行文本。"""
+    out: Dict[str, Any] = {}
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = line.strip()
+        if not line or line.startswith("//") or line.startswith("#"):
+            continue
+        if "：" in line:
+            key, _, val = line.partition("：")
+        elif ":" in line:
+            key, _, val = line.partition(":")
+        else:
+            continue
+        key, val = key.strip(), val.strip()
+        if key:
+            out[key] = val
+    return out
+
+
+def parse_book_webhook_body(raw: str) -> Dict[str, Any]:
+    """账面 webhook 请求体：标准 JSON / 宽松 JSON / 中文键值文本。"""
+    text = (raw or "").strip().lstrip("\ufeff")
+    if not text:
+        raise ValueError("请求体为空")
+
+    for candidate in (text, _relax_json_text(text)):
+        try:
+            obj = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+        raise ValueError("请求体须为 JSON 对象或键值文本")
+
+    kv = _parse_cn_kv_webhook_text(text)
+    if kv:
+        return kv
+    raise ValueError(
+        "无法解析请求体：请用 JSON，或「策略名/交易品种/价格/操作/仓位方向」键值文本"
+    )
+
+
 def _norm_book_trade_action(payload: Dict[str, Any]) -> str:
     """open | close"""
     raw = str(
@@ -1219,9 +1319,19 @@ def _norm_book_trade_action(payload: Dict[str, Any]) -> str:
     ).strip().lower()
     if sig in ("close", "平仓", "flat"):
         return "close"
-    pos = str(payload.get("position") or payload.get("仓位状态") or "").strip().lower()
-    if pos in ("flat", "0", "平", "平仓"):
+    # strategy.market_position：flat=平仓后；long/short=开仓后
+    pos = str(
+        payload.get("仓位方向")
+        or payload.get("持仓方向")
+        or payload.get("market_position")
+        or payload.get("position")
+        or payload.get("仓位状态")
+        or ""
+    ).strip().lower()
+    if pos in ("flat", "0", "平", "平仓", "none"):
         return "close"
+    if pos in ("long", "short", "多", "空"):
+        return "open"
     # 先前仓位>0 且操作为反向 → 常见平仓写法
     try:
         prev = float(payload.get("先前仓位大小") or payload.get("prev_position") or 0)
@@ -1247,8 +1357,14 @@ def _norm_book_trade_side(payload: Dict[str, Any], *, action: str) -> str:
         return "BUY"
     if raw in ("sell", "short", "开空", "做空", "空"):
         return "SELL"
-    # 平仓时可从持仓方向推断
-    pos_side = str(payload.get("position_side") or payload.get("持仓方向") or "").lower()
+    # 平仓时可从持仓方向推断（含 TV 仓位方向）
+    pos_side = str(
+        payload.get("position_side")
+        or payload.get("持仓方向")
+        or payload.get("仓位方向")
+        or payload.get("market_position")
+        or ""
+    ).lower()
     if pos_side in ("long", "多"):
         return "BUY" if action == "open" else "SELL"
     if pos_side in ("short", "空"):
@@ -1274,6 +1390,9 @@ def parse_position_pct(raw: Any) -> float:
 
 def normalize_book_strategy_symbol(symbol: str, *, book_market: str = "crypto") -> str:
     s = (symbol or "").strip().upper().replace("/", "").replace("-", "")
+    # TradingView {{ticker}} 常带交易所前缀：BINANCE:ETHUSDT.P
+    if ":" in s:
+        s = s.split(":")[-1]
     for suf in ("USDT.P", "USDC.P", ".P"):
         if s.endswith(suf):
             s = s[: -len(suf)]
@@ -1475,10 +1594,10 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
                 else BOOK_PLATFORM_CRYPTO
             )
 
-    symbol = str(
+    symbol_raw = str(
         payload.get("交易品种") or payload.get("symbol") or payload.get("ticker") or payload.get("coin") or ""
-    ).strip().upper()
-    if not symbol:
+    ).strip()
+    if not symbol_raw:
         raise ValueError("缺少 symbol / 交易品种")
 
     book_market = "crypto"
@@ -1501,13 +1620,13 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
             finally:
                 session.close()
 
-    if book_market == "crypto" and not symbol.endswith("USDT") and symbol.isalpha():
-        symbol = f"{symbol}USDT"
+    symbol = normalize_book_strategy_symbol(symbol_raw, book_market=book_market)
 
     action = _norm_book_trade_action(payload)
     side = _norm_book_trade_side(payload, action=action)
     strategy_name = str(
         payload.get("策略名称")
+        or payload.get("策略名")
         or payload.get("strategy_name")
         or payload.get("strategy")
         or ("美股追踪策略" if book_market == "us" else "加密追踪策略")
@@ -1516,15 +1635,20 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         payload.get("周期") or payload.get("timeframe") or payload.get("interval") or ""
     ).strip()
     price = _parse_optional_float(
-        payload.get("价格") or payload.get("price") or payload.get("close") or payload.get("open_price")
+        payload.get("价格")
+        or payload.get("成交价格")
+        or payload.get("price")
+        or payload.get("close")
+        or payload.get("open_price")
     )
-    margin = _parse_optional_float(
+    margin_from_payload = _parse_optional_float(
         payload.get("仓位")
         or payload.get("margin")
         or payload.get("size_value")
         or payload.get("大小（价值）")
         or payload.get("value")
     )
+    margin = margin_from_payload
     quantity = _parse_optional_float(
         payload.get("数量") or payload.get("quantity") or payload.get("qty") or payload.get("contracts")
     )
@@ -1537,10 +1661,13 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     # 有「增加策略」仓位比例时强制 margin = 本金 × 比例；否则缺省用 40% 本金
     init_cap = get_book_initial_capital(platform)
     strat_pct = get_book_strategy_position_pct(platform, symbol)
+    margin_source = "payload"
     if strat_pct is not None and init_cap > 0:
         margin = round(init_cap * float(strat_pct), 4)
+        margin_source = "strategy_pct"
     elif margin is None or margin <= 0:
         margin = round(init_cap * 0.4, 4) if init_cap > 0 else None
+        margin_source = "default_40pct" if margin is not None else "none"
 
     row = record_trade(
         BOOK_SHARED_USER_ID,
@@ -1564,6 +1691,9 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         "recorded": True,
         "platform": platform,
         "action": action,
+        "symbol": symbol,
+        "position_pct": float(strat_pct) if strat_pct is not None else None,
+        "margin_source": margin_source,
         "trade": row,
         "open_positions": list_book_open_positions(platform),
     }

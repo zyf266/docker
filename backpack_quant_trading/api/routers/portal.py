@@ -462,17 +462,23 @@ def portal_tv_webhook_hint(user: dict = Depends(require_user)):
             "path": book_path,
             "url": f"{base}{book_path}",
             "method": "POST",
-            "note": "TV 请用 80 端口公网地址（经 Nginx /api → 8100）。只记账、不下真实单。",
+            "note": (
+                "TV 请用 80 端口公网地址（经 Nginx /api → 8100）。只记账、不下真实单。"
+                "支持 JSON 或中文「键：值」多行文本；保证金按币种策略仓位比例自动计算。"
+            ),
+            "example_text": (
+                "策略名：ETH  2H空15分钟离场\n"
+                "交易品种：{{ticker}}\n"
+                "价格：{{strategy.order.price}}\n"
+                "操作：{{strategy.order.action}}\n"
+                "仓位方向：{{strategy.market_position}}"
+            ),
             "example": {
-                "market": "加密",
-                "strategy_name": "加密追踪策略",
-                "symbol": "{{ticker}}",
-                "timeframe": "2h",
-                "action": "open",
-                "signal": "buy",
-                "price": "{{close}}",
-                "margin": 2000000,
-                "pnl": 0,
+                "策略名": "ETH  2H空15分钟离场",
+                "交易品种": "{{ticker}}",
+                "价格": "{{strategy.order.price}}",
+                "操作": "{{strategy.order.action}}",
+                "仓位方向": "{{strategy.market_position}}",
             },
         },
     }
@@ -494,13 +500,15 @@ async def portal_book_trade_webhook(request: Request):
     """TradingView → 账面交易清单（crypto_account / us_account）。
 
     只落库，不真实下单。开仓会出现在管理员账面「当前持仓」。
+    请求体支持：标准/宽松 JSON，或中文键值文本（策略名/交易品种/价格/操作/仓位方向）。
     可选鉴权：环境变量 PORTAL_BOOK_WEBHOOK_TOKEN，URL ?token= 或头 X-Portal-Token。
     """
     _check_book_webhook_token(request)
+    raw = (await request.body() or b"").decode("utf-8", errors="replace")
     try:
-        payload: Dict[str, Any] = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"无效 JSON: {e}") from e
+        payload = store.parse_book_webhook_body(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     try:
         result = store.record_book_trade_from_webhook(payload)
     except ValueError as e:
