@@ -290,6 +290,13 @@ _SEARCH_CATALOG = [
 ]
 
 
+def _varchar_len(col_type: Any) -> int:
+    import re
+
+    m = re.search(r"varchar\((\d+)\)", str(col_type or ""), flags=re.I)
+    return int(m.group(1)) if m else 0
+
+
 def _ensure_watch_config_columns(engine) -> None:
     """已有表时 create_all 不会加列，补止盈/止损/状态字段。"""
     from sqlalchemy import text
@@ -299,7 +306,8 @@ def _ensure_watch_config_columns(engine) -> None:
             rows = conn.execute(text("SHOW COLUMNS FROM portal_watch_configs")).fetchall()
         except Exception:
             return
-        existing = {str(r[0]) for r in rows}
+        by_name = {str(r[0]): r for r in rows}
+        existing = set(by_name)
         alters = []
         if "take_profit" not in existing:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN take_profit VARCHAR(32) NOT NULL DEFAULT ''")
@@ -308,7 +316,12 @@ def _ensure_watch_config_columns(engine) -> None:
         if "status" not in existing:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT ''")
         if "exchange" not in existing:
-            alters.append("ALTER TABLE portal_watch_configs ADD COLUMN exchange VARCHAR(32) NOT NULL DEFAULT ''")
+            alters.append("ALTER TABLE portal_watch_configs ADD COLUMN exchange VARCHAR(96) NOT NULL DEFAULT ''")
+        elif _varchar_len(by_name["exchange"][1]) < 96:
+            # 仅列宽不足时加长，禁止每次请求都 MODIFY（会触发 MySQL 1684 并发 DDL）
+            alters.append(
+                "ALTER TABLE portal_watch_configs MODIFY COLUMN exchange VARCHAR(96) NOT NULL DEFAULT ''"
+            )
         if "leverage" not in existing:
             alters.append("ALTER TABLE portal_watch_configs ADD COLUMN leverage INT NOT NULL DEFAULT 5")
         if "require_2h" not in existing:
@@ -327,28 +340,27 @@ def _ensure_watch_config_columns(engine) -> None:
             alters.append(
                 "ALTER TABLE portal_watch_configs ADD COLUMN margin_mode VARCHAR(16) NOT NULL DEFAULT 'isolated'"
             )
-        # 同交易所多钱包备注：exchange 需容纳 okx:备注A,okx:备注B
-        try:
-            conn.execute(text(
-                "ALTER TABLE portal_watch_configs MODIFY COLUMN exchange VARCHAR(96) NOT NULL DEFAULT ''"
-            ))
-        except Exception:
-            pass
         for sql in alters:
             conn.execute(text(sql))
 
 
 def _ensure_exchange_binding_columns(engine) -> None:
-    """同交易所多账户：platform 存 okx:钱包A，需加长列。"""
+    """同交易所多账户：platform 存 okx:钱包A，需加长列（仅不足时改一次）。"""
     from sqlalchemy import text
 
     with engine.begin() as conn:
         try:
+            rows = conn.execute(text("SHOW COLUMNS FROM portal_exchange_bindings")).fetchall()
+        except Exception:
+            return
+        by_name = {str(r[0]): r for r in rows}
+        plat = by_name.get("platform")
+        if plat is None:
+            return
+        if _varchar_len(plat[1]) < 96:
             conn.execute(text(
                 "ALTER TABLE portal_exchange_bindings MODIFY COLUMN platform VARCHAR(96) NOT NULL"
             ))
-        except Exception:
-            pass
 
 
 def _ensure_book_account_columns(engine) -> None:
@@ -374,21 +386,46 @@ def _ensure_book_account_columns(engine) -> None:
             )
 
 
+# 进程内只跑一次 schema ensure，避免每请求 ALTER/DESCRIBE 互锁
+_SCHEMA_ENSURED = False
+_SCHEMA_ENSURE_LOCK = None
+
+
+def _schema_ensure_lock():
+    global _SCHEMA_ENSURE_LOCK
+    if _SCHEMA_ENSURE_LOCK is None:
+        import threading
+
+        _SCHEMA_ENSURE_LOCK = threading.Lock()
+    return _SCHEMA_ENSURE_LOCK
+
+
+def _ensure_portal_schema(engine) -> None:
+    global _SCHEMA_ENSURED
+    if _SCHEMA_ENSURED:
+        return
+    with _schema_ensure_lock():
+        if _SCHEMA_ENSURED:
+            return
+        StoreBase.metadata.create_all(engine, checkfirst=True)
+        try:
+            _ensure_watch_config_columns(engine)
+        except Exception:
+            pass
+        try:
+            _ensure_book_account_columns(engine)
+        except Exception:
+            pass
+        try:
+            _ensure_exchange_binding_columns(engine)
+        except Exception:
+            pass
+        _SCHEMA_ENSURED = True
+
+
 def _session():
     manager = DatabaseManager()
-    StoreBase.metadata.create_all(manager.engine, checkfirst=True)
-    try:
-        _ensure_watch_config_columns(manager.engine)
-    except Exception:
-        pass
-    try:
-        _ensure_book_account_columns(manager.engine)
-    except Exception:
-        pass
-    try:
-        _ensure_exchange_binding_columns(manager.engine)
-    except Exception:
-        pass
+    _ensure_portal_schema(manager.engine)
     return manager.get_session()
 
 
