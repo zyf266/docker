@@ -1259,10 +1259,70 @@ def record_trade(
 def _parse_optional_float(raw: Any) -> Optional[float]:
     if raw is None or raw == "":
         return None
+    s = str(raw).replace(",", "").replace("%", "").strip()
+    # TradingView 占位符未替换时当作缺省（如 {{strategy.order.price}}）
+    if not s or "{{" in s or "}}" in s:
+        return None
     try:
-        return float(str(raw).replace(",", "").replace("%", "").strip())
+        return float(s)
     except (TypeError, ValueError):
         return None
+
+
+def fetch_book_fallback_price(symbol: str, *, book_market: str = "crypto") -> Optional[float]:
+    """账面 webhook 缺价格时：拉平台最新价兜底（加密 HL→币安；美股 Massive/Yahoo）。"""
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return None
+    try:
+        if book_market == "us":
+            try:
+                from backpack_quant_trading.core.massive_klines import fetch_klines_us
+
+                bars = fetch_klines_us(sym, "1d", total_limit=3) or []
+                if bars:
+                    px = float(bars[-1].get("close") or bars[-1].get("c") or 0)
+                    if px > 0:
+                        return px
+            except Exception:
+                pass
+            try:
+                from backpack_quant_trading.core.portal_watchlist import _fetch_yahoo_daily_closes
+
+                closes = _fetch_yahoo_daily_closes(sym, limit=5) or []
+                if closes and float(closes[-1]) > 0:
+                    return float(closes[-1])
+            except Exception:
+                pass
+            return None
+
+        import time as _time
+
+        from backpack_quant_trading.core.hyperliquid_klines import fetch_hl_klines_sync, to_hl_coin
+
+        end_ms = int(_time.time() * 1000)
+        start_ms = end_ms - 15 * 60 * 1000
+        coin = to_hl_coin(sym)
+        if coin:
+            bars = fetch_hl_klines_sync(coin, "1m", start_ms, end_ms) or []
+            if bars:
+                px = float(bars[-1].get("c") or 0)
+                if px > 0:
+                    return px
+        try:
+            from backpack_quant_trading.core.binance_monitor import fetch_binance_klines
+
+            pair = sym if sym.endswith("USDT") else f"{sym}USDT"
+            bars = fetch_binance_klines(pair, "1m", limit=3, market="futures") or []
+            if bars:
+                px = float(bars[-1].get("close") or 0)
+                if px > 0:
+                    return px
+        except Exception:
+            pass
+    except Exception:
+        return None
+    return None
 
 
 def _relax_json_text(text: str) -> str:
@@ -1710,6 +1770,12 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         or payload.get("close")
         or payload.get("open_price")
     )
+    price_source = "payload" if price is not None and price > 0 else "none"
+    if price is None or price <= 0:
+        fb = fetch_book_fallback_price(symbol, book_market=book_market)
+        if fb is not None and fb > 0:
+            price = float(fb)
+            price_source = "market_fallback"
     margin_from_payload = _parse_optional_float(
         payload.get("仓位")
         or payload.get("margin")
@@ -1738,6 +1804,10 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         margin = round(init_cap * 0.4, 4) if init_cap > 0 else None
         margin_source = "default_40pct" if margin is not None else "none"
 
+    detail = "tv book webhook"
+    if price_source == "market_fallback":
+        detail = "tv book webhook; price=market_fallback"
+
     row = record_trade(
         BOOK_SHARED_USER_ID,
         platform=platform,
@@ -1752,7 +1822,7 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         leverage=int(_parse_optional_float(payload.get("leverage") or payload.get("杠杆")) or 5),
         pnl=float(pnl or 0),
         status="ok",
-        detail="tv book webhook",
+        detail=detail,
         order_id=str(payload.get("order_id") or payload.get("id") or "")[:80],
     )
     try:
@@ -1767,6 +1837,8 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         "platform": platform,
         "action": action,
         "symbol": symbol,
+        "price": price,
+        "price_source": price_source,
         "position_pct": float(strat_pct) if strat_pct is not None else None,
         "margin_source": margin_source,
         "trade": row,
