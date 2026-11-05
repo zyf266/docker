@@ -92,10 +92,11 @@ class PortalWatchConfig(StoreBase):
     size_mode = Column(String(16), nullable=False, default="percent")  # fixed | percent
     size_value = Column(String(32), nullable=False, default="10")
     leverage = Column(Integer, nullable=False, default=5)  # 开仓杠杆，默认 5x
+    margin_mode = Column(String(16), nullable=False, default="isolated")  # isolated=逐仓 | cross=全仓
     take_profit = Column(String(32), nullable=False, default="")  # 止盈%，空=未设
     stop_loss = Column(String(32), nullable=False, default="")  # 止损%，空=未设
     status = Column(String(16), nullable=False, default="")  # '' | living | connected
-    exchange = Column(String(32), nullable=False, default="")  # okx | hyperliquid | binance
+    exchange = Column(String(96), nullable=False, default="")  # okx | okx:钱包A | hyperliquid…
     updated_at = Column(DateTime, default=datetime.now)
     __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_portal_watch_cfg"),)
 
@@ -214,7 +215,7 @@ class PortalExchangeBinding(StoreBase):
     __tablename__ = "portal_exchange_bindings"
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, nullable=False, index=True)
-    platform = Column(String(32), nullable=False)  # okx | hyperliquid | binance
+    platform = Column(String(96), nullable=False)  # okx | okx:钱包A | hyperliquid…
     config_json = Column(Text, nullable=False, default="{}")
     status = Column(String(16), nullable=False, default="connected")
     updated_at = Column(DateTime, default=datetime.now)
@@ -322,8 +323,32 @@ def _ensure_watch_config_columns(engine) -> None:
             alters.append(
                 "ALTER TABLE portal_watch_configs ADD COLUMN status_profiles TEXT NULL"
             )
+        if "margin_mode" not in existing:
+            alters.append(
+                "ALTER TABLE portal_watch_configs ADD COLUMN margin_mode VARCHAR(16) NOT NULL DEFAULT 'isolated'"
+            )
+        # 同交易所多钱包备注：exchange 需容纳 okx:备注A,okx:备注B
+        try:
+            conn.execute(text(
+                "ALTER TABLE portal_watch_configs MODIFY COLUMN exchange VARCHAR(96) NOT NULL DEFAULT ''"
+            ))
+        except Exception:
+            pass
         for sql in alters:
             conn.execute(text(sql))
+
+
+def _ensure_exchange_binding_columns(engine) -> None:
+    """同交易所多账户：platform 存 okx:钱包A，需加长列。"""
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        try:
+            conn.execute(text(
+                "ALTER TABLE portal_exchange_bindings MODIFY COLUMN platform VARCHAR(96) NOT NULL"
+            ))
+        except Exception:
+            pass
 
 
 def _ensure_book_account_columns(engine) -> None:
@@ -358,6 +383,10 @@ def _session():
         pass
     try:
         _ensure_book_account_columns(manager.engine)
+    except Exception:
+        pass
+    try:
+        _ensure_exchange_binding_columns(manager.engine)
     except Exception:
         pass
     return manager.get_session()
@@ -1105,6 +1134,9 @@ def save_watch_market_default(
                 cur["leverage"] = int(trade.get("leverage") or 5)
             except (TypeError, ValueError):
                 cur["leverage"] = 5
+        if trade.get("margin_mode") is not None:
+            mm = str(trade.get("margin_mode") or "isolated").strip().lower()
+            cur["margin_mode"] = "cross" if mm in ("cross", "crossed", "全仓") else "isolated"
         if trade.get("take_profit") is not None:
             cur["take_profit"] = str(trade.get("take_profit") or "")
         if trade.get("stop_loss") is not None:
@@ -1686,6 +1718,12 @@ def record_book_trade_from_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         detail="tv book webhook",
         order_id=str(payload.get("order_id") or payload.get("id") or "")[:80],
     )
+    try:
+        from backpack_quant_trading.core.portal_watchlist import notify_new_trade
+
+        notify_new_trade(row, source="账面 TV Webhook")
+    except Exception:
+        pass
     return {
         "ok": True,
         "recorded": True,
@@ -2767,6 +2805,11 @@ def _watch_config_dict(r: PortalWatchConfig) -> Dict[str, Any]:
         "size_mode": r.size_mode or "percent",
         "size_value": r.size_value or "10",
         "leverage": int(getattr(r, "leverage", None) or 5),
+        "margin_mode": (
+            "cross"
+            if str(getattr(r, "margin_mode", None) or "isolated").lower() in ("cross", "crossed", "全仓")
+            else "isolated"
+        ),
         "take_profit": getattr(r, "take_profit", None) or "",
         "stop_loss": getattr(r, "stop_loss", None) or "",
         "status": getattr(r, "status", None) or "",
@@ -2862,6 +2905,33 @@ def get_exchange_binding(user_id: int, platform: str) -> Optional[Dict[str, Any]
         session.close()
 
 
+def exchange_base_platform(platform: str) -> str:
+    """okx:钱包A → okx；保留 ba_* / crypto_account 原样。"""
+    p = (platform or "").strip().lower()
+    if not p:
+        return ""
+    if p.startswith("ba_") or p in (BOOK_PLATFORM_CRYPTO, BOOK_PLATFORM_US):
+        return p
+    if ":" in p:
+        return p.split(":", 1)[0].strip()
+    return p
+
+
+def binding_account_key(platform: str, label: str = "") -> str:
+    """同交易所多账户：有备注则 platform 存为 okx:钱包A。"""
+    import re
+
+    plat = exchange_base_platform(platform) or (platform or "").strip().lower()
+    if plat not in ("okx", "hyperliquid", "binance"):
+        return plat
+    lab = (label or "").strip()
+    if not lab:
+        return plat
+    # 统一小写，避免 exchanges 列表 .lower() 后与绑定键对不上
+    slug = re.sub(r"[^\w\u4e00-\u9fff\-]+", "_", lab, flags=re.UNICODE).strip("_")[:40].lower()
+    return f"{plat}:{slug}" if slug else plat
+
+
 def _normalize_exchanges(raw) -> List[str]:
     if isinstance(raw, (list, tuple)):
         items = [str(x or "").strip().lower() for x in raw]
@@ -2869,7 +2939,11 @@ def _normalize_exchanges(raw) -> List[str]:
         items = [p.strip().lower() for p in str(raw or "").replace(";", ",").split(",")]
     out: List[str] = []
     for p in items:
-        if p in ("hyperliquid", "okx", "binance") and p not in out:
+        if not p or p in out:
+            continue
+        base = exchange_base_platform(p)
+        # 允许 okx / okx:钱包A 等形式
+        if base in ("hyperliquid", "okx", "binance"):
             out.append(p)
     return out
 
@@ -2965,6 +3039,7 @@ def upsert_watch_configs(
     take_profit: str = "",
     stop_loss: str = "",
     leverage: int = 5,
+    margin_mode: str = "isolated",
     exchanges: Optional[List[str]] = None,
     require_2h: bool = False,
     require_4h: bool = False,
@@ -3006,6 +3081,8 @@ def upsert_watch_configs(
         lev = 5
     if lev < 1 or lev > 125:
         raise ValueError("杠杆需在 1～125 之间")
+    mm_raw = str(margin_mode or "isolated").strip().lower()
+    mgn = "cross" if mm_raw in ("cross", "crossed", "全仓") else "isolated"
     tp = str(take_profit or "").strip()
     sl = str(stop_loss or "").strip()
     plats = _normalize_exchanges(exchanges)
@@ -3041,6 +3118,7 @@ def upsert_watch_configs(
             row.size_mode = mode
             row.size_value = value
             row.leverage = lev
+            row.margin_mode = mgn
             row.take_profit = tp
             row.stop_loss = sl
             if plats:

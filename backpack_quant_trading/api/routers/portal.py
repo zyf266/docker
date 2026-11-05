@@ -113,9 +113,10 @@ class WatchConfigIn(BaseModel):
     size_mode: str = "percent"  # fixed | percent
     size_value: str = "10"
     leverage: int = 5  # 开仓杠杆，默认 5x
+    margin_mode: str = "isolated"  # isolated=逐仓 | cross=全仓
     take_profit: str = ""  # 止盈 %
     stop_loss: str = ""  # 止损 %
-    exchanges: List[str] = Field(default_factory=list)  # 下单平台多选：hyperliquid / okx
+    exchanges: List[str] = Field(default_factory=list)  # 下单平台多选：hyperliquid / okx:钱包A
     gates_only: bool = False  # True=只保存第一步条件，可不填策略/仓位
     # crypto | us：批量应用到该市场全部标的，并记为该市场默认（新标的继承）
     market: str = ""
@@ -276,6 +277,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                         "size_mode": body.size_mode,
                         "size_value": body.size_value,
                         "leverage": body.leverage,
+                        "margin_mode": body.margin_mode,
                         "take_profit": body.take_profit,
                         "stop_loss": body.stop_loss,
                         "exchanges": body.exchanges,
@@ -308,6 +310,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                         size_mode=body.size_mode,
                         size_value=body.size_value,
                         leverage=body.leverage,
+                        margin_mode=body.margin_mode,
                         take_profit=body.take_profit,
                         stop_loss=body.stop_loss,
                         exchanges=body.exchanges,
@@ -330,6 +333,7 @@ def post_watchlist_config(body: WatchConfigIn, user: dict = Depends(require_user
                 size_mode=body.size_mode,
                 size_value=body.size_value,
                 leverage=body.leverage,
+                margin_mode=body.margin_mode,
                 take_profit=body.take_profit,
                 stop_loss=body.stop_loss,
                 exchanges=body.exchanges,

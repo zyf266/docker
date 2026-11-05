@@ -31,7 +31,12 @@ PLATFORM_LABEL = {
 
 
 def _normalize_platform(raw: str) -> str:
+    """支持 okx:钱包A 形式：只规范化冒号前的交易所名。"""
     key = (raw or "").strip().lower()
+    suffix = ""
+    if ":" in key:
+        key, suffix = key.split(":", 1)
+        suffix = (suffix or "").strip()
     aliases = {
         "okx": "okx",
         "欧意": "okx",
@@ -42,7 +47,12 @@ def _normalize_platform(raw: str) -> str:
         "binance": "binance",
         "币安": "binance",
     }
-    return aliases.get(key, key)
+    base = aliases.get(key, key)
+    return f"{base}:{suffix}" if suffix else base
+
+
+def exchange_base_platform(raw: str) -> str:
+    return store.exchange_base_platform(raw)
 
 
 def _run_async(coro):
@@ -229,19 +239,23 @@ def _secrets_from_binding(cfg: Dict[str, Any]) -> Dict[str, str]:
 
 def _fetch_one_exchange_binding(r: Dict[str, Any]) -> tuple:
     """单交易所余额；返回 (account_item, positions_list, equity_ok)。"""
-    plat = (r.get("platform") or "").lower()
+    plat_key = (r.get("platform") or "").lower()
     cfg = r.get("config") or {}
+    label = (cfg.get("label") or "").strip()
+    plat = (cfg.get("base_platform") or exchange_base_platform(plat_key) or plat_key).lower()
+    display = label or PLATFORM_LABEL.get(plat, plat)
     item: Dict[str, Any] = {
-        "platform": plat,
-        "platform_label": PLATFORM_LABEL.get(plat, plat),
-        "label": (cfg.get("label") or "").strip(),
+        "platform": plat_key,
+        "base_platform": plat,
+        "platform_label": display,
+        "label": label,
         "status": "error",
         "equity": None,
         "balance": None,
         "currency": "USD",
         "address_mask": cfg.get("address_mask") or "",
         "api_key_mask": cfg.get("api_key_mask") or "",
-        "account_id": cfg.get("address_mask") or cfg.get("api_key_mask") or plat,
+        "account_id": cfg.get("address_mask") or cfg.get("api_key_mask") or plat_key,
         "demo": bool(cfg.get("demo")),
         "error": "",
     }
@@ -262,11 +276,11 @@ def _fetch_one_exchange_binding(r: Dict[str, Any]) -> tuple:
                 "balance": float(meta.get("balance") or 0),
                 "currency": meta.get("currency") or "USDC",
                 "address_mask": mask,
-                "account_id": mask or plat,
+                "account_id": mask or plat_key,
             })
             equity_ok = equity
             for p in meta.get("positions") or []:
-                pos_out.append({**p, "platform": plat})
+                pos_out.append({**p, "platform": plat_key})
         elif plat == "okx":
             key = secrets.get("api_key") or ""
             sec = secrets.get("api_secret") or ""
@@ -282,18 +296,18 @@ def _fetch_one_exchange_binding(r: Dict[str, Any]) -> tuple:
                 "balance": float(meta.get("balance") or equity),
                 "currency": meta.get("currency") or "USDT",
                 "api_key_mask": key_mask,
-                "account_id": key_mask or plat,
+                "account_id": key_mask or plat_key,
             })
             equity_ok = equity
             for p in meta.get("positions") or []:
-                pos_out.append({**p, "platform": plat})
+                pos_out.append({**p, "platform": plat_key})
         else:
             item["error"] = "暂不支持查询该平台余额"
     except Exception as exc:
-        logger.warning("拉取余额失败 platform=%s: %s", plat, exc)
+        logger.warning("拉取余额失败 platform=%s: %s", plat_key, exc)
         item["error"] = str(exc)[:200]
     if not item.get("account_id"):
-        item["account_id"] = item.get("address_mask") or item.get("api_key_mask") or plat
+        item["account_id"] = item.get("address_mask") or item.get("api_key_mask") or plat_key
     return item, pos_out, equity_ok
 
 
@@ -536,17 +550,21 @@ def connect_exchange(
     demo: bool = False,
     symbols: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    plat = _normalize_platform(platform)
+    plat = exchange_base_platform(_normalize_platform(platform))
     if plat == "binance":
         raise ValueError("币安连接即将支持，本次请先用 Hyperliquid 或欧意 OKX")
     if plat not in SUPPORTED:
         raise ValueError("不支持的交易平台")
 
+    lab = (label or "").strip()
+    storage_key = store.binding_account_key(plat, lab)
+
     verify_meta: Dict[str, Any] = {}
     secrets: Dict[str, Any] = {}
     public: Dict[str, Any] = {
         "platform": plat,
-        "label": (label or "").strip(),
+        "base_platform": plat,
+        "label": lab,
         "demo": bool(demo) if plat == "okx" else False,
     }
 
@@ -574,29 +592,39 @@ def connect_exchange(
         cleaned["api_key_enc"] = encrypt_field((api_key or "").strip())
         cleaned.pop("api_key", None)
 
-    row = store.upsert_exchange_binding(user_id, plat, cleaned)
+    row = store.upsert_exchange_binding(user_id, storage_key, cleaned)
     linked = []
     if symbols:
-        linked = store.mark_watch_connected(user_id, symbols, plat)
+        linked = store.mark_watch_connected(user_id, symbols, storage_key)
 
+    display = lab or PLATFORM_LABEL.get(plat, plat)
     return {
         "binding": strip_secrets_for_api({**row, **{k: v for k, v in cleaned.items() if not str(k).endswith("_enc")}}),
         "verify": {k: v for k, v in verify_meta.items() if k != "ok"},
         "linked": linked,
-        "platform_label": PLATFORM_LABEL.get(plat, plat),
+        "platform": storage_key,
+        "platform_label": display,
     }
 
 
 def disconnect_exchange(user_id: int, platform: str) -> Dict[str, Any]:
-    plat = _normalize_platform(platform)
-    if plat in (store.BOOK_PLATFORM_CRYPTO, store.BOOK_PLATFORM_US):
+    plat_key = _normalize_platform(platform)
+    base = exchange_base_platform(plat_key)
+    if plat_key in (store.BOOK_PLATFORM_CRYPTO, store.BOOK_PLATFORM_US) or base in (
+        store.BOOK_PLATFORM_CRYPTO,
+        store.BOOK_PLATFORM_US,
+    ):
         raise ValueError("账面账户不可断开，请在平台筛选中切换查看")
-    if plat not in SUPPORTED and plat != "binance":
+    if base not in SUPPORTED and base != "binance":
         raise ValueError("不支持的交易平台")
-    ok = store.delete_exchange_binding(user_id, plat)
+    ok = store.delete_exchange_binding(user_id, plat_key)
     if not ok:
-        raise ValueError(f"未找到已连接的 {PLATFORM_LABEL.get(plat, plat)}")
-    return {"platform": plat, "platform_label": PLATFORM_LABEL.get(plat, plat), "disconnected": True}
+        raise ValueError(f"未找到已连接的 {PLATFORM_LABEL.get(base, plat_key)}")
+    return {
+        "platform": plat_key,
+        "platform_label": PLATFORM_LABEL.get(base, plat_key),
+        "disconnected": True,
+    }
 
 
 def list_bindings(user_id: int) -> List[Dict[str, Any]]:
@@ -605,11 +633,16 @@ def list_bindings(user_id: int) -> List[Dict[str, Any]]:
     for r in rows:
         cfg = r.get("config") or {}
         safe = strip_secrets_for_api(cfg)
+        plat_key = r["platform"]
+        base = (safe.get("base_platform") or exchange_base_platform(plat_key) or plat_key).lower()
+        label = safe.get("label") or ""
+        display = label or PLATFORM_LABEL.get(base, base)
         out.append({
             "id": r["id"],
-            "platform": r["platform"],
-            "platform_label": PLATFORM_LABEL.get(r["platform"], r["platform"]),
-            "label": safe.get("label") or "",
+            "platform": plat_key,
+            "base_platform": base,
+            "platform_label": display,
+            "label": label,
             "address_mask": safe.get("address_mask") or "",
             "api_key_mask": safe.get("api_key_mask") or "",
             "demo": bool(safe.get("demo")),

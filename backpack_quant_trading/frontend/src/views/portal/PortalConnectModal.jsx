@@ -121,12 +121,12 @@ const PortalConnectModal = ({ open, symbols = [], onClose, onDone }) => {
             <strong>API 配置</strong>
             <p className="qt-sub" style={{ margin: '6px 0 12px' }}>填写欧意 API Key / Secret / Passphrase，连接前会校验账户</p>
             <label className="qt-field">
-              备注（可选）
+              钱包备注（同平台多账户必填以区分）
               <input
                 className="qt-input"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="例如：实盘主账户"
+                placeholder="例如：钱包A / 钱包B"
               />
             </label>
             <label className="qt-field">

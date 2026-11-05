@@ -105,16 +105,8 @@ def strategy_family(strategy_name: str) -> str:
 
 
 def parse_exchanges(raw: Any) -> List[str]:
-    """配置里 exchange 支持单值或逗号分隔多平台。"""
-    if isinstance(raw, (list, tuple)):
-        items = [str(x or "").strip().lower() for x in raw]
-    else:
-        items = [p.strip().lower() for p in str(raw or "").replace(";", ",").split(",")]
-    out: List[str] = []
-    for p in items:
-        if p in ("hyperliquid", "okx", "binance") and p not in out:
-            out.append(p)
-    return out
+    """配置里 exchange 支持单值或逗号分隔多平台（含 okx:钱包A）。"""
+    return store._normalize_exchanges(raw)
 
 
 def resolve_trade_intent(strategy_name: str, side: str) -> Tuple[str, Optional[str], str]:
@@ -190,6 +182,19 @@ def _leverage_from_cfg(cfg: Dict[str, Any], default: int = 5) -> int:
     return max(1, min(lev, 125))
 
 
+def _margin_mode_from_cfg(cfg: Dict[str, Any], default: str = "isolated") -> str:
+    """OKX tdMode / mgnMode：isolated=逐仓，cross=全仓。默认逐仓。"""
+    raw = str(
+        cfg.get("margin_mode")
+        or cfg.get("tdMode")
+        or cfg.get("mgnMode")
+        or default
+    ).strip().lower()
+    if raw in ("cross", "crossed", "全仓", "c"):
+        return "cross"
+    return "isolated"
+
+
 def _check_ma_gate(cfg: Dict[str, Any], side: str) -> Tuple[bool, str]:
     """开多前：当前 Pine 四态须命中交易配置的多选状态（OR）。平仓/开空不拦。"""
     if side != "BUY":
@@ -257,7 +262,7 @@ def _record_from_result(
         margin_val = out.get("margin")
         if margin_val in (None, "") and order.get("margin") not in (None, ""):
             margin_val = order.get("margin")
-        store.record_trade(
+        row = store.record_trade(
             int(cfg.get("user_id")),
             platform=str(cfg.get("exchange") or ""),
             symbol=str(cfg.get("symbol") or out.get("coin") or ""),
@@ -274,6 +279,13 @@ def _record_from_result(
             detail=str(out.get("detail") or "")[:240],
             order_id=str(order.get("orderId") or order.get("ordId") or ""),
         )
+        if status in ("ok", "dry-run"):
+            try:
+                from backpack_quant_trading.core.portal_watchlist import notify_new_trade
+
+                notify_new_trade(row, source="实盘 Webhook 跟单")
+            except Exception:
+                logger.exception("成交提醒失败")
     except Exception:
         logger.exception("写入 portal_trades 失败 cfg=%s", cfg.get("id"))
 
@@ -356,7 +368,8 @@ def execute_portal_signal(payload: dict) -> Dict[str, Any]:
                 item["detail"] = "配置缺少 user_id"
                 results.append(item)
                 continue
-            if exchange not in ("hyperliquid", "okx"):
+            base_ex = store.exchange_base_platform(exchange)
+            if base_ex not in ("hyperliquid", "okx"):
                 item["detail"] = f"交易所未支持或未绑定: {exchange}"
                 results.append(item)
                 continue
@@ -402,11 +415,11 @@ def execute_portal_signal(payload: dict) -> Dict[str, Any]:
                 demo = bool((binding.get("config") or {}).get("demo"))
                 if op == "close":
                     out = _exec_close(
-                        run_cfg, exchange, secrets, dry=dry, expect_side=intent_side, demo=demo
+                        run_cfg, base_ex, secrets, dry=dry, expect_side=intent_side, demo=demo
                     )
                     trade_action = "close"
                     record_side = "SELL" if intent_side != "short" else "BUY"
-                elif exchange == "hyperliquid":
+                elif base_ex == "hyperliquid":
                     out = _exec_hyperliquid(run_cfg, intent_side or side, secrets, dry=dry)
                     trade_action = "open"
                     record_side = intent_side or side
@@ -651,11 +664,12 @@ def _exec_okx(
         if coin in str(p.get("symbol") or "").upper() and (p.get("side") or "") == want_side:
             return {"status": "skipped", "detail": f"已有 {want_side} 仓位，跳过"}
 
+    mgn_mode = _margin_mode_from_cfg(cfg)
     # 模拟盘/实盘同一套：先设杠杆，再市价开仓；demo 仅多 x-simulated-trading 头
     lev_body: Dict[str, Any] = {
         "instId": inst_id,
         "lever": str(leverage),
-        "mgnMode": "cross",
+        "mgnMode": mgn_mode,
     }
     if pos_mode == "long_short_mode":
         lev_body["posSide"] = pos_side
@@ -677,7 +691,7 @@ def _exec_okx(
 
     body: Dict[str, Any] = {
         "instId": inst_id,
-        "tdMode": "cross",
+        "tdMode": mgn_mode,
         "side": okx_side,
         "ordType": "market",
         "sz": str(sz),
@@ -806,9 +820,10 @@ def _exec_close(
     okx_side = "sell" if pos_side == "long" else "buy"
     sz = abs(float(target.get("size") or 0))
     pos_mode = _okx_pos_mode(key, sec, pwd, demo=demo)
+    mgn_mode = _margin_mode_from_cfg(cfg)
     body: Dict[str, Any] = {
         "instId": inst_id,
-        "tdMode": "cross",
+        "tdMode": mgn_mode,
         "side": okx_side,
         "ordType": "market",
         "sz": str(sz),

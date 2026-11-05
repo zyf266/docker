@@ -1,6 +1,6 @@
 """标的观察库：币安加密 + Massive 美股；日线 MA 强弱 + 三状态（对齐 TV Pine）。
 
-列表默认只读库（秒开）；指标默认读 30 分钟缓存（内存+磁盘），仅 force 时重拉 K 线。
+列表默认只读库（秒开）；指标按墙钟整点/半点（:00/:30）刷新缓存，仅 force 时立刻重拉 K 线。
 三状态（固定级别）：熊市空头 / 趋势 / 反弹 / 牛市空头。
 - 加密：2h SMA(ma2hLen 默认 180)；日线 MACD「水上金叉」(DIF>0 且 DIF>DEA)
 - 美股：2h SMA(ma2hLen 默认 30)；日线 MACD「水上」(DIF>0 且 DEA>0)
@@ -16,6 +16,7 @@ import os
 import re
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -74,12 +75,19 @@ _US_HINTS = {
     "LI": "理想",
 }
 
-# 指标缓存：默认 30 分钟；落盘避免 API 重启后每次进页都重拉 K 线
+# 指标缓存：按墙钟整点/半点失效（:00、:30），落盘避免 API 重启后每次进页都重拉 K 线
 _METRICS_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
-_METRICS_TTL_SEC = 1800.0
+_METRICS_TTL_SEC = 1800.0  # 对外提示仍约 30 分钟；实际按半点桶判定
 _CACHE_PATH = Path(__file__).resolve().parents[1] / "data" / "portal_watchlist_metrics_cache.json"
 _CACHE_LOCK = threading.Lock()
 _CACHE_LOADED = False
+
+
+def _half_hour_bucket(ts: Optional[float] = None) -> int:
+    """当前半点桶起点时间戳（本地墙钟 :00 / :30）。"""
+    dt = datetime.fromtimestamp(ts if ts is not None else time.time())
+    minute = 0 if dt.minute < 30 else 30
+    return int(dt.replace(minute=minute, second=0, microsecond=0).timestamp())
 
 
 def _load_disk_cache() -> None:
@@ -128,7 +136,8 @@ def _cache_get(cache_key: str) -> Optional[Tuple[float, Dict[str, Any]]]:
     if not hit:
         return None
     ts, data = hit
-    if (time.time() - ts) >= _METRICS_TTL_SEC:
+    # 跨过 :00 / :30 即失效（例如 4:15 写入 → 4:30 起需重拉）
+    if _half_hour_bucket(ts) != _half_hour_bucket():
         return None
     return ts, data
 
@@ -346,6 +355,44 @@ def _push_status_inbox(title: str, body: str) -> None:
         logger.info("portal watch inbox broadcast n=%s title=%s", n, title)
     except Exception as exc:
         logger.warning("portal watch inbox failed: %s", exc)
+
+
+def notify_new_trade(trade: Dict[str, Any], *, source: str = "成交") -> None:
+    """新成交（实盘跟单 / 账面 webhook）→ 钉钉（含「信号」）+ 站内信。"""
+    if not isinstance(trade, dict):
+        return
+    status = str(trade.get("status") or "ok").lower()
+    if status not in ("ok", "dry-run"):
+        return
+    symbol = str(trade.get("symbol") or "").upper() or "—"
+    side = str(trade.get("side") or "").upper()
+    action = str(trade.get("action") or "").lower()
+    action_cn = "开仓" if action == "open" else ("平仓" if action == "close" else action or "—")
+    side_cn = "多" if side == "BUY" else ("空" if side == "SELL" else side or "—")
+    px = trade.get("price")
+    margin = trade.get("margin")
+    pnl = trade.get("pnl")
+    strategy = str(trade.get("strategy_name") or "") or "—"
+    platform = str(trade.get("platform") or "") or "—"
+    ts = str(trade.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S"))
+    title = f"信号 · 新成交 {symbol}"
+    detail = (
+        f"【信号】新成交记录\n"
+        f"来源: {source}\n"
+        f"{symbol} · {action_cn}{side_cn} · 平台 {platform}\n"
+        f"价格: {px if px is not None else '—'} · 仓位: {margin if margin is not None else '—'}\n"
+        f"盈亏: {pnl if pnl is not None else 0} · 策略: {strategy}\n"
+        f"时间: {ts}"
+    )
+    _send_watch_dingtalk(title, detail)
+    uid = int(trade.get("user_id") or 0)
+    try:
+        if uid > 0:
+            store.create_inbox(uid, title, detail)
+        else:
+            _push_status_inbox(title, detail)
+    except Exception as exc:
+        logger.warning("portal trade inbox failed: %s", exc)
 
 
 def maybe_notify_status_changes(metrics: Dict[str, Any]) -> None:

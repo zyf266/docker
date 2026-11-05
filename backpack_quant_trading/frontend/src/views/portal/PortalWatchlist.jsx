@@ -18,11 +18,25 @@ const PINE_STATUS_OPTIONS = [
   { value: '熊市空头', label: '熊市空头' },
 ]
 
+const exchangeBase = (id) => {
+  const s = String(id || '').toLowerCase()
+  if (!s) return ''
+  return s.includes(':') ? s.split(':')[0] : s
+}
+
 const platLabel = (id) => {
-  if (id === 'hyperliquid') return 'Hyperliquid'
-  if (id === 'okx') return '欧意 OKX'
-  if (id === 'binance') return '币安'
+  const base = exchangeBase(id)
+  if (base === 'hyperliquid') return 'Hyperliquid'
+  if (base === 'okx') return '欧意 OKX'
+  if (base === 'binance') return '币安'
   return id || '—'
+}
+
+/** 下单平台展示：优先钱包备注 */
+const bindingDisplayName = (b) => {
+  const label = String(b?.label || b?.platform_label || '').trim()
+  if (label) return label
+  return platLabel(b?.platform || b?.base_platform || '')
 }
 
 const parseExchanges = (raw) => {
@@ -127,6 +141,7 @@ const emptyConfig = {
   size_mode: 'percent',
   size_value: '10',
   leverage: 5,
+  margin_mode: 'isolated',
   take_profit: '',
   stop_loss: '',
   exchanges: [],
@@ -353,6 +368,7 @@ const PortalWatchlist = ({ embedded = false }) => {
       size_mode: seed?.size_mode || 'percent',
       size_value: seed?.size_value || '10',
       leverage: Number(seed?.leverage) > 0 ? Number(seed.leverage) : 5,
+      margin_mode: String(seed?.margin_mode || 'isolated').toLowerCase() === 'cross' ? 'cross' : 'isolated',
       take_profit: seed?.take_profit || '',
       stop_loss: seed?.stop_loss || '',
       exchanges,
@@ -492,6 +508,7 @@ const PortalWatchlist = ({ embedded = false }) => {
         size_mode: cfg.size_mode,
         size_value: cfg.size_value,
         leverage: Number(cfg.leverage) > 0 ? Number(cfg.leverage) : 5,
+        margin_mode: cfg.margin_mode === 'cross' ? 'cross' : 'isolated',
         take_profit: cfg.take_profit,
         stop_loss: cfg.stop_loss,
         exchanges: selectedEx,
@@ -805,12 +822,13 @@ const PortalWatchlist = ({ embedded = false }) => {
                   </span>
                 </div>
                 <div className="qt-field">
-                  <span>下单平台（可多选）</span>
+                  <span>下单平台（可多选，按钱包备注区分）</span>
                   {bindings.length ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {bindings.map((b) => {
                         const id = String(b.platform || '').toLowerCase()
                         const checked = parseExchanges(cfg.exchanges).includes(id)
+                        const base = exchangeBase(id)
                         return (
                           <label key={id || b.id} className="qt-check" style={{ margin: 0 }}>
                             <input
@@ -818,16 +836,16 @@ const PortalWatchlist = ({ embedded = false }) => {
                               checked={checked}
                               onChange={() => toggleExchange(id)}
                             />
-                            {platLabel(id)}
+                            {bindingDisplayName(b)}
                             {b.demo ? ' · 模拟盘' : ''}
-                            {b.label ? ` · ${b.label}` : ''}
+                            {b.label ? ` · ${platLabel(base)}` : ''}
                           </label>
                         )
                       })}
                     </div>
                   ) : (
                     <p className="qt-sub" style={{ margin: 0, fontSize: 13 }}>
-                      尚未连接交易所。点「保存配置」后将弹出连接窗口。
+                      尚未连接交易所。点「保存配置」后将弹出连接窗口。连接时可填「钱包备注」，同平台多个账户会按备注分开勾选。
                     </p>
                   )}
                 </div>
@@ -843,6 +861,17 @@ const PortalWatchlist = ({ embedded = false }) => {
                     <option value="2h">2h</option>
                     <option value="4h">4h</option>
                     <option value="1d">1d</option>
+                  </select>
+                </label>
+                <label className="qt-field">
+                  保证金模式
+                  <select
+                    className="qt-select"
+                    value={cfg.margin_mode || 'isolated'}
+                    onChange={(e) => setCfg((prev) => ({ ...prev, margin_mode: e.target.value }))}
+                  >
+                    <option value="isolated">逐仓（默认）</option>
+                    <option value="cross">全仓</option>
                   </select>
                 </label>
                 <label className="qt-field">
